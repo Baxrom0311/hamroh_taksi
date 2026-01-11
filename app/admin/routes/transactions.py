@@ -52,7 +52,7 @@ class TransactionResponse(BaseModel):
 
 class ApproveRequest(BaseModel):
     """Tasdiqlash so'rovi"""
-    pass
+    amount: Optional[float] = None  # Admin kiritgan summa (chekdagi summa)
 
 
 class RejectRequest(BaseModel):
@@ -185,12 +185,20 @@ async def approve_transaction(
 ):
     """
     Tranzaksiyani tasdiqlash
+    
+    Admin chekdagi summani kiritadi va shu summa driver balansiga qo'shiladi
     """
     try:
+        from decimal import Decimal
+        
+        # Admin kiritgan summa (yoki None - transaction'dagi summa ishlatiladi)
+        approved_amount = Decimal(str(request.amount)) if request.amount is not None else None
+        
         result = await payment_service.process_deposit_request(
             transaction_id=transaction_id,
             admin_id=current_user['user_id'],
-            approve=True
+            approve=True,
+            approved_amount=approved_amount
         )
         
         if result['success']:

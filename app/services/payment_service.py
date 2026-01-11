@@ -246,7 +246,8 @@ class PaymentService:
         transaction_id: int,
         admin_id: int,
         approve: bool,
-        rejection_reason: Optional[str] = None
+        rejection_reason: Optional[str] = None,
+        approved_amount: Optional[Decimal] = None  # Admin kiritgan summa (chekdagi summa)
     ) -> Dict:
         """
         To'lov so'rovini qayta ishlash (Admin)
@@ -289,6 +290,17 @@ class PaymentService:
                 if approve:
                     # ✅ TASDIQLASH
                     
+                    # Admin kiritgan summa yoki transaction'dagi summa
+                    deposit_amount = approved_amount if approved_amount is not None else trans.amount
+                    
+                    # Transaction amount'ni yangilash (agar admin boshqa summa kiritgan bo'lsa)
+                    if approved_amount is not None and approved_amount != trans.amount:
+                        await session.execute(
+                            update(Transaction)
+                            .where(Transaction.transaction_id == transaction_id)
+                            .values(amount=deposit_amount)
+                        )
+                    
                     # Transaction statusini yangilash
                     success = await approve_transaction(
                         session,
@@ -302,13 +314,13 @@ class PaymentService:
                             'error': 'Failed to approve transaction'
                         }
                     
-                    # Balansga qo'shish
+                    # Balansga qo'shish (admin kiritgan summa bilan)
                     balance_result = await self.add_balance(
                         session,
                         driver_id=trans.driver_id,
-                        amount=trans.amount,
+                        amount=deposit_amount,
                         transaction_id=transaction_id,
-                        description=f"Balans to'ldirish (Transaction #{transaction_id})"
+                        description=f"Balans to'ldirish (Transaction #{transaction_id}) - Chekdagi summa: {deposit_amount:,} so'm"
                     )
                     
                     if not balance_result['success']:
@@ -325,7 +337,7 @@ class PaymentService:
                     send_telegram_message.delay( # type: ignore
                         trans.driver_id,
                         f"✅ <b>To'lov tasdiqlandi!</b>\n\n"
-                        f"💰 Balansga qo'shildi: <b>{trans.amount:,} so'm</b>\n"
+                        f"💰 Balansga qo'shildi: <b>{deposit_amount:,} so'm</b>\n"
                         f"📊 Yangi balans: <b>{balance_result['new_balance']:,} so'm</b>"
                     )
                     

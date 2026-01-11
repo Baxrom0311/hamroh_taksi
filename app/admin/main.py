@@ -233,6 +233,7 @@ async def drivers_page(
         formatted_drivers = []
         for d in drivers_list:
             formatted_drivers.append({
+                "driver_id": d.driver_id,  # ID qo'shildi
                 "full_name": d.full_name,
                 "phone_number": d.user.phone_number if d.user else "Tel yo'q",
                 "car_model": d.car_model,
@@ -273,6 +274,7 @@ async def passengers_page(
         formatted_passengers = []
         for p in passengers_list:
             formatted_passengers.append({
+                "passenger_id": p.passenger_id,  # ID qo'shildi
                 "full_name": p.full_name,
                 "phone_number": p.user.phone_number if p.user else "Noma'lum",
                 "gender": "Erkak" if p.gender == "MALE" else "Ayol",
@@ -318,6 +320,9 @@ async def transactions_page(
                 "receipt_url": tx.receipt_file_id, # Telegram file_id
                 "created_at": tx.created_at.strftime("%H:%M / %d.%m.%Y")
             })
+        
+        # BOT_TOKEN ni template'ga uzatish
+        from config.settings import settings
 
     return templates.TemplateResponse(
         "transactions.html",
@@ -326,7 +331,8 @@ async def transactions_page(
             "user": current_user,
             "transactions": formatted_tx,
             "page": "transactions",
-            "now": datetime.now()
+            "now": datetime.now(),
+            "settings": settings  # BOT_TOKEN uchun
         }
     )
 

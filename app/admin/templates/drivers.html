@@ -58,8 +58,16 @@
                         {% endif %}
                     </td>
                     <td class="px-6 py-4 text-right space-x-2">
-                        <button class="text-blue-500 hover:text-blue-700 p-1">✏️</button>
-                        <button class="text-red-500 hover:text-red-700 p-1">🚫</button>
+                        <button 
+                            onclick="editDriver({{ loop.index0 }})" 
+                            class="text-blue-500 hover:text-blue-700 p-1" 
+                            title="Tahrirlash"
+                        >✏️</button>
+                        <button 
+                            onclick="blockDriver('{{ driver.full_name }}', '{{ driver.phone_number }}')" 
+                            class="text-red-500 hover:text-red-700 p-1" 
+                            title="Bloklash"
+                        >🚫</button>
                     </td>
                 </tr>
                 {% else %}

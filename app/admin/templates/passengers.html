@@ -33,8 +33,17 @@
                         </span>
                     </td>
                     <td class="px-6 py-4 text-sm text-gray-500">{{ p.created_at }}</td>
-                    <td class="px-6 py-4 text-right">
-                        <button class="text-red-500 hover:text-red-700">🚫 Bloklash</button>
+                    <td class="px-6 py-4 text-right space-x-2">
+                        <button 
+                            onclick="editPassenger({{ loop.index0 }})" 
+                            class="text-blue-500 hover:text-blue-700 p-1" 
+                            title="Tahrirlash"
+                        >✏️</button>
+                        <button 
+                            onclick="blockPassenger('{{ p.full_name }}', '{{ p.phone_number }}')" 
+                            class="text-red-500 hover:text-red-700 p-1" 
+                            title="Bloklash"
+                        >🚫</button>
                     </td>
                 </tr>
                 {% else %}
@@ -46,4 +55,158 @@
         </table>
     </div>
 </div>
+
+<!-- Edit Passenger Modal -->
+<div id="editPassengerModal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
+    <div class="bg-white rounded-xl p-6 max-w-md w-full mx-4">
+        <h3 class="text-lg font-bold mb-4">Yo'lovchi ma'lumotlarini tahrirlash</h3>
+        <form id="editPassengerForm" onsubmit="savePassengerEdit(event)">
+            <input type="hidden" id="editPassengerIndex" />
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Ism Familiya</label>
+                    <input type="text" id="editPassengerName" class="w-full px-3 py-2 border rounded-lg" required />
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Telefon</label>
+                    <input type="text" id="editPassengerPhone" class="w-full px-3 py-2 border rounded-lg" required />
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Jinsi</label>
+                    <select id="editPassengerGender" class="w-full px-3 py-2 border rounded-lg">
+                        <option value="MALE">Erkak</option>
+                        <option value="FEMALE">Ayol</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Yoshi</label>
+                    <input type="number" id="editPassengerAge" class="w-full px-3 py-2 border rounded-lg" min="1" max="120" required />
+                </div>
+            </div>
+            <div class="flex space-x-2 mt-6">
+                <button type="submit" class="flex-1 bg-blue-500 text-white py-2 rounded-lg hover:bg-blue-600">Saqlash</button>
+                <button type="button" onclick="closeEditPassengerModal()" class="flex-1 bg-gray-300 text-gray-700 py-2 rounded-lg hover:bg-gray-400">Bekor qilish</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Block Passenger Modal -->
+<div id="blockPassengerModal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
+    <div class="bg-white rounded-xl p-6 max-w-md w-full mx-4">
+        <h3 class="text-lg font-bold mb-4">Yo'lovchini bloklash</h3>
+        <form id="blockPassengerForm" onsubmit="confirmBlockPassenger(event)">
+            <input type="hidden" id="blockPassengerPhone" />
+            <div class="mb-4">
+                <p class="text-sm text-gray-600 mb-2">Yo'lovchi: <span id="blockPassengerName" class="font-bold"></span></p>
+                <p class="text-sm text-gray-600">Telefon: <span id="blockPassengerPhoneDisplay" class="font-bold"></span></p>
+            </div>
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-700 mb-1">Bloklash sababi</label>
+                <textarea id="blockPassengerReason" class="w-full px-3 py-2 border rounded-lg" rows="3" required></textarea>
+            </div>
+            <div class="flex space-x-2">
+                <button type="submit" class="flex-1 bg-red-500 text-white py-2 rounded-lg hover:bg-red-600">Bloklash</button>
+                <button type="button" onclick="closeBlockPassengerModal()" class="flex-1 bg-gray-300 text-gray-700 py-2 rounded-lg hover:bg-gray-400">Bekor qilish</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+const passengers = {{ passengers|tojson }};
+
+function editPassenger(index) {
+    const passenger = passengers[index];
+    document.getElementById('editPassengerIndex').value = index;
+    document.getElementById('editPassengerName').value = passenger.full_name;
+    document.getElementById('editPassengerPhone').value = passenger.phone_number;
+    document.getElementById('editPassengerGender').value = passenger.gender === 'Erkak' ? 'MALE' : 'FEMALE';
+    document.getElementById('editPassengerAge').value = passenger.age;
+    document.getElementById('editPassengerModal').classList.remove('hidden');
+}
+
+function closeEditPassengerModal() {
+    document.getElementById('editPassengerModal').classList.add('hidden');
+}
+
+async function savePassengerEdit(event) {
+    event.preventDefault();
+    const index = parseInt(document.getElementById('editPassengerIndex').value);
+    const passenger = passengers[index];
+    
+    const data = {
+        full_name: document.getElementById('editPassengerName').value,
+        phone_number: document.getElementById('editPassengerPhone').value,
+        gender: document.getElementById('editPassengerGender').value,
+        age: parseInt(document.getElementById('editPassengerAge').value)
+    };
+    
+    try {
+        const response = await fetch(`/api/passengers/${passenger.passenger_id}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(data)
+        });
+        
+        if (response.ok) {
+            alert('✅ Ma\'lumotlar saqlandi!');
+            location.reload();
+        } else {
+            const error = await response.json();
+            alert('❌ Xatolik: ' + (error.detail || 'Noma\'lum xatolik'));
+        }
+    } catch (error) {
+        alert('❌ Xatolik: ' + error.message);
+    }
+}
+
+function blockPassenger(name, phone) {
+    document.getElementById('blockPassengerName').textContent = name;
+    document.getElementById('blockPassengerPhone').value = phone;
+    document.getElementById('blockPassengerPhoneDisplay').textContent = phone;
+    document.getElementById('blockPassengerModal').classList.remove('hidden');
+}
+
+function closeBlockPassengerModal() {
+    document.getElementById('blockPassengerModal').classList.add('hidden');
+}
+
+async function confirmBlockPassenger(event) {
+    event.preventDefault();
+    const phone = document.getElementById('blockPassengerPhone').value;
+    const reason = document.getElementById('blockPassengerReason').value;
+    
+    // Passenger ID ni topish
+    const passenger = passengers.find(p => p.phone_number === phone);
+    if (!passenger) {
+        alert('❌ Yo\'lovchi topilmadi');
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/passengers/${passenger.passenger_id}/block`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                reason: reason
+            })
+        });
+        
+        if (response.ok) {
+            alert('✅ Yo\'lovchi bloklandi!');
+            location.reload();
+        } else {
+            const error = await response.json();
+            alert('❌ Xatolik: ' + (error.detail || 'Noma\'lum xatolik'));
+        }
+    } catch (error) {
+        alert('❌ Xatolik: ' + error.message);
+    }
+}
+</script>
 {% endblock %}

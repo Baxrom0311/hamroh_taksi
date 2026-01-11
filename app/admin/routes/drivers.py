@@ -406,6 +406,60 @@ async def unblock_driver(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.put("/{driver_id}")
+async def update_driver(
+    driver_id: int,
+    request: dict,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Haydovchi ma'lumotlarini tahrirlash
+    """
+    try:
+        async with get_session() as session:
+            driver = await get_driver_by_id(session, driver_id)
+            
+            if not driver:
+                raise HTTPException(status_code=404, detail="Driver topilmadi")
+            
+            # Ma'lumotlarni yangilash
+            await session.execute(
+                update(Driver)
+                .where(Driver.driver_id == driver_id)
+                .values(
+                    full_name=request.get('full_name', driver.full_name),
+                    car_model=request.get('car_model', driver.car_model),
+                    car_color=request.get('car_color', driver.car_color),
+                    car_number=request.get('car_number', driver.car_number)
+                )
+            )
+            
+            # Telefon raqamini yangilash (User jadvalida)
+            if 'phone_number' in request:
+                from app.models.user import User
+                await session.execute(
+                    update(User)
+                    .where(User.user_id == driver.user_id)
+                    .values(phone_number=request['phone_number'])
+                )
+            
+            await session.commit()
+            
+            logger.info(f"Driver {driver_id} updated by admin {current_user['username']}")
+            
+            return {
+                'success': True,
+                'message': 'Driver ma\'lumotlari yangilandi'
+            }
+    
+    except HTTPException:
+        raise
+    
+    except Exception as e:
+        logger.error(f"Failed to update driver: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.put("/{driver_id}/balance")
 async def update_driver_balance(
     driver_id: int,

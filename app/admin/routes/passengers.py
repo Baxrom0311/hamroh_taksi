@@ -199,6 +199,62 @@ async def get_passenger_details(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.put("/{passenger_id}")
+async def update_passenger(
+    passenger_id: int,
+    request: dict,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Yo'lovchi ma'lumotlarini tahrirlash
+    """
+    try:
+        async with get_session() as session:
+            passenger = await get_passenger_by_id(session, passenger_id)
+            
+            if not passenger:
+                raise HTTPException(status_code=404, detail="Passenger topilmadi")
+            
+            from sqlalchemy import update
+            from app.models.passenger import Passenger
+            from app.models.user import User
+            
+            # Ma'lumotlarni yangilash
+            await session.execute(
+                update(Passenger)
+                .where(Passenger.passenger_id == passenger_id)
+                .values(
+                    full_name=request.get('full_name', passenger.full_name),
+                    gender=request.get('gender', passenger.gender.value),
+                    age=request.get('age', passenger.age)
+                )
+            )
+            
+            # Telefon raqamini yangilash (User jadvalida)
+            if 'phone_number' in request:
+                await session.execute(
+                    update(User)
+                    .where(User.user_id == passenger.user_id)
+                    .values(phone_number=request['phone_number'])
+                )
+            
+            await session.commit()
+            
+            logger.info(f"Passenger {passenger_id} updated by admin {current_user['username']}")
+            
+            return {
+                'success': True,
+                'message': 'Passenger ma\'lumotlari yangilandi'
+            }
+    
+    except HTTPException:
+        raise
+    
+    except Exception as e:
+        logger.error(f"Failed to update passenger: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.put("/{passenger_id}/block")
 async def block_passenger(
     passenger_id: int,
