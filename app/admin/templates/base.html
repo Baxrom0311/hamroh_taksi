@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Hamroh Admin Panel{% endblock %}</title>
+    
+    <!-- Tailwind, Chart.js, Alpine.js -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    
+    <style>
+        [x-cloak] { display: none !important; }
+        .sidebar-active { 
+            background-color: rgb(31, 41, 55);
+            border-left: 4px solid rgb(59, 130, 246);
+        }
+    </style>
+    {% block head %}{% endblock %}
+</head>
+<body class="bg-gray-50 font-sans">
+    
+    <div class="flex h-screen overflow-hidden">
+        <!-- Sidebar -->
+        <aside class="w-64 bg-gray-900 text-white flex-shrink-0 flex flex-col">
+            <div class="p-6">
+                <h1 class="text-2xl font-bold text-yellow-500">🚕 Hamroh</h1>
+                <p class="text-sm text-gray-400">Boshqaruv Paneli</p>
+            </div>
+            
+            <nav class="mt-4 flex-1">
+                <a href="/dashboard" class="flex items-center px-6 py-3 hover:bg-gray-800 transition {% if page == 'dashboard' %}bg-gray-800 border-l-4 border-blue-500 text-white{% else %}text-gray-400{% endif %}">
+                    <span class="mr-3">📊</span> Dashboard
+                </a>
+                <a href="/drivers" class="flex items-center px-6 py-3 hover:bg-gray-800 transition {% if page == 'drivers' %}bg-gray-800 border-l-4 border-blue-500 text-white{% else %}text-gray-400{% endif %}">
+                    <span class="mr-3">🚗</span> Haydovchilar
+                </a>
+                <a href="/passengers" class="flex items-center px-6 py-3 hover:bg-gray-800 transition {% if page == 'passengers' %}bg-gray-800 border-l-4 border-blue-500 text-white{% else %}text-gray-400{% endif %}">
+                    <span class="mr-3">👥</span> Yo'lovchilar
+                </a>
+                <a href="/transactions" class="flex items-center px-6 py-3 hover:bg-gray-800 transition {% if page == 'transactions' %}bg-gray-800 border-l-4 border-blue-500 text-white{% else %}text-gray-400{% endif %}">
+                    <span class="mr-3">💳</span> To'lovlar
+                </a>
+            </nav>
+            
+            <!-- User Info & Logout -->
+            <div class="p-6 border-t border-gray-800">
+                <div class="flex items-center mb-4">
+                    <div class="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center font-bold text-white">
+                        {{ user.username[0].upper() if user else 'A' }}
+                    </div>
+                    <div class="ml-3 overflow-hidden">
+                        <p class="text-sm font-medium truncate">{{ user.username }}</p>
+                        <p class="text-xs text-gray-500 uppercase">{{ user.role }}</p>
+                    </div>
+                </div>
+                <button onclick="handleLogout()" class="w-full px-4 py-2 bg-red-600 hover:bg-red-700 transition rounded text-sm font-medium">
+                    🚪 Chiqish
+                </button>
+            </div>
+        </aside>
+        
+        <!-- Main Content Area -->
+        <div class="flex-1 flex flex-col overflow-hidden">
+            <header class="bg-white shadow-sm z-10 py-4 px-8 flex justify-between items-center">
+                <h2 class="text-xl font-semibold text-gray-800">{% block header_title %}{% endblock %}</h2>
+                <div class="text-sm text-gray-500">{{ now.strftime('%d.%m.%Y') if now else '' }}</div>
+            </header>
+            
+            <main class="flex-1 overflow-y-auto bg-gray-50">
+                {% block content %}{% endblock %}
+            </main>
+        </div>
+    </div>
+
+    <script>
+        function handleLogout() {
+            document.cookie = "access_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+            window.location.href = '/login';
+        }
+    </script>
+</body>
+</html>

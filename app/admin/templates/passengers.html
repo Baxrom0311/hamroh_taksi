@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+
+{% block title %}Yo'lovchilar | Hamroh Admin{% endblock %}
+{% block header_title %}Yo'lovchilar Ro'yxati{% endblock %}
+
+{% block content %}
+<div class="p-8">
+    <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+        <table class="min-w-full divide-y divide-gray-200">
+            <thead class="bg-gray-50 text-gray-500 text-xs uppercase font-semibold">
+                <tr>
+                    <th class="px-6 py-4 text-left">F.I.SH / Telefon</th>
+                    <th class="px-6 py-4 text-left">Jinsi / Yoshi</th>
+                    <th class="px-6 py-4 text-left">Jami safarlar</th>
+                    <th class="px-6 py-4 text-left">Ro'yxatdan o'tgan</th>
+                    <th class="px-6 py-4 text-right">Amallar</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100">
+                {% for p in passengers %}
+                <tr class="hover:bg-gray-50 transition">
+                    <td class="px-6 py-4">
+                        <div class="text-sm font-bold text-gray-900">{{ p.full_name }}</div>
+                        <div class="text-xs text-gray-500">{{ p.phone_number }}</div>
+                    </td>
+                    <td class="px-6 py-4">
+                        <div class="text-sm text-gray-700">{{ p.gender }}</div>
+                        <div class="text-xs text-gray-400">{{ p.age }} yosh</div>
+                    </td>
+                    <td class="px-6 py-4">
+                        <span class="px-3 py-1 bg-blue-50 text-blue-600 rounded-lg text-sm font-bold">
+                            {{ p.total_trips }} ta
+                        </span>
+                    </td>
+                    <td class="px-6 py-4 text-sm text-gray-500">{{ p.created_at }}</td>
+                    <td class="px-6 py-4 text-right">
+                        <button class="text-red-500 hover:text-red-700">🚫 Bloklash</button>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="5" class="px-6 py-20 text-center text-gray-400">Yo'lovchilar mavjud emas</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

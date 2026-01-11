@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+
+{% block title %}Haydovchilar | Hamroh Admin{% endblock %}
+{% block header_title %}Haydovchilar Ro'yxati{% endblock %}
+
+{% block content %}
+<div class="p-8">
+    <!-- Header qismi -->
+    <div class="flex justify-between items-center mb-6">
+        <h3 class="text-lg font-semibold text-gray-700">Jami haydovchilar: {{ drivers|length }}</h3>
+        <div class="flex space-x-2">
+            <input type="text" placeholder="Qidirish..." class="px-4 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+        </div>
+    </div>
+
+    <!-- Table -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+        <table class="min-w-full divide-y divide-gray-200">
+            <thead class="bg-gray-50 text-gray-500 text-xs uppercase font-semibold">
+                <tr>
+                    <th class="px-6 py-4 text-left">F.I.SH / Telefon</th>
+                    <th class="px-6 py-4 text-left">Mashina ma'lumotlari</th>
+                    <th class="px-6 py-4 text-left">Balans</th>
+                    <th class="px-6 py-4 text-left">Reyting</th>
+                    <th class="px-6 py-4 text-left">Holat</th>
+                    <th class="px-6 py-4 text-right">Amallar</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100">
+                {% for driver in drivers %}
+                <tr class="hover:bg-gray-50 transition">
+                    <td class="px-6 py-4">
+                        <div class="text-sm font-bold text-gray-900">{{ driver.full_name }}</div>
+                        <div class="text-xs text-gray-500">{{ driver.phone_number }}</div>
+                    </td>
+                    <td class="px-6 py-4">
+                        <div class="text-sm text-gray-700">{{ driver.car_model }}</div>
+                        <div class="text-xs text-gray-400">{{ driver.car_color }} | {{ driver.car_number }}</div>
+                    </td>
+                    <td class="px-6 py-4">
+                        <span class="text-sm font-semibold {% if driver.balance < 5000 %}text-red-500{% else %}text-green-600{% endif %}">
+                            {{ "{:,.0f}".format(driver.balance) }} so'm
+                        </span>
+                    </td>
+                    <td class="px-6 py-4">
+                        <div class="flex items-center">
+                            <span class="text-yellow-400 mr-1">⭐</span>
+                            <span class="text-sm text-gray-700 font-medium">{{ driver.rating }}</span>
+                        </div>
+                    </td>
+                    <td class="px-6 py-4">
+                        {% if driver.is_blocked %}
+                            <span class="px-2 py-1 text-[10px] font-bold bg-red-100 text-red-600 rounded-full uppercase">Bloklangan</span>
+                        {% elif driver.is_active %}
+                            <span class="px-2 py-1 text-[10px] font-bold bg-green-100 text-green-600 rounded-full uppercase">Online</span>
+                        {% else %}
+                            <span class="px-2 py-1 text-[10px] font-bold bg-gray-100 text-gray-500 rounded-full uppercase">Offline</span>
+                        {% endif %}
+                    </td>
+                    <td class="px-6 py-4 text-right space-x-2">
+                        <button class="text-blue-500 hover:text-blue-700 p-1">✏️</button>
+                        <button class="text-red-500 hover:text-red-700 p-1">🚫</button>
+                    </td>
+                </tr>
+                {% else %}
+
+                <!-- Bo'sh holat -->
+                <tr>
+                    <td colspan="6" class="px-6 py-20 text-center">
+                        <div class="flex flex-col items-center">
+                            <span class="text-5xl mb-4">📭</span>
+                            <p class="text-gray-400 text-lg">Hozircha haydovchilar yo'q</p>
+                            <p class="text-gray-400 text-sm">Bot orqali ro'yxatdan o'tgan haydovchilar shu yerda ko'rinadi.</p>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

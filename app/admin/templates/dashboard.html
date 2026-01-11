@@ -1,0 +1,200 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard | Hamroh Admin{% endblock %}
+{% block header_title %}Tizim Statistikasi{% endblock %}
+
+{% block content %}
+<div class="p-8" x-data="dashboardApp()" x-init="init()">
+    
+    <!-- Stats Cards Grid -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <!-- Aktiv Haydovchilar -->
+        <div class="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-sm text-gray-500 font-medium">Aktiv Haydovchilar</p>
+                    <p class="text-3xl font-bold text-gray-800 mt-1" x-text="stats.drivers?.active || 0"></p>
+                </div>
+                <div class="w-12 h-12 bg-blue-50 text-blue-500 rounded-lg flex items-center justify-center text-2xl">🚗</div>
+            </div>
+            <div class="mt-4 flex items-center text-xs text-gray-400">
+                <span>Jami: <b x-text="stats.drivers?.total || 0"></b></span>
+            </div>
+        </div>
+
+        <!-- Bugungi Safarlar -->
+        <div class="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-sm text-gray-500 font-medium">Bugungi Safarlar</p>
+                    <p class="text-3xl font-bold text-gray-800 mt-1" x-text="stats.trips?.today || 0"></p>
+                </div>
+                <div class="w-12 h-12 bg-green-50 text-green-500 rounded-lg flex items-center justify-center text-2xl">📍</div>
+            </div>
+            <div class="mt-4 flex items-center text-xs">
+                <span :class="stats.trips?.growth >= 0 ? 'text-green-500' : 'text-red-500'" class="font-bold">
+                    <span x-text="stats.trips?.growth >= 0 ? '↑' : '↓'"></span>
+                    <span x-text="Math.abs(stats.trips?.growth || 0)"></span>%
+                </span>
+                <span class="text-gray-400 ml-1">kechaga nisbatan</span>
+            </div>
+        </div>
+
+        <!-- Bugungi Daromad -->
+        <div class="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-sm text-gray-500 font-medium">Bugungi Daromad</p>
+                    <p class="text-3xl font-bold text-gray-800 mt-1" x-text="formatMoney(stats.revenue?.today || 0)"></p>
+                </div>
+                <div class="w-12 h-12 bg-yellow-50 text-yellow-600 rounded-lg flex items-center justify-center text-2xl">💰</div>
+            </div>
+            <div class="mt-4 text-xs text-gray-400">
+                Haftalik: <b x-text="formatMoney(stats.revenue?.week || 0)"></b>
+            </div>
+        </div>
+
+        <!-- Kutayotgan To'lovlar -->
+        <div class="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-sm text-gray-500 font-medium">Kutayotgan To'lovlar</p>
+                    <p class="text-3xl font-bold text-gray-800 mt-1" x-text="stats.transactions?.pending || 0"></p>
+                </div>
+                <div class="w-12 h-12 bg-red-50 text-red-500 rounded-lg flex items-center justify-center text-2xl">⏳</div>
+            </div>
+            <a href="/transactions" class="mt-4 block text-xs text-blue-500 hover:underline font-medium">Ko'rib chiqish →</a>
+        </div>
+    </div>
+
+    <!-- Charts Section -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+        <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+            <h3 class="text-lg font-bold text-gray-800 mb-4">Safarlar Dinamikasi</h3>
+            <canvas id="tripsChart" height="100"></canvas>
+        </div>
+        <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+            <h3 class="text-lg font-bold text-gray-800 mb-4">Daromad (7 kun)</h3>
+            <canvas id="revenueChart" height="100"></canvas>
+        </div>
+    </div>
+
+    <!-- Real-time Status -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <!-- PostgreSQL -->
+        <div class="p-4 bg-gray-50 rounded-lg flex items-center justify-between">
+            <span class="text-gray-600 font-medium">PostgreSQL</span>
+            <span :class="realtime.health?.services?.database === 'ok' ? 'text-green-500' : 'text-red-500'" 
+                class="font-bold text-sm" 
+                x-text="realtime.health?.services?.database === 'ok' ? '✅ Ishlamoqda' : '❌ Xato'">
+            </span>
+        </div>
+        
+        <!-- Redis -->
+        <div class="p-4 bg-gray-50 rounded-lg flex items-center justify-between">
+            <span class="text-gray-600 font-medium">Redis Cache</span>
+            <span :class="realtime.health?.services?.redis === 'ok' ? 'text-green-500' : 'text-red-500'" 
+                class="font-bold text-sm" 
+                x-text="realtime.health?.services?.redis === 'ok' ? '✅ Ishlamoqda' : '❌ Xato'">
+            </span>
+        </div>
+        
+        <!-- Celery -->
+        <div class="p-4 bg-gray-50 rounded-lg flex items-center justify-between">
+            <span class="text-gray-600 font-medium">Celery Workers</span>
+            <span class="font-bold text-sm text-blue-500" 
+                x-text="(realtime.celery?.worker_count || 0) + ' active'">
+            </span>
+        </div>
+    </div>
+</div>
+
+<!-- Dashboard Logic -->
+<script>
+function dashboardApp() {
+    return {
+        stats: {},
+        realtime: {},
+        tripsChart: null,
+        revenueChart: null,
+
+        async init() {
+            await this.refreshData();
+            // Ma'lumotlarni avtomatik yangilab turish
+            setInterval(() => this.refreshData(), 30000); 
+        },
+
+        async refreshData() {
+            const [statsRes, healthRes, tripsChartRes, revenueChartRes] = await Promise.all([
+                this.apiCall('/api/dashboard/stats'),
+                this.apiCall('/api/dashboard/realtime'),
+                this.apiCall('/api/dashboard/charts/trips?days=7'),
+                this.apiCall('/api/dashboard/charts/revenue?days=7')
+            ]);
+
+            if (statsRes) this.stats = statsRes.stats;
+            if (healthRes) this.realtime = healthRes.realtime;
+            
+            if (tripsChartRes) this.renderTripsChart(tripsChartRes.chart_data);
+            if (revenueChartRes) this.renderRevenueChart(revenueChartRes.chart_data);
+        },
+
+        async apiCall(url) {
+            try {
+                const response = await fetch(url);
+                if (response.status === 401 || response.status === 403) {
+                    window.location.href = '/login';
+                    return null;
+                }
+                return await response.json();
+            } catch (e) {
+                console.error("API Error:", e);
+                return null;
+            }
+        },
+
+        renderTripsChart(data) {
+            const ctx = document.getElementById('tripsChart').getContext('2d');
+            if (this.tripsChart) this.tripsChart.destroy();
+            this.tripsChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: data.map(d => d.date),
+                    datasets: [{
+                        label: 'Safarlar',
+                        data: data.map(d => d.trips),
+                        borderColor: '#3b82f6',
+                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                        fill: true,
+                        tension: 0.4
+                    }]
+                },
+                options: { responsive: true, plugins: { legend: { display: false } } }
+            });
+        },
+
+        renderRevenueChart(data) {
+            const ctx = document.getElementById('revenueChart').getContext('2d');
+            if (this.revenueChart) this.revenueChart.destroy();
+            this.revenueChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: data.map(d => d.date),
+                    datasets: [{
+                        label: 'Daromad',
+                        data: data.map(d => d.revenue),
+                        backgroundColor: '#f59e0b',
+                        borderRadius: 6
+                    }]
+                },
+                options: { responsive: true, plugins: { legend: { display: false } } }
+            });
+        },
+
+        formatMoney(amount) {
+            return new Intl.NumberFormat('uz-UZ').format(amount) + ' so\'m';
+        }
+    }
+}
+</script>
+{% endblock %}

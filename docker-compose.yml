@@ -1,0 +1,87 @@
+
+version: '3.8'
+
+services:
+  postgres:
+    image: postgis/postgis:15-3.4-alpine
+    container_name: hamroh_postgres
+    environment:
+      POSTGRES_DB: hamroh_bot
+      POSTGRES_USER: hamroh_user
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5432:5432"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hamroh_user"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: hamroh_redis
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
+    volumes:
+      - redis_data:/data
+    ports:
+      - "127.0.0.1:6379:6379"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  bot:
+    build: .
+    container_name: hamroh_bot
+    command: python -m app.bot.main
+    depends_on:
+      - postgres
+      - redis
+    env_file:
+      - .env
+    volumes:
+      - ./logs:/app/logs
+    restart: unless-stopped
+
+  celery_worker:
+    build: .
+    container_name: hamroh_celery
+    command: celery -A app.tasks worker --loglevel=info --concurrency=4
+    depends_on:
+      - postgres
+      - redis
+    env_file:
+      - .env
+    restart: unless-stopped
+
+  celery_beat:
+    build: .
+    container_name: hamroh_celery_beat
+    command: celery -A app.tasks beat --loglevel=info
+    depends_on:
+      - redis
+    env_file:
+      - .env
+    restart: unless-stopped
+
+  admin_panel:
+    build: .
+    container_name: hamroh_admin
+    command: uvicorn app.admin.main:app --host 0.0.0.0 --port 8000
+    depends_on:
+      - postgres
+      - redis
+    env_file:
+      - .env
+    ports:
+      - "127.0.0.1:8000:8000"
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:

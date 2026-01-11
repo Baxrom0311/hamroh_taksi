@@ -1,0 +1,526 @@
+"""
+app/models/order.py
+
+ORDER (BUYURTMA) MODEL - ENG MUHIM!
+
+Bu model yo'lovchi va haydovchini bog'laydi
+"""
+
+from sqlalchemy import (
+    Integer,
+    BigInteger,
+    String,
+    Text,
+    Numeric,
+    Boolean,
+    Enum as SQLEnum,
+    DateTime,
+    ForeignKey,
+    Index,
+    CheckConstraint
+)
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.sql import func
+from datetime import datetime
+from typing import TYPE_CHECKING, Optional
+from decimal import Decimal
+import enum
+
+from app.core.database import Base
+
+# ============================================
+# ENUM
+# ============================================
+
+class OrderStatus(str, enum.Enum):
+    """
+    Buyurtma holati
+    
+    LIFECYCLE:
+    pending → accepted → in_progress → completed
+                      ↘ cancelled
+    """
+    PENDING = "pending"              # Kutilmoqda (haydovchi topilmagan)
+    ACCEPTED = "accepted"            # Haydovchi qabul qildi
+    IN_PROGRESS = "in_progress"      # Safar davom etmoqda
+    COMPLETED = "completed"          # Yakunlandi
+    CANCELLED = "cancelled"          # Bekor qilindi
+
+
+# ============================================
+# ORDER MODEL
+# ============================================
+
+class Order(Base):
+    """
+    Order (Buyurtma) model
+    
+    BU MODEL NIMA QILADI:
+    - Yo'lovchi buyurtma beradi → PENDING
+    - Haydovchi qabul qiladi → ACCEPTED
+    - Safar boshlandi → IN_PROGRESS
+    - Safar yakunlandi → COMPLETED
+    """
+    
+    __tablename__ = "orders"
+    
+    # ============================================
+    # PRIMARY KEY
+    # ============================================
+    
+    order_id: Mapped[int] = mapped_column(
+        Integer,
+        primary_key=True,
+        autoincrement=True,
+        comment="Buyurtma ID"
+    )
+    
+    # ============================================
+    # FOREIGN KEYS
+    # ============================================
+    
+    passenger_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("passengers.passenger_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+        comment="Yo'lovchi ID"
+    )
+    
+    driver_id: Mapped[Optional[int]] = mapped_column(
+        BigInteger,
+        ForeignKey("drivers.driver_id", ondelete="SET NULL"),
+        nullable=True,  # NULL = hali haydovchi topilmagan
+        index=True,
+        comment="Haydovchi ID (NULL = topilmagan)"
+    )
+    
+    route_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("routes.route_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+        comment="Marshrut ID"
+    )
+    
+    # ============================================
+    # PICKUP LOCATION (Qayerdan olish)
+    # ============================================
+    
+    pickup_location: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+        comment="Olish joyi (matn)"
+    )
+    
+    pickup_lat: Mapped[Decimal] = mapped_column(
+        Numeric(10, 8),
+        nullable=False,
+        comment="Olish joyi - Latitude"
+    )
+    
+    pickup_lon: Mapped[Decimal] = mapped_column(
+        Numeric(11, 8),
+        nullable=False,
+        comment="Olish joyi - Longitude"
+    )
+    
+    # ============================================
+    # BUYURTMA DETALLARI
+    # ============================================
+    
+    passenger_count: Mapped[int] = mapped_column(
+        Integer,
+        default=1,
+        nullable=False,
+        comment="Yo'lovchilar soni"
+    )
+    
+    has_luggage: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        nullable=False,
+        comment="Pochta bor/yo'q"
+    )
+    
+    luggage_count: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
+        nullable=False,
+        comment="Pochta soni"
+    )
+    
+    luggage_description: Mapped[Optional[str]] = mapped_column(
+        Text,
+        nullable=True,
+        comment="Pochta tavsifi"
+    )
+    
+    # ============================================
+    # STATUS
+    # ============================================
+    
+    status: Mapped[OrderStatus] = mapped_column(
+        SQLEnum(OrderStatus, name="order_status"),
+        default=OrderStatus.PENDING,
+        nullable=False,
+        index=True,
+        comment="Buyurtma holati"
+    )
+    
+    # ============================================
+    # TO'LOV
+    # ============================================
+    
+    commission_amount: Mapped[Optional[Decimal]] = mapped_column(
+        Numeric(10, 2),
+        nullable=True,
+        comment="Komissiya miqdori (so'm)"
+    )
+    
+    # ============================================
+    # TIMESTAMPS (Muhim!)
+    # ============================================
+    
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+        index=True,
+        comment="Buyurtma berilgan vaqt"
+    )
+    
+    accepted_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        comment="Haydovchi qabul qilgan vaqt"
+    )
+    
+    started_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        comment="Safar boshlangan vaqt"
+    )
+    
+    completed_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        comment="Safar yakunlangan vaqt"
+    )
+    
+    cancelled_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        comment="Bekor qilingan vaqt"
+    )
+    
+    cancellation_reason: Mapped[Optional[str]] = mapped_column(
+        String(255),
+        nullable=True,
+        comment="Bekor qilish sababi"
+    )
+    
+    # ============================================
+    # ADDITIONAL FLAGS
+    # ============================================
+    
+    auto_confirmed: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        nullable=False,
+        comment="Avtomatik tasdiqlangan (2 daqiqadan keyin)"
+    )
+    
+    driver_arrived: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        nullable=False,
+        comment="Haydovchi yetib keldi"
+    )
+    
+    # ============================================
+    # RELATIONSHIPS
+    # ============================================
+    
+    passenger: Mapped["Passenger"] = relationship(
+        "Passenger",
+        back_populates="orders",
+        foreign_keys=[passenger_id]
+    )
+
+    driver: Mapped[Optional["Driver"]] = relationship(
+        "Driver",
+        back_populates="orders",
+        foreign_keys=[driver_id]
+    )
+
+    route: Mapped["Route"] = relationship(
+        "Route",
+        back_populates="orders"
+    )
+    
+    # ============================================
+    # INDEXES
+    # ============================================
+    
+    __table_args__ = (
+        # Composite indexes (tez qidiruv)
+        Index('idx_orders_status_created', 'status', 'created_at'),
+        Index('idx_orders_driver_status', 'driver_id', 'status'),
+        Index('idx_orders_passenger_status', 'passenger_id', 'status'),
+        Index('idx_orders_route_status', 'route_id', 'status'),
+        
+        # Check constraints
+        CheckConstraint('passenger_count >= 1 AND passenger_count <= 4', name='check_passenger_count'),
+        CheckConstraint('luggage_count >= 0', name='check_luggage_count'),
+    )
+    
+    # ============================================
+    # PROPERTIES
+    # ============================================
+    
+    @property
+    def is_pending(self) -> bool:
+        """Kutilmoqda (haydovchi topilmagan)"""
+        return self.status == OrderStatus.PENDING
+    
+    @property
+    def is_accepted(self) -> bool:
+        """Haydovchi qabul qildi"""
+        return self.status == OrderStatus.ACCEPTED
+    
+    @property
+    def is_in_progress(self) -> bool:
+        """Safar davom etmoqda"""
+        return self.status == OrderStatus.IN_PROGRESS
+    
+    @property
+    def is_completed(self) -> bool:
+        """Yakunlandi"""
+        return self.status == OrderStatus.COMPLETED
+    
+    @property
+    def is_cancelled(self) -> bool:
+        """Bekor qilindi"""
+        return self.status == OrderStatus.CANCELLED
+    
+    @property
+    def duration_minutes(self) -> Optional[int]:
+        """Safar davomiyligi (daqiqa)"""
+        if self.completed_at and self.started_at:
+            delta = self.completed_at - self.started_at
+            return int(delta.total_seconds() / 60)
+        return None
+    
+    def to_dict(self) -> dict:
+        """Dictionary'ga aylantirish"""
+        return {
+            'order_id': self.order_id,
+            'passenger_id': self.passenger_id,
+            'driver_id': self.driver_id,
+            'route_id': self.route_id,
+            'pickup_location': self.pickup_location,
+            'pickup_lat': float(self.pickup_lat),
+            'pickup_lon': float(self.pickup_lon),
+            'passenger_count': self.passenger_count,
+            'has_luggage': self.has_luggage,
+            'status': self.status.value,
+            'commission_amount': float(self.commission_amount) if self.commission_amount else None,
+            'created_at': self.created_at.isoformat(),
+            'accepted_at': self.accepted_at.isoformat() if self.accepted_at else None,
+            'completed_at': self.completed_at.isoformat() if self.completed_at else None
+        }
+    
+    def __repr__(self) -> str:
+        return (
+            f"<Order(id={self.order_id}, "
+            f"status={self.status.value}, "
+            f"driver_id={self.driver_id})>"
+        )
+
+
+# ============================================
+# HELPER FUNCTIONS
+# ============================================
+
+async def get_order_by_id(session, order_id: int) -> Optional[Order]:
+    """Order'ni ID bo'yicha olish"""
+    from sqlalchemy import select
+    result = await session.execute(
+        select(Order).where(Order.order_id == order_id)
+    )
+    return result.scalar_one_or_none()
+
+
+async def create_order(
+    session,
+    passenger_id: int,
+    route_id: int,
+    pickup_location: str,
+    pickup_lat: float,
+    pickup_lon: float,
+    passenger_count: int = 1,
+    **kwargs
+) -> Order:
+    """
+    Yangi buyurtma yaratish
+    
+    ISHLATISH:
+        order = await create_order(
+            session,
+            passenger_id=1,
+            route_id=1,
+            pickup_location="Gurlan bozori yonida",
+            pickup_lat=41.311512,
+            pickup_lon=69.249512,
+            passenger_count=2,
+            has_luggage=True
+        )
+        await session.commit()
+    """
+    order = Order(
+        passenger_id=passenger_id,
+        route_id=route_id,
+        pickup_location=pickup_location,
+        pickup_lat=pickup_lat,
+        pickup_lon=pickup_lon,
+        passenger_count=passenger_count,
+        **kwargs
+    )
+    
+    session.add(order)
+    return order
+
+
+async def accept_order(
+    session,
+    order_id: int,
+    driver_id: int,
+    commission_amount: Decimal
+) -> Order:
+    """
+    Buyurtmani qabul qilish
+    
+    STATUS: pending → accepted
+    """
+    from sqlalchemy import update
+    
+    await session.execute(
+        update(Order)
+        .where(Order.order_id == order_id)
+        .where(Order.status == OrderStatus.PENDING)  # Faqat pending bo'lsa
+        .values(
+            driver_id=driver_id,
+            status=OrderStatus.ACCEPTED,
+            commission_amount=commission_amount,
+            accepted_at=func.now()
+        )
+    )
+    
+    return await get_order_by_id(session, order_id)
+
+
+async def start_order(session, order_id: int):
+    """
+    Safar boshlash
+    
+    STATUS: accepted → in_progress
+    """
+    from sqlalchemy import update
+    
+    await session.execute(
+        update(Order)
+        .where(Order.order_id == order_id)
+        .where(Order.status == OrderStatus.ACCEPTED)
+        .values(
+            status=OrderStatus.IN_PROGRESS,
+            started_at=func.now()
+        )
+    )
+
+
+async def complete_order(session, order_id: int):
+    """
+    Safar yakunlash
+    
+    STATUS: in_progress → completed
+    """
+    from sqlalchemy import update
+    
+    await session.execute(
+        update(Order)
+        .where(Order.order_id == order_id)
+        .where(Order.status == OrderStatus.IN_PROGRESS)
+        .values(
+            status=OrderStatus.COMPLETED,
+            completed_at=func.now()
+        )
+    )
+
+
+async def cancel_order(
+    session,
+    order_id: int,
+    reason: Optional[str] = None
+):
+    """
+    Buyurtmani bekor qilish
+    
+    STATUS: any → cancelled
+    """
+    from sqlalchemy import update
+    
+    await session.execute(
+        update(Order)
+        .where(Order.order_id == order_id)
+        .values(
+            status=OrderStatus.CANCELLED,
+            cancellation_reason=reason,
+            cancelled_at=func.now()
+        )
+    )
+
+
+async def get_pending_orders_for_route(
+    session,
+    route_id: int
+) -> list[Order]:
+    """
+    Marshrut bo'yicha kutayotgan buyurtmalar
+    
+    ISHLATISH:
+        # Gurlan→Vazir marshrutidagi barcha buyurtmalar
+        orders = await get_pending_orders_for_route(session, route_id=1)
+    """
+    from sqlalchemy import select
+    
+    result = await session.execute(
+        select(Order)
+        .where(Order.route_id == route_id)
+        .where(Order.status == OrderStatus.PENDING)
+        .order_by(Order.created_at)  # Eng eski birinchi (FIFO)
+    )
+    
+    return result.scalars().all()
+
+
+async def get_driver_active_orders(
+    session,
+    driver_id: int
+) -> list[Order]:
+    """
+    Haydovchining aktiv buyurtmalari
+    
+    ISHLATISH:
+        orders = await get_driver_active_orders(session, driver_id=1)
+    """
+    from sqlalchemy import select
+    
+    result = await session.execute(
+        select(Order)
+        .where(Order.driver_id == driver_id)
+        .where(Order.status.in_([OrderStatus.ACCEPTED, OrderStatus.IN_PROGRESS]))
+        .order_by(Order.created_at)
+    )
+    
+    return result.scalars().all()
