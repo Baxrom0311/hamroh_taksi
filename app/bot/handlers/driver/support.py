@@ -19,7 +19,7 @@ from app.core.database import get_session, transaction
 from app.models.driver import get_driver_by_user_id
 from app.models.transaction import Transaction, TransactionType, create_transaction
 from app.bot.states.driver import DriverStates
-from app.bot.keyboards.driver import get_driver_main_menu
+from app.bot.handlers.driver.main_menu import get_driver_main_menu
 
 router = Router()
 
