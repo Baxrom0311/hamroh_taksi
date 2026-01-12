@@ -195,6 +195,10 @@ async def notify_passenger_driver_found(passenger_user_id: int, driver_id: int, 
         max_changes = 3  # System settings'dan olish mumkin
         can_change = change_count < max_changes
         
+        # Telefon raqamini tekshirish
+        phone_number = driver.phone_number or "N/A"
+        phone_valid = phone_number and phone_number != "N/A" and phone_number != "UNKNOWN" and phone_number.strip()
+        
         # Xabar matni (Telegram linki olib tashlandi)
         text = f"""
 ✅ <b>Haydovchi topildi!</b>
@@ -203,20 +207,22 @@ async def notify_passenger_driver_found(passenger_user_id: int, driver_id: int, 
 🚗 <b>Mashina:</b> {driver.car_model}
 🎨 <b>Rang:</b> {driver.car_color}
 🔢 <b>Raqam:</b> <code>{driver.car_number}</code>
-📱 <b>Telefon:</b> <code>{driver.phone_number}</code>
+📱 <b>Telefon:</b> <code>{phone_number}</code>
 
 Haydovchi siz tomonga yo'lga chiqdi!
         """
         
         # Klaviatura
-        keyboard_buttons = [
-            [
+        keyboard_buttons = []
+        
+        # Telefon raqami to'g'ri bo'lsa qo'ng'iroq tugmasini qo'shish
+        if phone_valid:
+            keyboard_buttons.append([
                 InlineKeyboardButton(
                     text="📞 Qo'ng'iroq qilish",
-                    url=f"tel:{driver.phone_number}"
+                    url=f"tel:{phone_number}"
                 )
-            ]
-        ]
+            ])
         
         # Mashinani o'zgartirish tugmasi (limit bo'lsa)
         if can_change:
@@ -271,23 +277,87 @@ async def request_passenger_confirmation(order_id: int, driver_id: int):
         if not order or not driver:
             return
 
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="✅ Ha, mashinadaman", callback_data=f"confirm_trip:{order_id}")],
-            [InlineKeyboardButton(text="❌ Yo'q, hali olishgani yo'q", callback_data=f"reject_trip:{order_id}")]
+        # Driver ma'lumotlarini olish
+        driver_result = await session.execute(
+            select(Driver)
+            .options(selectinload(Driver.user))
+            .where(Driver.driver_id == driver_id)
+        )
+        driver = driver_result.scalar_one_or_none()
+        
+        if not driver:
+            logger.error(f"Driver {driver_id} not found")
+            return
+        
+        # Driver ma'lumotlari
+        driver_name = driver.full_name
+        driver_phone = driver.phone_number or "N/A"
+        driver_car = f"{driver.car_model} ({driver.car_color})"
+        driver_number = driver.car_number
+        
+        # Telefon raqamini tekshirish
+        phone_valid = driver_phone and driver_phone != "N/A" and driver_phone != "UNKNOWN" and driver_phone.strip()
+        
+        # Klaviatura tugmalari
+        keyboard_buttons = []
+        
+        if phone_valid:
+            keyboard_buttons.append([
+                InlineKeyboardButton(
+                    text="📞 Qo'ng'iroq qilish",
+                    url=f"tel:{driver_phone}"
+                )
+            ])
+        
+        if driver.user:
+            keyboard_buttons.append([
+                InlineKeyboardButton(
+                    text="💬 Telegram",
+                    url=f"tg://user?id={driver.user.user_id}"
+                )
+            ])
+        
+        # "Ketdik" va "Bekor qilish" tugmalari
+        keyboard_buttons.append([
+            InlineKeyboardButton(
+                text="✅ Ketdik",
+                callback_data=f"passenger_started:{order_id}"
+            )
         ])
+        keyboard_buttons.append([
+            InlineKeyboardButton(
+                text="❌ Buyurtmani bekor qilish",
+                callback_data=f"passenger_cancel:{order_id}"
+            )
+        ])
+        
+        keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
+        
+        # Xabar matni
+        message_text = f"""
+✅ <b>Haydovchi topildi!</b>
+
+👤 <b>Haydovchi:</b> {driver_name}
+🚗 <b>Mashina:</b> {driver_car}
+🔢 <b>Raqam:</b> <code>{driver_number}</code>
+📱 <b>Telefon:</b> <code>{driver_phone}</code>
+
+📍 Haydovchi siz tomonga yo'lga chiqdi!
+        """
 
         try:
             # order.passenger.user_id - endi xavfsiz olinadi!
             await bot.send_message(
                 chat_id=order.passenger.user_id, 
-                text="🚗 <b>Haydovchi yetib keldi.</b>\n\nMashinada bo'lsangiz tasdiqlang:",
+                text=message_text,
                 reply_markup=keyboard,
                 parse_mode="HTML"
             )
             
-            # Celery matching ichidagi auto-confirmni chaqiramiz
+            # 30 daqiqa ichida "Ketdik" yoki bekor qilish kutiladi
+            # Agar 30 daqiqada hech narsa bo'lmasa, sessiya yopiladi
             from app.tasks.matching import auto_confirm_trip_task
-            auto_confirm_trip_task.apply_async(args=[order_id], countdown=120)
+            auto_confirm_trip_task.apply_async(args=[order_id], countdown=1800)  # 30 daqiqa = 1800 soniya
             
         except Exception as e:
             logger.error(f"Confirmation request failed: {e}")

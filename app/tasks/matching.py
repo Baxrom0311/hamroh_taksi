@@ -20,6 +20,7 @@ from app.core.database import get_session
 from app.services.queue_service import driver_queue
 from app.models.order import get_order_by_id, OrderStatus
 from app.models.driver import get_driver_by_id
+from sqlalchemy.sql import func
 
 # ============================================
 # 1. HAYDOVCHI TOPISH
@@ -225,23 +226,87 @@ async def auto_reject_order_task(driver_id: int, order_id: int):
 @async_to_sync
 async def auto_confirm_trip_task(order_id: int):
     """
-    Haydovchi pickup nuqtasiga kelgan, lekin yo'lovchi 2 minut 
-    ichida tasdiqlamagan bo'lsa, safarni avtomatik boshlash.
+    30 daqiqa ichida yo'lovchi "Ketdik" yoki bekor qilmagan bo'lsa,
+    sessiya yopiladi va buyurtma bekor qilinadi.
     """
-    from app.services.trip_service import trip_service
-    from app.models.order import OrderStatus
+    from sqlalchemy import update, select
+    from app.models.order import Order, OrderStatus
+    from app.models.driver import Driver
+    from app.models.passenger import Passenger
+    from sqlalchemy.orm import selectinload
     
     async with get_session() as session:
-        order = await get_order_by_id(session, order_id)
+        order_result = await session.execute(
+            select(Order)
+            .options(selectinload(Order.passenger).selectinload(Passenger.user))
+            .where(Order.order_id == order_id)
+        )
+        order = order_result.scalar_one_or_none()
         
         # Agar order hali ham ACCEPTED holatda bo'lsa (ya'ni IN_PROGRESS bo'lmagan)
-        # va haydovchi yetib kelgan bo'lsa
-        if order and order.status == OrderStatus.ACCEPTED and order.driver_arrived:
-            logger.info(f"Auto-confirming trip for order {order_id}")
-            await trip_service.passenger_confirmed(
-                passenger_id=order.passenger_id,
-                order_id=order_id,
+        # va 30 daqiqa o'tgan bo'lsa, sessiya yopiladi
+        if order and order.status == OrderStatus.ACCEPTED:
+            logger.warning(f"Order {order_id} timeout after 30 minutes - cancelling")
+            
+            # Order'ni bekor qilish
+            await session.execute(
+                update(Order)
+                .where(Order.order_id == order_id)
+                .values(
+                    status=OrderStatus.CANCELLED,
+                    cancellation_reason='timeout_30_minutes',
+                    cancelled_at=func.now()
+                )
             )
+            
+            # Driver'ni bo'shatish
+            if order.driver_id:
+                await session.execute(
+                    update(Driver)
+                    .where(Driver.driver_id == order.driver_id)
+                    .values(
+                        available_seats=Driver.available_seats + order.passenger_count,
+                        is_on_trip=False
+                    )
+                )
+                
+                # Haydovchiga xabar
+                driver_result = await session.execute(
+                    select(Driver).where(Driver.driver_id == order.driver_id)
+                )
+                driver = driver_result.scalar_one_or_none()
+                if driver:
+                    from app.bot.main import bot
+                    try:
+                        await bot.send_message(
+                            chat_id=driver.user_id,
+                            text=f"⏱ <b>Vaqt tugadi</b>\n\n"
+                                 f"📦 Buyurtma #{order_id}\n\n"
+                                 f"30 daqiqa ichida yo'lovchi javob bermadi.\n"
+                                 f"Buyurtma bekor qilindi.",
+                            parse_mode="HTML"
+                        )
+                    except Exception as e:
+                        logger.error(f"Failed to notify driver: {e}")
+            
+            # Yo'lovchiga xabar
+            if order.passenger and order.passenger.user:
+                from app.bot.main import bot
+                try:
+                    await bot.send_message(
+                        chat_id=order.passenger.user.user_id,
+                        text=f"⏱ <b>Vaqt tugadi</b>\n\n"
+                             f"📦 Buyurtma #{order_id}\n\n"
+                             f"30 daqiqa ichida javob berilmadi.\n"
+                             f"Buyurtma bekor qilindi.\n\n"
+                             f"Yangi buyurtma berish uchun menyudan 'Taksi chaqirish'ni tanlang.",
+                        parse_mode="HTML"
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to notify passenger: {e}")
+            
+            await session.commit()
+            logger.info(f"Order {order_id} cancelled due to 30 minute timeout")
 
 
 

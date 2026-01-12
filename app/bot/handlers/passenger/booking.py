@@ -9,7 +9,7 @@ from loguru import logger
 from sqlalchemy import func
 from sqlalchemy.sql import func as sql_func
 
-from app.core.database import get_session
+from app.core.database import get_session, transaction
 from app.models.passenger import get_passenger_by_user_id
 from app.models.route import get_all_active_routes
 from app.services.order_service import create_new_order
@@ -249,10 +249,10 @@ def get_passenger_main_menu():
         ],
         resize_keyboard=True
     )
-@router.callback_query(F.data.startswith("confirm_trip:"))
-async def confirm_trip(callback: CallbackQuery):
+@router.callback_query(F.data.startswith("passenger_started:"))
+async def passenger_started(callback: CallbackQuery):
     """
-    Yo'lovchi safar boshlashni tasdiqladi
+    Yo'lovchi "Ketdik" tugmasini bosdi - safar boshlandi
     
     NIMA BO'LADI:
     1. Order statusini yangilash (ACCEPTED → IN_PROGRESS)
@@ -297,12 +297,113 @@ async def confirm_trip(callback: CallbackQuery):
                     "Safar yakunlangach haydovchi sizga xabar beradi."
                 )
             
-            logger.info(f"Trip confirmed by passenger: order={order_id}")
+            # Haydovchiga xabar
+            from app.models.driver import get_driver_by_id
+            driver = await get_driver_by_id(session, order.driver_id)
+            if driver:
+                from app.bot.main import bot
+                try:
+                    await bot.send_message(
+                        chat_id=driver.user_id,
+                        text=f"✅ <b>Yo'lovchi ketdi!</b>\n\n"
+                             f"📦 Buyurtma #{order_id}\n\n"
+                             f"🚗 Xavfsiz yo'l!",
+                        parse_mode="HTML"
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to notify driver: {e}")
+            
+            logger.info(f"Trip started by passenger: order={order_id}")
         else:
             if callback.message:
                 await callback.message.edit_text(f"❌ {result['message']}")
     
     await callback.answer("✅ Safar boshlandi!")
+
+
+@router.callback_query(F.data.startswith("passenger_cancel:"))
+async def passenger_cancel_order(callback: CallbackQuery):
+    """
+    Yo'lovchi buyurtmani bekor qildi
+    """
+    if callback.data is None:
+        await callback.answer("Xatolik: data mavjud emas")
+        return
+    
+    order_id = int(callback.data.split(":")[1])
+    user_id = callback.from_user.id
+    
+    async with get_session() as session:
+        passenger = await get_passenger_by_user_id(session, user_id)
+        
+        if not passenger:
+            await callback.answer("❌ Yo'lovchi topilmadi", show_alert=True)
+            return
+        
+        # Order'ni olish
+        from app.models.order import get_order_by_id, OrderStatus
+        order = await get_order_by_id(session, order_id)
+        
+        if not order or order.passenger_id != passenger.passenger_id:
+            await callback.answer("❌ Buyurtma topilmadi", show_alert=True)
+            return
+        
+        if order.status not in [OrderStatus.ACCEPTED]:
+            await callback.answer("⚠️ Bu buyurtmani bekor qilib bo'lmaydi", show_alert=True)
+            return
+        
+        # Order'ni bekor qilish
+        async with transaction() as session:
+            from sqlalchemy import update
+            from app.models.driver import Driver
+            
+            await session.execute(
+                update(Order)
+                .where(Order.order_id == order_id)
+                .values(
+                    status=OrderStatus.CANCELLED,
+                    cancellation_reason='passenger_cancelled',
+                    cancelled_at=sql_func.now()
+                )
+            )
+            
+            # Driver'ni bo'shatish
+            if order.driver_id:
+                await session.execute(
+                    update(Driver)
+                    .where(Driver.driver_id == order.driver_id)
+                    .values(
+                        available_seats=Driver.available_seats + order.passenger_count,
+                        is_on_trip=False
+                    )
+                )
+        
+        # Haydovchiga xabar
+        if order.driver_id:
+            from app.models.driver import get_driver_by_id
+            driver = await get_driver_by_id(session, order.driver_id)
+            if driver:
+                from app.bot.main import bot
+                try:
+                    await bot.send_message(
+                        chat_id=driver.user_id,
+                        text=f"❌ <b>Buyurtma bekor qilindi</b>\n\n"
+                             f"📦 Buyurtma #{order_id}\n\n"
+                             f"Yo'lovchi buyurtmani bekor qildi.",
+                        parse_mode="HTML"
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to notify driver: {e}")
+        
+        if callback.message:
+            await callback.message.edit_text(
+                "❌ <b>Buyurtma bekor qilindi</b>\n\n"
+                "Yangi buyurtma berish uchun menyudan 'Taksi chaqirish'ni tanlang."
+            )
+        
+        logger.info(f"Order cancelled by passenger: order={order_id}")
+    
+    await callback.answer("Buyurtma bekor qilindi")
 
 
 @router.callback_query(F.data.startswith("reject_trip:"))

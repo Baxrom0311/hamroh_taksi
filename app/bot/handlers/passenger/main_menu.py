@@ -90,8 +90,32 @@ async def order_history(message: Message):
 
 
 @router.message(F.text == "⚙️ Sozlamalar")
-async def driver_settings(message: Message):
-    await message.answer("⚙️ <b>Sozlamalar bo'limi</b>\n\nHozircha ishlab chiqilmoqda...")
+async def passenger_settings(message: Message):
+    """Yo'lovchi sozlamalari"""
+    user_id = message.from_user.id # type: ignore
+    
+    async with get_session() as session:
+        passenger = await get_passenger_by_user_id(session, user_id)
+        
+        if not passenger:
+            await message.answer("❌ Ma'lumotlar topilmadi")
+            return
+        
+        settings_text = f"""
+⚙️ <b>Sozlamalar</b>
+
+👤 <b>Ism:</b> {passenger.full_name}
+📱 <b>Telefon:</b> <code>{passenger.user.phone_number if passenger.user else 'N/A'}</code>
+🚕 <b>Jami safarlar:</b> {passenger.total_trips}
+📅 <b>Ro'yxatdan o'tgan:</b> {passenger.created_at.strftime('%d.%m.%Y')}
+
+<b>Funksiyalar:</b>
+• Profil ma'lumotlarini o'zgartirish (tez orada)
+• Xabarnomalarni boshqarish (tez orada)
+• Tilni o'zgartirish (tez orada)
+        """
+        
+        await message.answer(settings_text, parse_mode="HTML")
 
 @router.message(F.text == "📞 Support")
 async def driver_support(message: Message):

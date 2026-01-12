@@ -121,8 +121,9 @@ async def accept_order_handler(callback: CallbackQuery, state: FSMContext):
             remaining_seats = result['order'].get('available_seats', 0)
             has_more_seats = result['order'].get('has_more_seats', False)
             
-            trip_message = "🚕 <b>Safar paneli faollashdi:</b>\n\n"
-            trip_message += "📍 Yo'lovchi joyiga boring va 'Yetib keldim' tugmasini bosing."
+            trip_message = "🚕 <b>Buyurtma qabul qilindi!</b>\n\n"
+            trip_message += "📍 Yo'lovchi joyiga boring.\n"
+            trip_message += "📞 Kerak bo'lsa, yo'lovchi bilan bog'laning."
             
             if has_more_seats:
                 trip_message += f"\n\n💺 <b>Qolgan bo'sh o'rinlar:</b> {remaining_seats}"
@@ -323,7 +324,78 @@ async def complete_trip_handler(message: Message, state: FSMContext):
 
 @router.message(
     DriverStates.trip_in_progress,
-    F.text == "❌ Bekor qilish"
+    F.text == "📞 Yo'lovchi bilan bog'lanish"
+)
+async def contact_passenger_handler(message: Message, state: FSMContext):
+    """
+    Haydovchi yo'lovchi bilan bog'lanish uchun ma'lumotlarni ko'radi
+    """
+    user_id = message.from_user.id # type: ignore
+    data = await state.get_data()
+    order_id = data.get('current_order_id')
+    
+    if not order_id:
+        await message.answer("❌ Aktiv buyurtma topilmadi")
+        return
+    
+    async with get_session() as session:
+        order_result = await session.execute(
+            select(Order)
+            .options(selectinload(Order.passenger).selectinload(Passenger.user))
+            .where(Order.order_id == order_id)
+        )
+        order = order_result.scalar_one_or_none()
+        
+        if not order or not order.passenger:
+            await message.answer("❌ Yo'lovchi ma'lumotlari topilmadi")
+            return
+        
+        passenger = order.passenger
+        passenger_phone = passenger.user.phone_number if passenger.user else "N/A"
+        passenger_name = passenger.full_name
+        
+        # Telefon raqamini tekshirish
+        phone_valid = passenger_phone and passenger_phone != "N/A" and passenger_phone != "UNKNOWN" and passenger_phone.strip()
+        
+        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+        
+        keyboard_buttons = []
+        
+        if phone_valid:
+            keyboard_buttons.append([
+                InlineKeyboardButton(
+                    text="📞 Qo'ng'iroq qilish",
+                    url=f"tel:{passenger_phone}"
+                )
+            ])
+        
+        if passenger.user:
+            keyboard_buttons.append([
+                InlineKeyboardButton(
+                    text="💬 Telegram",
+                    url=f"tg://user?id={passenger.user.user_id}"
+                )
+            ])
+        
+        keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons) if keyboard_buttons else None
+        
+        contact_text = f"""
+📞 <b>Yo'lovchi ma'lumotlari</b>
+
+👤 <b>Ism:</b> {passenger_name}
+📱 <b>Telefon:</b> <code>{passenger_phone}</code>
+        """
+        
+        await message.answer(
+            contact_text,
+            parse_mode="HTML",
+            reply_markup=keyboard
+        )
+
+
+@router.message(
+    DriverStates.trip_in_progress,
+    F.text == "❌ Buyurtmani bekor qilish"
 )
 async def cancel_order_handler(message: Message, state: FSMContext):
     """
@@ -360,9 +432,10 @@ async def confirm_cancellation(message: Message, state: FSMContext):
     # result = await cancel_order_by_driver(order_id, driver.driver_id)
     
     await message.answer(
-        "❌ Buyurtma bekor qilindi\n\n"
+        "❌ <b>Buyurtma bekor qilindi</b>\n\n"
         "⚠️ Warning olindingiz!",
-        reply_markup=get_driver_main_menu()
+        reply_markup=get_driver_main_menu(),
+        parse_mode="HTML"
     )
     
     await state.clear()

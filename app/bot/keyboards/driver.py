@@ -45,14 +45,13 @@ def get_driver_active_keyboard():
     )
 
 
-def get_trip_confirmation_keyboard():
+def get_trip_confirmation_keyboard(order_id: int = None):
     """
     Safar qabul qilingandan keyin chiqadigan panel.
-    'Yetib keldim' tugmasi shu yerda.
+    Haydovchida: Yo'lovchi bilan bog'lanish va bekor qilish tugmalari.
     """
     return ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text="📍 Yetib keldim")],
             [KeyboardButton(text="📞 Yo'lovchi bilan bog'lanish")],
             [KeyboardButton(text="❌ Buyurtmani bekor qilish")]
         ],
