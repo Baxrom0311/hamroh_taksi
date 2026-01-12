@@ -16,7 +16,7 @@ from typing import Optional
 from pydantic import BaseModel
 from datetime import datetime
 from loguru import logger
-
+from sqlalchemy.orm import selectinload
 from app.admin.auth import get_current_user
 from app.core.database import get_session
 from app.models.passenger import Passenger, get_passenger_by_id
@@ -67,7 +67,7 @@ async def get_passengers_list(
     try:
         async with get_session() as session:
             # Base query
-            query = select(Passenger).join(User)
+            query = select(Passenger).options(selectinload(Passenger.user)).join(User)
             
             # Filters
             if search:

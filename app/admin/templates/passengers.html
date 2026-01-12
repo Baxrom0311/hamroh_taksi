@@ -13,6 +13,7 @@
                     <th class="px-6 py-4 text-left">Jinsi / Yoshi</th>
                     <th class="px-6 py-4 text-left">Jami safarlar</th>
                     <th class="px-6 py-4 text-left">Ro'yxatdan o'tgan</th>
+                    <th class="px-6 py-4 text-left">Holat</th>
                     <th class="px-6 py-4 text-right">Amallar</th>
                 </tr>
             </thead>
@@ -32,6 +33,17 @@
                             {{ p.total_trips }} ta
                         </span>
                     </td>
+                    <td class="px-6 py-4 text-sm">
+                        {% if p.is_blocked %}
+                            <span class="px-3 py-1 bg-red-100 text-red-700 rounded-lg text-xs font-semibold">
+                                Bloklangan
+                            </span>
+                        {% else %}
+                            <span class="px-3 py-1 bg-green-100 text-green-700 rounded-lg text-xs font-semibold">
+                                Faol
+                            </span>
+                        {% endif %}
+                    </td>
                     <td class="px-6 py-4 text-sm text-gray-500">{{ p.created_at }}</td>
                     <td class="px-6 py-4 text-right space-x-2">
                         <button 
@@ -39,16 +51,24 @@
                             class="text-blue-500 hover:text-blue-700 p-1" 
                             title="Tahrirlash"
                         >✏️</button>
+                        {% if p.is_blocked %}
+                        <button 
+                            onclick="unblockPassenger({{ p.passenger_id }})" 
+                            class="text-green-500 hover:text-green-700 p-1" 
+                            title="Blokdan ochish"
+                        >✅</button>
+                        {% else %}
                         <button 
                             onclick="blockPassenger('{{ p.full_name }}', '{{ p.phone_number }}')" 
                             class="text-red-500 hover:text-red-700 p-1" 
                             title="Bloklash"
                         >🚫</button>
+                        {% endif %}
                     </td>
                 </tr>
                 {% else %}
                 <tr>
-                    <td colspan="5" class="px-6 py-20 text-center text-gray-400">Yo'lovchilar mavjud emas</td>
+                    <td colspan="6" class="px-6 py-20 text-center text-gray-400">Yo'lovchilar mavjud emas</td>
                 </tr>
                 {% endfor %}
             </tbody>
@@ -199,6 +219,29 @@ async function confirmBlockPassenger(event) {
         
         if (response.ok) {
             alert('✅ Yo\'lovchi bloklandi!');
+            location.reload();
+        } else {
+            const error = await response.json();
+            alert('❌ Xatolik: ' + (error.detail || 'Noma\'lum xatolik'));
+        }
+    } catch (error) {
+        alert('❌ Xatolik: ' + error.message);
+    }
+}
+
+async function unblockPassenger(passengerId) {
+    if (!confirm("Rostdan ham blokdan ochmoqchimisiz?")) return;
+
+    try {
+        const response = await fetch(`/api/passengers/${passengerId}/unblock`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+            }
+        });
+
+        if (response.ok) {
+            alert("✅ Yo'lovchi blokdan ochildi!");
             location.reload();
         } else {
             const error = await response.json();

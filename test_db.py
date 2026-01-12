@@ -2,7 +2,7 @@ import psycopg2
 
 try:
     conn = psycopg2.connect(
-        host="192.168.1.7",     # masalan: 
+        host="10.254.128.106",     # masalan: 
         port=5432,
         dbname="hamroh_bot",
         user="hamroh_user",

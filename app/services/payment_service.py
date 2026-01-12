@@ -57,7 +57,7 @@ class PaymentService:
         self,
         session,
         driver_id: int,
-        order_id: int,
+        order_id: Optional[int],
         amount: Decimal
     ) -> Dict:
         """

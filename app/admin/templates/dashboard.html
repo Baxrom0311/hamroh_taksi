@@ -67,6 +67,26 @@
         </div>
     </div>
 
+    <!-- Extended Stats -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <div class="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
+            <p class="text-sm text-gray-500 font-medium">Bloklangan haydovchilar</p>
+            <p class="text-3xl font-bold text-gray-800 mt-1" x-text="stats.drivers?.blocked || 0"></p>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
+            <p class="text-sm text-gray-500 font-medium">Bloklangan yo'lovchilar</p>
+            <p class="text-3xl font-bold text-gray-800 mt-1" x-text="stats.passengers?.blocked || 0"></p>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
+            <p class="text-sm text-gray-500 font-medium">Jami haydovchilar</p>
+            <p class="text-3xl font-bold text-gray-800 mt-1" x-text="stats.drivers?.total || 0"></p>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
+            <p class="text-sm text-gray-500 font-medium">Aktiv marshrutlar</p>
+            <p class="text-3xl font-bold text-gray-800 mt-1" x-text="stats.routes?.total || 0"></p>
+        </div>
+    </div>
+
     <!-- Charts Section -->
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
         <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">

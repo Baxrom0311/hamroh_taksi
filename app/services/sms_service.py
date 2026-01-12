@@ -65,12 +65,14 @@ class SMSRateLimiter:
         
         # Daily counter
         daily_key = f"sms_daily:{phone_number}:{today}"
-        daily_count = int((await redis_client.get(daily_key) or b'0').decode())
+        daily_raw = await redis_client.get(daily_key)
+        daily_count = int(daily_raw or 0)
 
         
         # Hourly counter
         hourly_key = f"sms_hourly:{phone_number}:{current_hour}"
-        hourly_count = int((await redis_client.get(hourly_key) or b'0').decode())
+        hourly_raw = await redis_client.get(hourly_key)
+        hourly_count = int(hourly_raw or 0)
         
         # Check limits
         if daily_count >= SMSRateLimiter.MAX_SMS_PER_DAY:
@@ -304,7 +306,6 @@ async def send_verification_sms(phone_number: str) -> dict:
             
             return {
                 'success': True,
-                'code': code,  # ⚠️ Production'da o'chirish!
                 'remaining_today': rate_check['remaining_today'] - 1
             }
         else:
