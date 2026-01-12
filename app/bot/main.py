@@ -72,6 +72,8 @@ def register_handlers():
     from app.bot.handlers.driver.main_menu import router as driver_menu_router
     from app.bot.handlers.driver.orders import router as driver_orders_router
     from app.bot.handlers.driver.balance import router as driver_balance_router
+    from app.bot.handlers.driver.location import router as driver_location_router
+    from app.bot.handlers.driver.support import router as driver_support_router
     
     # Passenger handlers
     from app.bot.handlers.passenger.main_menu import router as passenger_menu_router
@@ -81,8 +83,10 @@ def register_handlers():
     dp.include_router(start_router)
     dp.include_router(registration_router)
     dp.include_router(driver_menu_router)
+    dp.include_router(driver_location_router)  # MUHIM: Location handler birinchi bo'lishi kerak!
     dp.include_router(driver_orders_router)
     dp.include_router(driver_balance_router)
+    dp.include_router(driver_support_router)
     dp.include_router(passenger_menu_router)
     dp.include_router(passenger_booking_router)
     

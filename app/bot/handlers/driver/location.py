@@ -44,75 +44,104 @@ async def location_received(message: Message, state: FSMContext):
     3. Live location bo'lsa - real-time yangilanishni yoqish
     4. Marshrut tanlashga o'tish
     """
-    if message.from_user is None or message.location is None:
-        await message.answer("Xatolik: ma'lumotlar topilmadi")
-        return
-    
-    user_id = message.from_user.id
-    location = message.location
-    
-    lat = location.latitude
-    lon = location.longitude
-    
-    # Live location tekshirish
-    is_live = hasattr(location, 'live_period') and location.live_period is not None
-    
-    async with get_session() as session:
-        driver = await get_driver_by_user_id(session, user_id)
-        
-        if not driver:
-            await message.answer("❌ Haydovchi topilmadi")
-            await state.clear()
+    try:
+        if message.from_user is None or message.location is None:
+            await message.answer("Xatolik: ma'lumotlar topilmadi")
+            logger.error("Location handler: message.from_user or message.location is None")
             return
         
-        point_wkt = f"POINT({lon} {lat})"
-        try:
-            await session.execute(
-                update(Driver)
-                .where(Driver.driver_id == driver.driver_id)
-                .values(
-                    last_location_lat=lat,
-                    last_location_lon=lon,
-                    location=geo_func.ST_GeomFromText(point_wkt, 4326)
+        user_id = message.from_user.id
+        location = message.location
+        
+        lat = location.latitude
+        lon = location.longitude
+        
+        logger.info(f"📍 Location received from driver {user_id}: lat={lat}, lon={lon}")
+        
+        # Live location tekshirish
+        is_live = hasattr(location, 'live_period') and location.live_period is not None
+        
+        async with get_session() as session:
+            driver = await get_driver_by_user_id(session, user_id)
+            
+            if not driver:
+                await message.answer("❌ Haydovchi topilmadi")
+                logger.error(f"Driver not found for user_id={user_id}")
+                await state.clear()
+                return
+            
+            logger.info(f"Driver found: driver_id={driver.driver_id}")
+            
+            # Lokatsiyani saqlash
+            point_wkt = f"POINT({lon} {lat})"
+            try:
+                await session.execute(
+                    update(Driver)
+                    .where(Driver.driver_id == driver.driver_id)
+                    .values(
+                        last_location_lat=lat,
+                        last_location_lon=lon,
+                        location=geo_func.ST_GeomFromText(point_wkt, 4326)
+                    )
                 )
-            )
-        except Exception as e:
-            # Agar PostGIS bo'lmasa, faqat lat/lon saqlaymiz
-            logger.warning(f"PostGIS location save failed, fallback to lat/lon: {e}")
-            await session.execute(
-                update(Driver)
-                .where(Driver.driver_id == driver.driver_id)
-                .values(
-                    last_location_lat=lat,
-                    last_location_lon=lon
+                logger.debug("Location saved with PostGIS")
+            except Exception as e:
+                # Agar PostGIS bo'lmasa, faqat lat/lon saqlaymiz
+                logger.warning(f"PostGIS location save failed, fallback to lat/lon: {e}")
+                await session.execute(
+                    update(Driver)
+                    .where(Driver.driver_id == driver.driver_id)
+                    .values(
+                        last_location_lat=lat,
+                        last_location_lon=lon
+                    )
                 )
-            )
-        await session.commit()
-        
-        logger.info(
-            f"Driver {driver.driver_id} location updated: "
-            f"lat={lat}, lon={lon}, live={is_live}"
-        )
-        
-        # Marshrut tanlashga o'tish
-        routes = await get_all_active_routes(session)
-        
-        if not routes:
-            await message.answer("❌ Hozirda aktiv marshrutlar yo'q")
-            await state.clear()
-            return
-        
-        location_text = "✅ <b>Jonli joylashuv yoqildi!</b>\n\n" if is_live else "✅ <b>Lokatsiya qabul qilindi!</b>\n\n"
-        
+            
+            await session.commit()
+            logger.success(f"✅ Driver {driver.driver_id} location saved: lat={lat}, lon={lon}")
+            
+            # Marshrut tanlashga o'tish
+            logger.info("Fetching active routes...")
+            routes = await get_all_active_routes(session)
+            
+            if not routes:
+                await message.answer("❌ Hozirda aktiv marshrutlar yo'q")
+                logger.warning("No active routes found")
+                await state.clear()
+                return
+            
+            logger.info(f"Found {len(routes)} active routes")
+            
+            location_text = "✅ <b>Jonli joylashuv yoqildi!</b>\n\n" if is_live else "✅ <b>Lokatsiya qabul qilindi!</b>\n\n"
+            
+            # Marshrut tanlash xabarini yuborish
+            try:
+                await message.answer(
+                    f"{location_text}"
+                    "📍 <b>Marshrut tanlang:</b>\n\n"
+                    "Qayerdan → Qayerga borasiz?",
+                    reply_markup=get_route_selection_keyboard(routes),
+                    parse_mode="HTML"
+                )
+                logger.success("Route selection message sent")
+            except Exception as e:
+                logger.error(f"Failed to send route selection message: {e}")
+                await message.answer(
+                    f"{location_text}"
+                    "📍 <b>Marshrut tanlang:</b>\n\n"
+                    "Qayerdan → Qayerga borasiz?"
+                )
+            
+            # State o'zgartirish
+            await state.set_state(DriverStates.choose_route)
+            logger.success(f"State changed to choose_route for driver {driver.driver_id}")
+            
+    except Exception as e:
+        logger.error(f"❌ Error in location_received handler: {e}", exc_info=True)
         await message.answer(
-            f"{location_text}"
-            "📍 <b>Marshrut tanlang:</b>\n\n"
-            "Qayerdan → Qayerga borasiz?",
-            reply_markup=get_route_selection_keyboard(routes),
-            parse_mode="HTML"
+            "❌ Xatolik yuz berdi. Iltimos, qayta urinib ko'ring yoki adminga murojaat qiling."
         )
-        
-        await state.set_state(DriverStates.choose_route)
+        await state.clear()
 
 
 # ============================================
