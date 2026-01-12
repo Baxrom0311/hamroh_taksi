@@ -309,6 +309,81 @@ async def auto_confirm_trip_task(order_id: int):
             logger.info(f"Order {order_id} cancelled due to 30 minute timeout")
 
 
+# ============================================
+# 6. AVTOMATIK SAFAR YAKUNLASH (10 daqiqa)
+# ============================================
+
+@celery_app.task(name="app.tasks.matching.auto_complete_trip_task")
+@async_to_sync
+async def auto_complete_trip_task(order_id: int):
+    """
+    "Ketdik" bosilgandan keyin 10 daqiqadan keyin safar avtomatik yakunlanadi.
+    
+    STATUS: IN_PROGRESS → COMPLETED
+    """
+    from sqlalchemy import update, select
+    from app.models.order import Order, OrderStatus
+    from app.models.driver import Driver
+    from app.models.passenger import Passenger
+    from sqlalchemy.orm import selectinload
+    from app.services.order_service import complete_trip
+    
+    async with get_session() as session:
+        order_result = await session.execute(
+            select(Order)
+            .options(selectinload(Order.passenger).selectinload(Passenger.user))
+            .where(Order.order_id == order_id)
+        )
+        order = order_result.scalar_one_or_none()
+        
+        # Agar order hali ham IN_PROGRESS holatda bo'lsa, avtomatik yakunlash
+        if order and order.status == OrderStatus.IN_PROGRESS:
+            logger.info(f"Auto-completing trip for order {order_id} after 10 minutes")
+            
+            # Safarni yakunlash
+            if order.driver_id:
+                result = await complete_trip(order_id, order.driver_id)
+                
+                if result['success']:
+                    # Haydovchiga xabar
+                    driver_result = await session.execute(
+                        select(Driver).where(Driver.driver_id == order.driver_id)
+                    )
+                    driver = driver_result.scalar_one_or_none()
+                    if driver:
+                        from app.bot.main import bot
+                        try:
+                            await bot.send_message(
+                                chat_id=driver.user_id,
+                                text=f"✅ <b>Safar avtomatik yakunlandi</b>\n\n"
+                                     f"📦 Buyurtma #{order_id}\n"
+                                     f"⏱ Davomiyligi: {result.get('duration_minutes', 10)} daqiqa\n\n"
+                                     f"✨ Rahmat! Keyingi safarga muvaffaqiyat tilaymiz!",
+                                parse_mode="HTML"
+                            )
+                        except Exception as e:
+                            logger.error(f"Failed to notify driver: {e}")
+                    
+                    # Yo'lovchiga xabar
+                    if order.passenger and order.passenger.user:
+                        from app.bot.main import bot
+                        try:
+                            await bot.send_message(
+                                chat_id=order.passenger.user.user_id,
+                                text=f"✅ <b>Safar avtomatik yakunlandi</b>\n\n"
+                                     f"📦 Buyurtma #{order_id}\n"
+                                     f"⏱ Davomiyligi: {result.get('duration_minutes', 10)} daqiqa\n\n"
+                                     f"Xavfsiz yetib borgansizdan xursandmiz!",
+                                parse_mode="HTML"
+                            )
+                        except Exception as e:
+                            logger.error(f"Failed to notify passenger: {e}")
+                    
+                    logger.info(f"Order {order_id} auto-completed after 10 minutes")
+                else:
+                    logger.error(f"Failed to auto-complete trip: {result.get('message')}")
+
+
 
 # ============================================
 # 4. YO'LOVCHIGA "HAYDOVCHI TOPILMADI" XABARI
@@ -425,6 +500,7 @@ async def remove_driver_from_queue_task(driver_id: int, route_id: Optional[int] 
 
 
 __all__ = [
+    'auto_complete_trip_task',
     'find_driver_for_order_task',
     'notify_driver_new_order_task',
     'auto_reject_order_task',

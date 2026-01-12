@@ -294,7 +294,8 @@ async def passenger_started(callback: CallbackQuery):
                 await callback.message.edit_text(
                     "✅ <b>Safar boshlandi!</b>\n\n"
                     "🚗 Xavfsiz yo'l!\n\n"
-                    "Safar yakunlangach haydovchi sizga xabar beradi."
+                    "Safar yakunlangach haydovchi sizga xabar beradi.\n\n"
+                    "⏱ Safar 10 daqiqadan keyin avtomatik yakunlanadi."
                 )
             
             # Haydovchiga xabar
@@ -307,13 +308,18 @@ async def passenger_started(callback: CallbackQuery):
                         chat_id=driver.user_id,
                         text=f"✅ <b>Yo'lovchi ketdi!</b>\n\n"
                              f"📦 Buyurtma #{order_id}\n\n"
-                             f"🚗 Xavfsiz yo'l!",
+                             f"🚗 Xavfsiz yo'l!\n\n"
+                             f"⏱ Safar 10 daqiqadan keyin avtomatik yakunlanadi.",
                         parse_mode="HTML"
                     )
                 except Exception as e:
                     logger.error(f"Failed to notify driver: {e}")
             
-            logger.info(f"Trip started by passenger: order={order_id}")
+            # 10 daqiqadan keyin avtomatik safar yakunlanish task
+            from app.tasks.matching import auto_complete_trip_task
+            auto_complete_trip_task.apply_async(args=[order_id], countdown=600)  # 10 daqiqa = 600 soniya
+            
+            logger.info(f"Trip started by passenger: order={order_id}, auto-complete scheduled in 10 minutes")
         else:
             if callback.message:
                 await callback.message.edit_text(f"❌ {result['message']}")
