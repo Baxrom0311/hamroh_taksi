@@ -83,10 +83,12 @@ async def get_all_admins(
     
     try:
         async with get_session() as session:
+            # User.registration_date ishlatish
+            from sqlalchemy import desc
             result = await session.execute(
                 select(User).where(
                     User.role.in_([UserRole.ADMIN, UserRole.GLAVNI_ADMIN])
-                ).order_by(User.registration_date.desc())
+                ).order_by(desc(User.registration_date))
             )
             admins = result.scalars().all()
             

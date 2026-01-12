@@ -1,0 +1,181 @@
+{% extends "base.html" %}
+
+{% block title %}Marshrutlar | Hamroh Admin{% endblock %}
+{% block header_title %}Marshrut/Hududlarni boshqarish{% endblock %}
+
+{% block content %}
+<div class="p-8" x-data="routesApp()" x-init="init()">
+    <div class="bg-white rounded-xl shadow-sm border border-gray-100 mb-6 p-4 flex items-center justify-between">
+        <div>
+            <h2 class="text-lg font-bold">Marshrutlar</h2>
+            <p class="text-sm text-gray-500">Hududlar bo'yicha yo'nalishlar</p>
+        </div>
+        <button @click="openCreateModal()" class="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm">Yangi marshrut</button>
+    </div>
+
+    <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+        <table class="min-w-full divide-y divide-gray-200">
+            <thead class="bg-gray-50 text-gray-500 text-xs uppercase font-semibold">
+                <tr>
+                    <th class="px-6 py-3 text-left">Yo'nalish</th>
+                    <th class="px-6 py-3 text-left">Masofa</th>
+                    <th class="px-6 py-3 text-left">Holat</th>
+                    <th class="px-6 py-3 text-right">Amallar</th>
+                </tr>
+            </thead>
+            <tbody class="bg-white divide-y divide-gray-200">
+                <template x-for="route in routes" :key="route.route_id">
+                    <tr class="hover:bg-gray-50">
+                        <td class="px-6 py-4">
+                            <div class="text-sm font-semibold text-gray-900" x-text="route.route_name"></div>
+                            <div class="text-xs text-gray-500" x-text="route.from_location + ' → ' + route.to_location"></div>
+                        </td>
+                        <td class="px-6 py-4 text-sm text-gray-700" x-text="route.distance_km ? route.distance_km + ' km' : '-'"></td>
+                        <td class="px-6 py-4">
+                            <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full" :class="route.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-200 text-gray-600'" x-text="route.is_active ? 'Aktiv' : 'Nofaol'"></span>
+                        </td>
+                        <td class="px-6 py-4 text-right text-sm space-x-2">
+                            <button @click="deactivateRoute(route.route_id)" class="text-red-600 hover:text-red-800">O'chirish</button>
+                        </td>
+                    </tr>
+                </template>
+                <tr x-show="routes.length === 0">
+                    <td colspan="4" class="px-6 py-10 text-center text-gray-400 text-sm">Marshrutlar mavjud emas</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Create Modal -->
+    <div x-show="modals.create" class="fixed inset-0 z-50 overflow-y-auto" x-cloak>
+        <div class="flex items-center justify-center min-h-screen px-4">
+            <div class="fixed inset-0 bg-gray-500 bg-opacity-75"></div>
+            <div class="bg-white rounded-xl shadow-xl max-w-lg w-full p-6 relative">
+                <button @click="closeCreateModal()" class="absolute top-3 right-3 text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
+                <h3 class="text-xl font-bold mb-4">Yangi marshrut</h3>
+
+                <div class="space-y-3">
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-sm font-medium">Qayerdan</label>
+                            <input class="w-full border rounded p-2 text-sm" x-model="form.from_location" />
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium">Qayerga</label>
+                            <input class="w-full border rounded p-2 text-sm" x-model="form.to_location" />
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium">Masofa (km)</label>
+                        <input type="number" step="0.01" class="w-full border rounded p-2 text-sm" x-model.number="form.distance_km" />
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-xs text-gray-500">From lat/lon</label>
+                            <input class="w-full border rounded p-2 text-sm mb-2" x-model.number="form.from_location_lat" placeholder="lat" />
+                            <input class="w-full border rounded p-2 text-sm" x-model.number="form.from_location_lon" placeholder="lon" />
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-500">To lat/lon</label>
+                            <input class="w-full border rounded p-2 text-sm mb-2" x-model.number="form.to_location_lat" placeholder="lat" />
+                            <input class="w-full border rounded p-2 text-sm" x-model.number="form.to_location_lon" placeholder="lon" />
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex justify-end gap-2 mt-6">
+                    <button @click="closeCreateModal()" class="px-4 py-2 bg-gray-200 rounded">Bekor qilish</button>
+                    <button @click="submitRoute()" class="px-4 py-2 bg-blue-600 text-white rounded">Saqlash</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function routesApp() {
+    return {
+        routes: [],
+        modals: { create: false },
+        form: {
+            from_location: '',
+            to_location: '',
+            distance_km: '',
+            from_location_lat: '',
+            from_location_lon: '',
+            to_location_lat: '',
+            to_location_lon: ''
+        },
+
+        async init() {
+            await this.fetchRoutes();
+        },
+
+        async fetchRoutes() {
+            const data = await this.apiCall('/api/settings/routes');
+            if (data?.routes) {
+                this.routes = data.routes;
+            }
+        },
+
+        openCreateModal() {
+            this.form = {
+                from_location: '',
+                to_location: '',
+                distance_km: '',
+                from_location_lat: '',
+                from_location_lon: '',
+                to_location_lat: '',
+                to_location_lon: ''
+            };
+            this.modals.create = true;
+        },
+
+        closeCreateModal() {
+            this.modals.create = false;
+        },
+
+        async submitRoute() {
+            if (!this.form.from_location || !this.form.to_location) {
+                alert("Qayerdan/Qayerga maydonlari shart");
+                return;
+            }
+            const payload = { ...this.form };
+            const res = await this.apiCall('/api/settings/routes', 'POST', payload);
+            if (res?.success) {
+                this.modals.create = false;
+                await this.fetchRoutes();
+                alert('Marshrut saqlandi');
+            }
+        },
+
+        async deactivateRoute(routeId) {
+            if (!confirm("Marshrutni o'chirasizmi?")) return;
+            const res = await this.apiCall(`/api/settings/routes/${routeId}`, 'DELETE');
+            if (res?.success) {
+                await this.fetchRoutes();
+            }
+        },
+
+        async apiCall(url, method = 'GET', body = null) {
+            try {
+                const options = {
+                    method,
+                    headers: { 'Content-Type': 'application/json' }
+                };
+                if (body) options.body = JSON.stringify(body);
+
+                const response = await fetch(url, options);
+                const data = await response.json();
+
+                if (!response.ok) throw new Error(data.detail || 'Xatolik yuz berdi');
+                return data;
+            } catch (e) {
+                alert(e.message);
+                return null;
+            }
+        }
+    }
+}
+</script>
+{% endblock %}

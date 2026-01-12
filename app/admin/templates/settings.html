@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+
+{% block title %}Sozlamalar | Hamroh Admin{% endblock %}
+{% block header_title %}Tizim sozlamalari{% endblock %}
+
+{% block content %}
+<div class="p-8" x-data="settingsApp()" x-init="init()">
+    <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6 space-y-6">
+        <div class="flex items-center justify-between">
+            <div>
+                <h2 class="text-lg font-bold">Tarif va komissiya</h2>
+                <p class="text-sm text-gray-500">Botni tekin/pullik rejimi va komissiya miqdori</p>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div class="space-y-2">
+                <label class="text-sm font-medium">Bot rejimi</label>
+                <div class="flex items-center gap-3">
+                    <label class="inline-flex items-center">
+                        <input type="radio" x-model="form.bot_is_free" value="true" class="text-blue-600 border-gray-300">
+                        <span class="ml-2 text-sm">Tekin</span>
+                    </label>
+                    <label class="inline-flex items-center">
+                        <input type="radio" x-model="form.bot_is_free" value="false" class="text-blue-600 border-gray-300">
+                        <span class="ml-2 text-sm">Pullik</span>
+                    </label>
+                </div>
+                <p class="text-xs text-gray-500">Pullik rejimda komissiya va to'lovlar qo'llanadi.</p>
+            </div>
+
+            <div class="space-y-2">
+                <label class="text-sm font-medium">Komissiya miqdori (so'm)</label>
+                <input type="number" x-model.number="form.commission_amount" class="w-full border rounded px-3 py-2 text-sm" />
+                <p class="text-xs text-gray-500">Har safar uchun komissiya miqdori.</p>
+            </div>
+        </div>
+
+        <div class="flex justify-end gap-2">
+            <button @click="loadSettings()" class="px-4 py-2 bg-gray-200 rounded">Bekor qilish</button>
+            <button @click="saveSettings()" class="px-4 py-2 bg-blue-600 text-white rounded">Saqlash</button>
+        </div>
+    </div>
+</div>
+
+<script>
+function settingsApp() {
+    return {
+        form: {
+            bot_is_free: 'true',
+            commission_amount: 0
+        },
+
+        async init() {
+            await this.loadSettings();
+        },
+
+        async loadSettings() {
+            const data = await this.apiCall('/api/settings/');
+            if (data?.settings) {
+                this.form.bot_is_free = String(data.settings.bot_is_free ?? 'true');
+                this.form.commission_amount = Number(data.settings.commission_amount ?? 0);
+            }
+        },
+
+        async saveSettings() {
+            const payloads = [
+                { key: 'bot_is_free', value: String(this.form.bot_is_free) },
+                { key: 'commission_amount', value: String(this.form.commission_amount) }
+            ];
+
+            for (const item of payloads) {
+                const res = await this.apiCall(`/api/settings/${item.key}`, 'PUT', { value: item.value });
+                if (!res?.success) {
+                    alert(`Saqlashda xato: ${item.key}`);
+                    return;
+                }
+            }
+            alert("Sozlamalar saqlandi");
+        },
+
+        async apiCall(url, method = 'GET', body = null) {
+            try {
+                const options = {
+                    method,
+                    headers: { 'Content-Type': 'application/json' }
+                };
+                if (body) options.body = JSON.stringify(body);
+
+                const response = await fetch(url, options);
+                const data = await response.json();
+
+                if (!response.ok) throw new Error(data.detail || 'Xatolik yuz berdi');
+                return data;
+            } catch (e) {
+                alert(e.message);
+                return null;
+            }
+        }
+    }
+}
+</script>
+{% endblock %}

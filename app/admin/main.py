@@ -170,13 +170,13 @@ async def admins_page(
         }
     )
 
-@app.get("/system-settings", response_class=HTMLResponse)
-async def system_settings_page(
+@app.get("/settings", response_class=HTMLResponse)
+async def settings_page(
     request: Request,
     current_user: dict = Depends(get_current_user)
 ):
     """
-    System settings page (free/pullik, komissiya va boshqalar)
+    Sozlamalar sahifasi
     """
     return templates.TemplateResponse(
         "settings.html",
@@ -187,6 +187,16 @@ async def system_settings_page(
             "now": datetime.now()
         }
     )
+
+@app.get("/system-settings", response_class=HTMLResponse)
+async def system_settings_page(
+    request: Request,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    System settings page (free/pullik, komissiya va boshqalar) - Legacy route
+    """
+    return RedirectResponse(url="/settings", status_code=301)
 
 @app.get("/routes", response_class=HTMLResponse)
 async def routes_page(

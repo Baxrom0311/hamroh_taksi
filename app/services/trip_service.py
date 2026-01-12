@@ -221,20 +221,7 @@ class TripService:
                 if not order or order.status != OrderStatus.ACCEPTED:
                     return {'success': False, 'message': 'Holat noto\'g\'ri'}
 
-                # 2. To'lovni yechish (Sessiyani uzatamiz!)
-                from app.services.payment_service import payment_service
-                from config.settings import settings
-                pay_res = await payment_service.deduct_commission(
-                    session=session, # MUHIM: Mavjud sessiyani beramiz
-                    driver_id=order.driver_id,
-                    order_id=order_id,
-                    amount=Decimal(settings.COMMISSION_AMOUNT)
-                )
-
-                if not pay_res['success']:
-                    return pay_res
-
-                # 3. Statuslarni yangilash
+                # 2. Statuslarni yangilash (komissiya allaqachon qabul qilishda yechilgan)
                 order.status = OrderStatus.IN_PROGRESS
                 order.started_at = datetime.now()
                 if is_auto:
@@ -251,7 +238,6 @@ class TripService:
                 # Kerakli ma'lumotlarni saqlab olamiz
                 d_tg_id = order.driver.user_id
                 p_tg_id = order.passenger.user_id
-                new_bal = pay_res['new_balance']
 
             # Xabarlarni yuborish (Sessiyadan tashqarida)
             from app.tasks.notifications import send_telegram_message
@@ -260,7 +246,7 @@ class TripService:
             send_telegram_message.delay(p_tg_id, "✅ Safar boshlandi!")
             send_telegram_message.delay(
                 d_tg_id, 
-                f"✅ Safar boshlandi! Balans: {new_bal:,} so'm",
+                "✅ Safar boshlandi!",
                 reply_markup=get_trip_active_keyboard() # Aiogram 3 uslubi
             )
             return {'success': True}

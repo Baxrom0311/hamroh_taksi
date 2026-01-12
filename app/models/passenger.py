@@ -18,7 +18,8 @@ from sqlalchemy.sql import func
 from datetime import datetime
 from typing import TYPE_CHECKING, List, Optional
 import enum
-
+from sqlalchemy.orm import selectinload # Buni tepaga qo'shing
+from typing import Optional
 from app.core.database import Base
 # ============================================
 # ENUM
@@ -132,11 +133,17 @@ class Passenger(Base):
 # ============================================
 
 async def get_passenger_by_id(session, passenger_id: int) -> Optional[Passenger]:
-    """Passenger'ni ID bo'yicha olish"""
+    """Passenger'ni ID bo'yicha olish (User ma'lumotlari bilan birga)"""
     from sqlalchemy import select
-    result = await session.execute(
-        select(Passenger).where(Passenger.passenger_id == passenger_id)
+    
+    # .options(selectinload(Passenger.user)) qismi User modelini ham darhol yuklab beradi
+    query = (
+        select(Passenger)
+        .options(selectinload(Passenger.user)) 
+        .where(Passenger.passenger_id == passenger_id)
     )
+    
+    result = await session.execute(query)
     return result.scalar_one_or_none()
 
 

@@ -41,8 +41,10 @@ async def get_dashboard_stats(
         async with get_session() as session:
             from app.models.driver import Driver
             from app.models.passenger import Passenger
+            from app.models.user import User
             from app.models.order import Order, OrderStatus
             from app.models.transaction import Transaction, TransactionStatus
+            from app.models.route import Route
             
             # Bugungi sanalar
             today_start = datetime.now().replace(hour=0, minute=0, second=0)
@@ -64,6 +66,12 @@ async def get_dashboard_stats(
             )
             active_drivers = (await session.execute(active_drivers_query)).scalar()
             
+            # Blocked drivers
+            blocked_drivers_query = select(func.count(Driver.driver_id)).where(
+                Driver.is_blocked == True
+            )
+            blocked_drivers = (await session.execute(blocked_drivers_query)).scalar()
+            
             # Drivers on trip
             on_trip_query = select(func.count(Driver.driver_id)).where(
                 Driver.is_on_trip == True
@@ -77,6 +85,12 @@ async def get_dashboard_stats(
             # Total passengers
             total_passengers_query = select(func.count(Passenger.passenger_id))
             total_passengers = (await session.execute(total_passengers_query)).scalar()
+            
+            # Blocked passengers (User.is_blocked)
+            blocked_passengers_query = select(func.count(Passenger.passenger_id)).join(User).where(
+                User.is_blocked == True
+            )
+            blocked_passengers = (await session.execute(blocked_passengers_query)).scalar()
             
             # ========================================
             # ORDERS/TRIPS
@@ -158,6 +172,12 @@ async def get_dashboard_stats(
             pending_transactions = (await session.execute(pending_trans_query)).scalar()
             
             # ========================================
+            # ROUTES
+            # ========================================
+            total_routes_query = select(func.count(Route.route_id)).where(Route.is_active == True)
+            total_routes = (await session.execute(total_routes_query)).scalar() or 0
+            
+            # ========================================
             # GROWTH (vs yesterday)
             # ========================================
             
@@ -171,10 +191,15 @@ async def get_dashboard_stats(
                     'drivers': {
                         'total': total_drivers or 0,
                         'active': active_drivers or 0,
-                        'on_trip': drivers_on_trip or 0
+                        'on_trip': drivers_on_trip or 0,
+                        'blocked': blocked_drivers or 0
                     },
                     'passengers': {
-                        'total': total_passengers or 0
+                        'total': total_passengers or 0,
+                        'blocked': blocked_passengers or 0
+                    },
+                    'routes': {
+                        'total': total_routes
                     },
                     'trips': {
                         'today': today_trips or 0,
