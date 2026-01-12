@@ -6,15 +6,17 @@ from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, ReplyKeyboardMarkup, KeyboardButton
 from aiogram.fsm.context import FSMContext
 from loguru import logger
-from sqlalchemy import func
+from sqlalchemy import func, select, update
 from sqlalchemy.sql import func as sql_func
 
-from app.core.database import get_session
+from app.core.database import get_session, transaction
 from app.models.passenger import get_passenger_by_user_id
 from app.models.route import get_all_active_routes
+from app.models.order import Order, OrderStatus, get_order_by_id
 from app.services.order_service import create_new_order
 from app.bot.states.passenger import PassengerStates
 from app.bot.keyboards.passenger import get_route_selection_keyboard
+from app.tasks.matching import find_driver_for_order_task
 
 router = Router()
 
@@ -274,7 +276,6 @@ async def confirm_trip(callback: CallbackQuery):
             return
         
         # Order'ni olish
-        from app.models.order import get_order_by_id, OrderStatus
         order = await get_order_by_id(session, order_id)
         
         if not order or order.passenger_id != passenger.passenger_id:
@@ -327,7 +328,6 @@ async def reject_trip(callback: CallbackQuery):
             return
         
         # Order'ni olish
-        from app.models.order import get_order_by_id, OrderStatus
         order = await get_order_by_id(session, order_id)
         
         if not order or order.passenger_id != passenger.passenger_id:
@@ -340,7 +340,6 @@ async def reject_trip(callback: CallbackQuery):
         
         # Safarni bekor qilish va warning
         async with transaction() as session:
-            from sqlalchemy import update
             from app.models.driver import Driver
             
             # Order'ni cancel qilish

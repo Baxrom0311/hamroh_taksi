@@ -39,8 +39,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Index,
-    CheckConstraint,
-    Transaction
+    CheckConstraint
 )
 from typing import TYPE_CHECKING
 from sqlalchemy.orm import Mapped, mapped_column, relationship

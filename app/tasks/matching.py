@@ -13,12 +13,13 @@ BU TASK'LAR NIMA QILADI:
 import asyncio
 from typing import Optional
 from loguru import logger
-from app.core.celery_app import async_to_sync # <--- import
+from sqlalchemy import select
 
+from app.core.celery_app import async_to_sync
 from app.core.celery_app import celery_app
 from app.core.database import get_session
 from app.services.queue_service import driver_queue
-from app.models.order import get_order_by_id, OrderStatus
+from app.models.order import Order, get_order_by_id, OrderStatus
 from app.models.driver import get_driver_by_id
 
 # ============================================

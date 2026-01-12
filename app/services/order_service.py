@@ -16,15 +16,14 @@ ISHLATISH:
         accept_order
     )
 """
-from sqlalchemy import update
-from app.models.transaction import log_balance_change, TransactionType
+from sqlalchemy import update, select
 from sqlalchemy.sql import func
-from app.models.transaction import log_balance_change, TransactionType
-from sqlalchemy.sql import func
+from sqlalchemy.orm import selectinload
 from typing import Optional
 from decimal import Decimal
 from loguru import logger
-from sqlalchemy.orm import selectinload # <--- Shuni qo'shing
+
+from app.models.transaction import log_balance_change, TransactionType
 
 from app.core.database import get_session, transaction
 from app.core.locks import acquire_order_lock
@@ -176,8 +175,6 @@ async def find_driver_for_order(order_id: int) -> Optional[int]:
                 return None
             
             # 1. Route bo'yicha haydovchilarni topish
-            from sqlalchemy import select
-            
             result = await session.execute(
                 select(Driver)
                 .where(Driver.current_route_id == order.route_id)
@@ -306,8 +303,6 @@ async def accept_order_by_driver(
             async with transaction() as session:
                 
                 # 2.1. Order'ni olish (FOR UPDATE - row lock)
-                from sqlalchemy import select
-                
                 result = await session.execute(
                     select(Order)
                     .options(selectinload(Order.passenger))
