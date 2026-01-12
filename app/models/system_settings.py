@@ -221,6 +221,38 @@ async def update_setting(session, key: str, value: str, description: Optional[st
 
 
 # ============================================
+# PRICING HELPERS
+# ============================================
+
+async def get_pricing_settings(session) -> dict:
+    """
+    Bot rejimi va komissiya miqdorini olish (DB -> fallback .env)
+    
+    Returns:
+        {
+            'bot_is_free': bool,
+            'commission_amount': int
+        }
+    """
+    from config.settings import settings as config_settings
+
+    bot_is_free = await get_setting_bool(session, 'bot_is_free', default=True)
+    commission_amount = await get_setting_int(
+        session,
+        'commission_amount',
+        default=config_settings.COMMISSION_AMOUNT
+    )
+
+    if bot_is_free:
+        commission_amount = 0
+
+    return {
+        'bot_is_free': bot_is_free,
+        'commission_amount': commission_amount
+    }
+
+
+# ============================================
 # DEFAULT SETTINGS
 # ============================================
 

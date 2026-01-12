@@ -40,6 +40,7 @@ from app.utils.geo import (
 from app.core.database import get_session
 from app.models.driver import Driver, get_driver_by_id
 from app.models.order import Order, get_order_by_id
+from app.models.system_settings import get_pricing_settings
 from app.core.exceptions import (
     DriverNotFoundException,
     OrderNotFoundException,
@@ -255,6 +256,9 @@ class GeoService:
                 )
             
             async with get_session() as session:
+                pricing = await get_pricing_settings(session)
+                min_balance_required = pricing['commission_amount']
+
                 # PostGIS query
                 query = text("""
                     SELECT 
@@ -301,7 +305,7 @@ class GeoService:
                         'lon': lon,
                         'route_id': route_id,
                         'min_seats': min_seats,
-                        'min_balance': settings.COMMISSION_AMOUNT,
+                        'min_balance': min_balance_required,
                         'max_distance_meters': max_distance_km * 1000,
                         'limit': limit
                     }

@@ -14,7 +14,7 @@ from aiogram.types import Message
 from aiogram.fsm.context import FSMContext
 from loguru import logger
 
-from app.core.database import get_session, transaction
+from app.core.database import get_session
 from app.models.driver import get_driver_by_user_id, Driver
 from app.bot.states.driver import DriverStates
 from app.bot.keyboards.driver import get_route_selection_keyboard
@@ -65,11 +65,8 @@ async def location_received(message: Message, state: FSMContext):
             await state.clear()
             return
         
-        # Lokatsiyani database'ga saqlash
-        async with transaction() as session:
-            # PostGIS geometry yaratish
-            point_wkt = f"POINT({lon} {lat})"
-            
+        point_wkt = f"POINT({lon} {lat})"
+        try:
             await session.execute(
                 update(Driver)
                 .where(Driver.driver_id == driver.driver_id)
@@ -79,11 +76,23 @@ async def location_received(message: Message, state: FSMContext):
                     location=geo_func.ST_GeomFromText(point_wkt, 4326)
                 )
             )
-            
-            logger.info(
-                f"Driver {driver.driver_id} location updated: "
-                f"lat={lat}, lon={lon}, live={is_live}"
+        except Exception as e:
+            # Agar PostGIS bo'lmasa, faqat lat/lon saqlaymiz
+            logger.warning(f"PostGIS location save failed, fallback to lat/lon: {e}")
+            await session.execute(
+                update(Driver)
+                .where(Driver.driver_id == driver.driver_id)
+                .values(
+                    last_location_lat=lat,
+                    last_location_lon=lon
+                )
             )
+        await session.commit()
+        
+        logger.info(
+            f"Driver {driver.driver_id} location updated: "
+            f"lat={lat}, lon={lon}, live={is_live}"
+        )
         
         # Marshrut tanlashga o'tish
         routes = await get_all_active_routes(session)
@@ -138,10 +147,8 @@ async def update_location_while_waiting(message: Message, state: FSMContext):
         if not driver:
             return
         
-        # Lokatsiyani yangilash
-        async with transaction() as session:
-            point_wkt = f"POINT({lon} {lat})"
-            
+        point_wkt = f"POINT({lon} {lat})"
+        try:
             await session.execute(
                 update(Driver)
                 .where(Driver.driver_id == driver.driver_id)
@@ -151,11 +158,22 @@ async def update_location_while_waiting(message: Message, state: FSMContext):
                     location=geo_func.ST_GeomFromText(point_wkt, 4326)
                 )
             )
-            
-            logger.debug(
-                f"Driver {driver.driver_id} location updated (real-time): "
-                f"lat={lat}, lon={lon}"
+        except Exception as e:
+            logger.warning(f"PostGIS location save failed (waiting_orders), fallback: {e}")
+            await session.execute(
+                update(Driver)
+                .where(Driver.driver_id == driver.driver_id)
+                .values(
+                    last_location_lat=lat,
+                    last_location_lon=lon
+                )
             )
+        await session.commit()
+        
+        logger.debug(
+            f"Driver {driver.driver_id} location updated (real-time): "
+            f"lat={lat}, lon={lon}"
+        )
 
 
 # ============================================
@@ -190,10 +208,8 @@ async def handle_live_location_update(message: Message, state: FSMContext):
             if not driver:
                 return
             
-            # Lokatsiyani yangilash
-            async with transaction() as session:
-                point_wkt = f"POINT({lon} {lat})"
-                
+            point_wkt = f"POINT({lon} {lat})"
+            try:
                 await session.execute(
                     update(Driver)
                     .where(Driver.driver_id == driver.driver_id)
@@ -203,11 +219,22 @@ async def handle_live_location_update(message: Message, state: FSMContext):
                         location=geo_func.ST_GeomFromText(point_wkt, 4326)
                     )
                 )
-                
-                logger.debug(
-                    f"Driver {driver.driver_id} live location updated: "
-                    f"lat={lat}, lon={lon}"
+            except Exception as e:
+                logger.warning(f"PostGIS location save failed (live), fallback: {e}")
+                await session.execute(
+                    update(Driver)
+                    .where(Driver.driver_id == driver.driver_id)
+                    .values(
+                        last_location_lat=lat,
+                        last_location_lon=lon
+                    )
                 )
+            await session.commit()
+                
+            logger.debug(
+                f"Driver {driver.driver_id} live location updated: "
+                f"lat={lat}, lon={lon}"
+            )
 
 
 __all__ = ['router']

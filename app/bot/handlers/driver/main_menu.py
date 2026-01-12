@@ -17,6 +17,7 @@ from loguru import logger
 from app.core.database import get_session
 from app.models.driver import get_driver_by_user_id
 from app.models.route import get_all_active_routes
+from app.models.system_settings import get_pricing_settings
 from app.bot.states.driver import DriverStates
 from app.bot.keyboards.driver import (
     get_route_selection_keyboard,
@@ -72,12 +73,14 @@ async def start_accepting_orders(message: Message, state: FSMContext):
             )
             return
 
-        # Balans tekshirish
-        from config.settings import settings
-        if driver.balance < settings.COMMISSION_AMOUNT:
+        # Balans tekshirish (dynamic)
+        pricing = await get_pricing_settings(session)
+        commission_amount = pricing['commission_amount']
+
+        if driver.balance < commission_amount:
             await message.answer(
                 f"⚠️ <b>Balans yetarli emas!</b>\n\n"
-                f"Kerak: <b>{settings.COMMISSION_AMOUNT:,} so'm</b>\n"
+                f"Kerak: <b>{commission_amount:,} so'm</b>\n"
                 f"Mavjud: <b>{driver.balance:,} so'm</b>\n\n"
                 f"💰 Balansni to'ldirish uchun:\n"
                 f"Menyu → Balans"

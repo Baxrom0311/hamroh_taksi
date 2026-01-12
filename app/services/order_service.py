@@ -17,15 +17,13 @@ ISHLATISH:
     )
 """
 from sqlalchemy import update
-from app.models.transaction import log_balance_change, TransactionType
-from sqlalchemy.sql import func
-from app.models.transaction import log_balance_change, TransactionType
 from sqlalchemy.sql import func
 from typing import Optional
 from decimal import Decimal
 from loguru import logger
-from sqlalchemy.orm import selectinload # <--- Shuni qo'shing
+from sqlalchemy.orm import selectinload  # <--- Shuni qo'shing
 
+from app.models.transaction import log_balance_change, TransactionType
 from app.core.database import get_session, transaction
 from app.core.locks import acquire_order_lock
 from app.core.exceptions import (
@@ -47,6 +45,7 @@ from app.models.order import (
 )
 from app.models.driver import Driver
 from app.models.passenger import Passenger
+from app.models.system_settings import get_pricing_settings
 from config.settings import settings
 
 # Geo service import (keyinroq yozamiz)
@@ -193,8 +192,9 @@ async def find_driver_for_order(order_id: int) -> Optional[int]:
                 logger.warning(f"No drivers available for order {order_id}")
                 return None
             
-            # 2. Balans tekshirish
-            commission = settings.COMMISSION_AMOUNT
+            # 2. Balans tekshirish (dynamic)
+            pricing = await get_pricing_settings(session)
+            commission = pricing['commission_amount']
             drivers = [d for d in drivers if d.balance >= commission]
             
             if not drivers:
@@ -341,8 +341,9 @@ async def accept_order_by_driver(
                         'message': '❌ Haydovchi topilmadi'
                     }
                 
-                # 2.3. Balans tekshirish
-                commission = Decimal(settings.COMMISSION_AMOUNT)
+                # 2.3. Balans tekshirish (dynamic settings)
+                pricing = await get_pricing_settings(session)
+                commission = Decimal(pricing['commission_amount'])
                 
                 if driver.balance < commission:
                     raise InsufficientBalanceError(

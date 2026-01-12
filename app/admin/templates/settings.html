@@ -31,7 +31,12 @@
 
             <div class="space-y-2">
                 <label class="text-sm font-medium">Komissiya miqdori (so'm)</label>
-                <input type="number" x-model.number="form.commission_amount" class="w-full border rounded px-3 py-2 text-sm" />
+                <input
+                    type="number"
+                    x-model.number="form.commission_amount"
+                    :disabled="form.bot_is_free === 'true'"
+                    class="w-full border rounded px-3 py-2 text-sm disabled:bg-gray-100 disabled:cursor-not-allowed"
+                />
                 <p class="text-xs text-gray-500">Har safar uchun komissiya miqdori.</p>
             </div>
         </div>
@@ -64,6 +69,9 @@ function settingsApp() {
         },
 
         async saveSettings() {
+            if (this.form.bot_is_free === 'true') {
+                this.form.commission_amount = 0;
+            }
             const payloads = [
                 { key: 'bot_is_free', value: String(this.form.bot_is_free) },
                 { key: 'commission_amount', value: String(this.form.commission_amount) }

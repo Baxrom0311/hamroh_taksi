@@ -29,6 +29,7 @@ from loguru import logger
 from app.core.redis_client import redis_client
 from app.core.database import get_session
 from app.models.driver import Driver, get_driver_by_id
+from app.models.system_settings import get_pricing_settings
 from app.utils.geo import calculate_distance
 from config.settings import settings
 
@@ -298,8 +299,9 @@ class DriverQueueManager:
                         logger.debug(f"Driver {driver_id}: blocked")
                         continue
                     
-                    # 3. Balans yetarli
-                    commission = settings.COMMISSION_AMOUNT
+                    # 3. Balans yetarli (dynamic)
+                    pricing = await get_pricing_settings(session)
+                    commission = pricing['commission_amount']
                     if driver.balance < commission:
                         logger.debug(f"Driver {driver_id}: insufficient balance")
                         continue
