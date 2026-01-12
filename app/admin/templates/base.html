@@ -42,6 +42,17 @@
                 <a href="/transactions" class="flex items-center px-6 py-3 hover:bg-gray-800 transition {% if page == 'transactions' %}bg-gray-800 border-l-4 border-blue-500 text-white{% else %}text-gray-400{% endif %}">
                     <span class="mr-3">💳</span> To'lovlar
                 </a>
+                <a href="/settings" class="flex items-center px-6 py-3 hover:bg-gray-800 transition {% if page == 'settings' %}bg-gray-800 border-l-4 border-blue-500 text-white{% else %}text-gray-400{% endif %}">
+                    <span class="mr-3">⚙️</span> Sozlamalar
+                </a>
+                {% if user.role == 'glavni_admin' %}
+                <a href="/admins" class="flex items-center px-6 py-3 hover:bg-gray-800 transition {% if page == 'admins' %}bg-gray-800 border-l-4 border-blue-500 text-white{% else %}text-gray-400{% endif %}">
+                    <span class="mr-3">👨‍💼</span> Adminlar
+                </a>
+                <a href="/broadcast" class="flex items-center px-6 py-3 hover:bg-gray-800 transition {% if page == 'broadcast' %}bg-gray-800 border-l-4 border-blue-500 text-white{% else %}text-gray-400{% endif %}">
+                    <span class="mr-3">📢</span> Xabar yuborish
+                </a>
+                {% endif %}
             </nav>
             
             <!-- User Info & Logout -->

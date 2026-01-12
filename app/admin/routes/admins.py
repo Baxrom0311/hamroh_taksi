@@ -86,7 +86,7 @@ async def get_all_admins(
             result = await session.execute(
                 select(User).where(
                     User.role.in_([UserRole.ADMIN, UserRole.GLAVNI_ADMIN])
-                ).order_by(User.created_at.desc())
+                ).order_by(User.registration_date.desc())
             )
             admins = result.scalars().all()
             
@@ -98,7 +98,7 @@ async def get_all_admins(
                     'full_name': admin.full_name,
                     'role': admin.role.value,
                     'is_blocked': admin.is_blocked,
-                    'created_at': admin.created_at.isoformat() if admin.created_at else None
+                    'created_at': admin.registration_date.isoformat() if admin.registration_date else None
                 }
                 for admin in admins
             ]
@@ -195,8 +195,9 @@ async def create_admin(
                     detail="Yangi admin uchun user_id kerak (Telegram user ID)"
                 )
             
-            # Password hash
-            password_hash = get_password_hash(request.password)
+            # Password hash (truncate to 72 bytes for bcrypt)
+            password_to_hash = request.password[:72] if len(request.password.encode('utf-8')) > 72 else request.password
+            password_hash = get_password_hash(password_to_hash)
             
             # Role
             role = UserRole.ADMIN if request.role == "admin" else UserRole.GLAVNI_ADMIN

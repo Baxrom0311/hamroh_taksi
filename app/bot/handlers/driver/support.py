@@ -164,7 +164,7 @@ async def receipt_photo_uploaded(message: Message, state: FSMContext):
 💰 <b>Yangi balans to'ldirish so'rovi</b>
 
 👤 Haydovchi: {driver.full_name}
-📱 Telefon: {driver.user.phone_number if driver.user else 'N/A'}
+📱 Telefon: {driver.phone_number}
 💵 Summa: {amount:,} so'm
 🆔 Transaction ID: #{transaction_obj.transaction_id}
 
@@ -256,7 +256,7 @@ async def complaint_text_entered(message: Message, state: FSMContext):
 📝 <b>Yangi shikoyat</b>
 
 👤 Haydovchi: {driver.full_name}
-📱 Telefon: {driver.user.phone_number if driver.user else 'N/A'}
+📱 Telefon: {driver.phone_number}
 🚗 Mashina: {driver.car_model} ({driver.car_number})
 🆔 Driver ID: {driver.driver_id}
 

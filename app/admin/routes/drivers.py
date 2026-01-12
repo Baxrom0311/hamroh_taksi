@@ -19,10 +19,11 @@ from datetime import datetime, timedelta
 from loguru import logger
 
 from app.admin.auth import get_current_user
-from app.core.database import get_session
+from app.core.database import get_session, transaction
 from app.models.driver import Driver, get_driver_by_id
 from app.models.user import User
 from sqlalchemy import select, func, update, or_
+from sqlalchemy.orm import selectinload
 from app.models.order import Order
 
 
@@ -98,8 +99,8 @@ async def get_drivers_list(
     """
     try:
         async with get_session() as session:
-            # Base query
-            query = select(Driver).join(User)
+            # Base query - User relationship'ni oldindan yuklaymiz (async lazy load xatosidan qochish uchun)
+            query = select(Driver).options(selectinload(Driver.user)).join(User)
             
             # Filters
             if search:
@@ -154,7 +155,7 @@ async def get_drivers_list(
                     'driver_id': driver.driver_id,
                     'user_id': driver.user_id,
                     'full_name': driver.full_name,
-                    'phone_number': driver.user.phone_number,
+                    'phone_number': driver.phone_number,
                     'car_model': driver.car_model,
                     'car_color': driver.car_color,
                     'car_number': driver.car_number,
@@ -194,7 +195,8 @@ async def get_driver_details(
     """
     try:
         async with get_session() as session:
-            driver = await get_driver_by_id(session, driver_id)
+            # User ma'lumotlarini ham birga yuklaymiz (async lazy load xatosidan qochish uchun)
+            driver = await get_driver_by_id(session, driver_id, eager_load_user=True)
             
             if not driver:
                 raise HTTPException(status_code=404, detail="Driver topilmadi")
@@ -232,7 +234,7 @@ async def get_driver_details(
                     'driver_id': driver.driver_id,
                     'user_id': driver.user_id,
                     'full_name': driver.full_name,
-                    'phone_number': driver.user.phone_number,
+                    'phone_number': driver.phone_number,
                     'car_model': driver.car_model,
                     'car_color': driver.car_color,
                     'car_number': driver.car_number,
@@ -430,7 +432,8 @@ async def update_driver(
                     full_name=request.get('full_name', driver.full_name),
                     car_model=request.get('car_model', driver.car_model),
                     car_color=request.get('car_color', driver.car_color),
-                    car_number=request.get('car_number', driver.car_number)
+                    car_number=request.get('car_number', driver.car_number),
+                    license_number=request.get('license_number', driver.license_number)
                 )
             )
             
@@ -475,20 +478,24 @@ async def update_driver_balance(
         
         amount = Decimal(str(abs(request.amount)))
         
-        if request.operation == "add":
-            # Qo'shish
-            result = await payment_service.add_balance(
-                driver_id=driver_id,
-                amount=amount,
-                description=f"Admin tomonidan qo'shildi: {request.reason}"
-            )
-        else:
-            # Yechish
-            result = await payment_service.deduct_commission(
-                driver_id=driver_id,
-                order_id=0,  # Manual
-                amount=amount
-            )
+        # Barcha balans o'zgarishlari bitta transaction ichida bo'lishi kerak
+        async with transaction() as session:
+            if request.operation == "add":
+                # Qo'shish
+                result = await payment_service.add_balance(
+                    session,
+                    driver_id=driver_id,
+                    amount=amount,
+                    description=f"Admin tomonidan qo'shildi: {request.reason}"
+                )
+            else:
+                # Yechish (manual). Bu yerda order_id yo'q, shuning uchun None beramiz.
+                result = await payment_service.deduct_commission(
+                    session,
+                    driver_id=driver_id,
+                    order_id=None,  # Manual operatsiya, real order yo‘q
+                    amount=amount
+                )
         
         if result['success']:
             logger.info(

@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+
+{% block title %}Xabar yuborish | Hamroh Admin{% endblock %}
+{% block header_title %}Xabar yuborish{% endblock %}
+
+{% block content %}
+<div class="p-8" x-data="broadcastApp()" x-init="init()">
+    <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6 space-y-6">
+        <div class="flex items-center justify-between">
+            <div>
+                <h2 class="text-lg font-bold">Xabar yuborish</h2>
+                <p class="text-sm text-gray-500">Barcha foydalanuvchilarga yoki ma'lum guruhga xabar yuborish</p>
+            </div>
+        </div>
+
+        <div class="space-y-4">
+            <div>
+                <label class="block text-sm font-medium mb-2">Kimlarga yuborish?</label>
+                <select x-model="form.target" class="w-full border rounded px-3 py-2 text-sm">
+                    <option value="all">Barcha foydalanuvchilar</option>
+                    <option value="admins">Faqat adminlar</option>
+                    <option value="drivers">Faqat haydovchilar</option>
+                    <option value="passengers">Faqat yo'lovchilar</option>
+                </select>
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium mb-2">Xabar matni</label>
+                <textarea 
+                    x-model="form.message" 
+                    rows="6" 
+                    class="w-full border rounded px-3 py-2 text-sm"
+                    placeholder="Xabar matnini kiriting..."
+                ></textarea>
+                <p class="text-xs text-gray-500 mt-1">HTML format qo'llab-quvvatlanadi</p>
+            </div>
+
+            <div class="bg-yellow-50 border border-yellow-200 rounded p-3">
+                <p class="text-sm text-yellow-800">
+                    ⚠️ <strong>Diqqat:</strong> Xabar barcha tanlangan foydalanuvchilarga yuboriladi. 
+                    Xabarni yuborishdan oldin tekshirib oling!
+                </p>
+            </div>
+        </div>
+
+        <div class="flex justify-end gap-2">
+            <button @click="resetForm()" class="px-4 py-2 bg-gray-200 rounded">Tozalash</button>
+            <button @click="sendMessage()" class="px-4 py-2 bg-blue-600 text-white rounded" :disabled="sending">
+                <span x-show="!sending">📢 Xabar yuborish</span>
+                <span x-show="sending">⏳ Yuborilmoqda...</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Results -->
+    <div x-show="result" class="mt-6 bg-white rounded-xl shadow-sm border border-gray-100 p-6" x-cloak>
+        <h3 class="text-lg font-bold mb-4">Natija</h3>
+        <div class="space-y-2">
+            <div class="flex justify-between">
+                <span class="text-sm text-gray-600">Jami:</span>
+                <span class="text-sm font-semibold" x-text="result?.stats?.total || 0"></span>
+            </div>
+            <div class="flex justify-between">
+                <span class="text-sm text-green-600">Muvaffaqiyatli:</span>
+                <span class="text-sm font-semibold text-green-600" x-text="result?.stats?.success || 0"></span>
+            </div>
+            <div class="flex justify-between">
+                <span class="text-sm text-red-600">Xatolik:</span>
+                <span class="text-sm font-semibold text-red-600" x-text="result?.stats?.failed || 0"></span>
+            </div>
+        </div>
+
+        <div x-show="result?.failed_users?.length > 0" class="mt-4">
+            <p class="text-sm font-medium mb-2">Xatoliklar:</p>
+            <div class="bg-red-50 border border-red-200 rounded p-3 max-h-40 overflow-y-auto">
+                <template x-for="user in result.failed_users" :key="user.user_id">
+                    <div class="text-xs text-red-800 mb-1">
+                        <span x-text="user.username || user.user_id"></span>: 
+                        <span x-text="user.error"></span>
+                    </div>
+                </template>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function broadcastApp() {
+    return {
+        form: {
+            target: 'all',
+            message: ''
+        },
+        sending: false,
+        result: null,
+
+        init() {
+            // Initialize
+        },
+
+        resetForm() {
+            this.form = {
+                target: 'all',
+                message: ''
+            };
+            this.result = null;
+        },
+
+        async sendMessage() {
+            if (!this.form.message || this.form.message.trim().length === 0) {
+                alert("Xabar matnini kiriting!");
+                return;
+            }
+
+            if (!confirm(`Xabar "${this.form.target}" guruhiga yuboriladi. Davom etasizmi?`)) {
+                return;
+            }
+
+            this.sending = true;
+            this.result = null;
+
+            try {
+                const res = await this.apiCall('/api/broadcast/send', 'POST', this.form);
+                if (res?.success) {
+                    this.result = res;
+                    alert(`Xabar yuborildi!\nMuvaffaqiyatli: ${res.stats.success}\nXatolik: ${res.stats.failed}`);
+                }
+            } catch (e) {
+                alert('Xatolik: ' + e.message);
+            } finally {
+                this.sending = false;
+            }
+        },
+
+        async apiCall(url, method = 'GET', body = null) {
+            try {
+                const options = {
+                    method,
+                    headers: { 'Content-Type': 'application/json' }
+                };
+                if (body) options.body = JSON.stringify(body);
+
+                const response = await fetch(url, options);
+                const data = await response.json();
+
+                if (!response.ok) throw new Error(data.detail || 'Xatolik yuz berdi');
+                return data;
+            } catch (e) {
+                throw new Error(e.message || 'Xatolik yuz berdi');
+            }
+        }
+    }
+}
+</script>
+{% endblock %}

@@ -257,7 +257,7 @@ async def view_driver_info(callback: CallbackQuery):
 🚗 <b>Mashina:</b> {driver.car_model}
 🎨 <b>Rang:</b> {driver.car_color}
 🔢 <b>Raqam:</b> <code>{driver.car_number}</code>
-📱 <b>Telefon:</b> <code>{driver.user.phone_number if driver.user else 'N/A'}</code>
+📱 <b>Telefon:</b> <code>{driver.phone_number}</code>
 ⭐ <b>Reyting:</b> {driver.rating:.1f}/5.0
 🚕 <b>Jami safarlar:</b> {driver.total_trips}
         """
@@ -268,7 +268,7 @@ async def view_driver_info(callback: CallbackQuery):
             [
                 InlineKeyboardButton(
                     text="📞 Qo'ng'iroq",
-                    url=f"tel:{driver.user.phone_number if driver.user else ''}"
+                    url=f"tel:{driver.phone_number}"
                 ),
                 InlineKeyboardButton(
                     text="💬 Telegram",

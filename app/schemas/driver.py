@@ -26,6 +26,7 @@ class DriverBase(BaseModel):
     """Driver base schema"""
     
     full_name: str = Field( ..., min_length=2, max_length=255, description="To'liq ism" )
+    phone_number: str = Field( ..., min_length=10, max_length=20, description="Telefon raqam (+998901234567)" )
     car_model: str = Field( ..., min_length=2, max_length=100, description="Mashina markasi")
     car_color: str = Field( ..., min_length=2, max_length=50, description="Mashina rangi")
     car_number: str = Field( ..., description="Mashina raqami")
@@ -35,6 +36,7 @@ class DriverBase(BaseModel):
         json_schema_extra={
             "example": {
                 "full_name": "Alisher Karimov",
+                "phone_number": "+998901234567",
                 "car_model": "Chevrolet Cobalt",
                 "car_color": "Oq",
                 "car_number": "01 A 123 BC",
@@ -74,6 +76,7 @@ class DriverCreate(DriverBase):
             "example": {
                 "user_id": 123456789,
                 "full_name": "Alisher Karimov",
+                "phone_number": "+998901234567",
                 "car_model": "Chevrolet Cobalt",
                 "car_color": "Oq",
                 "car_number": "01 A 123 BC",
@@ -94,6 +97,13 @@ class DriverUpdate(BaseModel):
         None,
         min_length=2,
         max_length=255
+    )
+    
+    phone_number: Optional[str] = Field(
+        None,
+        min_length=10,
+        max_length=20,
+        description="Telefon raqam (+998901234567)"
     )
     
     car_model: Optional[str] = None
@@ -189,6 +199,7 @@ class DriverResponse(DriverBase):
                 "driver_id": 1,
                 "user_id": 123456789,
                 "full_name": "Alisher Karimov",
+                "phone_number": "+998901234567",
                 "car_model": "Chevrolet Cobalt",
                 "car_color": "Oq",
                 "car_number": "01 A 123 BC",
@@ -210,6 +221,7 @@ class DriverShortResponse(BaseModel):
     
     driver_id: int
     full_name: str
+    phone_number: str
     car_model: str
     car_number: str
     rating: Decimal

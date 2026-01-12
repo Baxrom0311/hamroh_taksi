@@ -11,6 +11,7 @@ JADVAL STRUKTURASI:
     ├── driver_id (PK)
     ├── user_id (FK → users)
     ├── full_name
+    ├── phone_number (telefon raqam)
     ├── car_model, car_color, car_number
     ├── license_number
     ├── balance (balans)
@@ -99,6 +100,13 @@ class Driver(Base):
         String(255),
         nullable=False,
         comment="To'liq ism"
+    )
+    
+    phone_number: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        index=True,
+        comment="Telefon raqam (+998901234567)"
     )
     
     # ============================================
@@ -354,6 +362,7 @@ class Driver(Base):
             'driver_id': self.driver_id,
             'user_id': self.user_id,
             'full_name': self.full_name,
+            'phone_number': self.phone_number,
             'car_model': self.car_model,
             'car_color': self.car_color,
             'car_number': self.car_number,
@@ -408,6 +417,7 @@ async def create_driver(
     session,
     user_id: int,
     full_name: str,
+    phone_number: str,
     car_model: str,
     car_color: str,
     car_number: str,
@@ -430,6 +440,7 @@ async def create_driver(
     driver = Driver(
         user_id=user_id,
         full_name=full_name,
+        phone_number=phone_number,
         car_model=car_model,
         car_color=car_color,
         car_number=car_number,
@@ -534,6 +545,7 @@ driver = await create_driver(
     session,
     user_id=123456789,
     full_name="Alisher Karimov",
+    phone_number="+998901234567",
     car_model="Cobalt",
     car_color="Oq",
     car_number="01 A 123 BC"

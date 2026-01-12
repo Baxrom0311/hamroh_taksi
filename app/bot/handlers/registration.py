@@ -201,6 +201,7 @@ async def driver_car_number(message: Message, state: FSMContext) -> None:
                 session,
                 user_id=user.id,
                 full_name=data["full_name"],
+                phone_number=data["phone_number"],
                 car_model=data["car_model"],
                 car_color=data["car_color"],
                 car_number=car_number,

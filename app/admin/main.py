@@ -130,7 +130,7 @@ app.include_router(auth_router)
 # Dashboard routes
 from app.admin.routes import dashboard, drivers, passengers, transactions
 from app.admin.routes import settings as settings_routes
-from app.admin.routes import admins
+from app.admin.routes import admins, broadcast
 
 app.include_router(dashboard.router, prefix="/api")
 app.include_router(drivers.router, prefix="/api")
@@ -138,6 +138,7 @@ app.include_router(passengers.router, prefix="/api")
 app.include_router(transactions.router, prefix="/api")
 app.include_router(settings_routes.router, prefix="/api")
 app.include_router(admins.router, prefix="/api")
+app.include_router(broadcast.router, prefix="/api")
 
 
 # ============================================
@@ -149,6 +150,84 @@ async def login_page(request: Request):
     return templates.TemplateResponse(
         "login.html",
         {"request": request}
+    )
+
+@app.get("/admins", response_class=HTMLResponse)
+async def admins_page(
+    request: Request,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Adminlar sahifasi
+    """
+    return templates.TemplateResponse(
+        "admins.html",
+        {
+            "request": request,
+            "user": current_user,
+            "page": "admins",
+            "now": datetime.now()
+        }
+    )
+
+@app.get("/system-settings", response_class=HTMLResponse)
+async def system_settings_page(
+    request: Request,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    System settings page (free/pullik, komissiya va boshqalar)
+    """
+    return templates.TemplateResponse(
+        "settings.html",
+        {
+            "request": request,
+            "user": current_user,
+            "page": "settings",
+            "now": datetime.now()
+        }
+    )
+
+@app.get("/routes", response_class=HTMLResponse)
+async def routes_page(
+    request: Request,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Marshrut/hududlar sahifasi
+    """
+    return templates.TemplateResponse(
+        "routes.html",
+        {
+            "request": request,
+            "user": current_user,
+            "page": "routes",
+            "now": datetime.now()
+        }
+    )
+
+@app.get("/broadcast", response_class=HTMLResponse)
+async def broadcast_page(
+    request: Request,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Xabar yuborish sahifasi (Faqat Glavni Admin)
+    """
+    if current_user.get('role') != 'glavni_admin':
+        raise HTTPException(
+            status_code=403,
+            detail="Bu sahifa faqat Glavni Admin uchun"
+        )
+    
+    return templates.TemplateResponse(
+        "broadcast.html",
+        {
+            "request": request,
+            "user": current_user,
+            "page": "broadcast",
+            "now": datetime.now()
+        }
     )
 
 @app.post("/login", response_class=HTMLResponse)
@@ -270,7 +349,7 @@ async def passengers_page(
             select(Passenger).options(selectinload(Passenger.user)).order_by(Passenger.created_at.desc())
         )
         passengers_list = result.scalars().all()
-        
+
         formatted_passengers = []
         for p in passengers_list:
             formatted_passengers.append({
@@ -280,6 +359,7 @@ async def passengers_page(
                 "gender": "Erkak" if p.gender == "MALE" else "Ayol",
                 "age": p.age,
                 "total_trips": p.total_trips,
+                "is_blocked": p.user.is_blocked if p.user else False,
                 "created_at": p.created_at.strftime("%d.%m.%Y")
             })
 

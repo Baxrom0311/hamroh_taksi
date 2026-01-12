@@ -86,7 +86,7 @@ async def get_pending_transactions_list(
                     'transaction_id': trans.transaction_id,
                     'driver_id': trans.driver_id,
                     'driver_name': driver.full_name if driver else 'Unknown',
-                    'driver_phone': driver.user.phone_number if driver else None,
+                    'driver_phone': driver.phone_number if driver else None,
                     'amount': float(trans.amount),
                     'type': trans.type.value,
                     'status': trans.status.value,
