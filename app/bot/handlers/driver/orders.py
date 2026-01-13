@@ -87,9 +87,19 @@ async def accept_order_handler(callback: CallbackQuery, state: FSMContext):
                 passenger_name = passenger.full_name
                 passenger_phone = passenger.user.phone_number if passenger.user else "N/A"
                 
-                # Buyurtma turi
+                # Buyurtma turi va pochtani aniqlash
                 if order.passenger_count == 0 and order.has_luggage:
                     order_type = "📦 Pochta"
+                    if order.luggage_count > 1:
+                        order_type += f" ({order.luggage_count} dona)"
+                    if order.luggage_description:
+                        order_type += f"\n📝 {order.luggage_description}"
+                elif order.has_luggage and order.passenger_count > 0:
+                    order_type = f"👥 {order.passenger_count} kishi"
+                    if order.luggage_count > 0:
+                        order_type += f" + 📦 Pochta ({order.luggage_count} dona)"
+                        if order.luggage_description:
+                            order_type += f"\n📝 {order.luggage_description}"
                 else:
                     order_type = f"👥 {order.passenger_count} kishi"
                 
@@ -251,12 +261,16 @@ async def trip_confirmed(callback: CallbackQuery, state: FSMContext):
             from app.tasks.matching import auto_complete_trip_task
             auto_complete_trip_task.apply_async(args=[order_id], countdown=600)
             
+            # State yangilash - safar boshlandi
+            await state.update_data(current_order_id=order_id)
+            await state.set_state(DriverStates.trip_in_progress)
+            
             if callback.message is not None:
                 await callback.message.edit_text( # type: ignore
                     f"✅ <b>Safar boshlandi!</b>\n\n"
                     f"📦 Buyurtma #{order_id}\n\n"
                     f"🚗 Xavfsiz yo'l!\n\n"
-                    f"⏭ Safar yakunlangach 'Yakunlash' tugmasini bosing",
+                    f"⏭ Safar yakunlangach 'To'lgach ketish' tugmasini bosing",
                     reply_markup=get_trip_active_keyboard()
                 )
             
@@ -274,7 +288,7 @@ async def trip_confirmed(callback: CallbackQuery, state: FSMContext):
 # ============================================
 
 @router.message(
-    DriverStates.trip_confirmation,
+    DriverStates.trip_in_progress,
     F.text == "To'lgach ketish"
 )
 async def complete_trip_handler(message: Message, state: FSMContext):
@@ -327,7 +341,7 @@ async def complete_trip_handler(message: Message, state: FSMContext):
 # ============================================
 
 @router.message(
-    DriverStates.trip_in_progress,
+    (DriverStates.trip_in_progress | DriverStates.trip_confirmation),
     F.text == "📞 Yo'lovchi bilan bog'lanish"
 )
 async def contact_passenger_handler(message: Message, state: FSMContext):
@@ -357,6 +371,23 @@ async def contact_passenger_handler(message: Message, state: FSMContext):
         passenger = order.passenger
         passenger_phone = passenger.user.phone_number if passenger.user else "N/A"
         passenger_name = passenger.full_name
+        
+        # Buyurtma turi va pochtani aniqlash
+        order_info = ""
+        if order.passenger_count == 0 and order.has_luggage:
+            order_info = "📦 Pochta"
+            if order.luggage_count > 1:
+                order_info += f" ({order.luggage_count} dona)"
+            if order.luggage_description:
+                order_info += f"\n📝 {order.luggage_description}"
+        elif order.has_luggage and order.passenger_count > 0:
+            order_info = f"👥 {order.passenger_count} kishi"
+            if order.luggage_count > 0:
+                order_info += f" + 📦 Pochta ({order.luggage_count} dona)"
+                if order.luggage_description:
+                    order_info += f"\n📝 {order.luggage_description}"
+        else:
+            order_info = f"👥 {order.passenger_count} kishi"
         
         # Telefon raqamini tekshirish
         phone_valid = passenger_phone and passenger_phone != "N/A" and passenger_phone != "UNKNOWN" and passenger_phone.strip()
@@ -388,6 +419,7 @@ async def contact_passenger_handler(message: Message, state: FSMContext):
 
 👤 <b>Ism:</b> {passenger_name}
 📱 <b>Telefon:</b> <code>{passenger_phone}</code>
+{order_info}
         """
         
         await message.answer(
