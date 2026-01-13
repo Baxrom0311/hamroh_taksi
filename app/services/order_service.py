@@ -579,18 +579,45 @@ async def complete_trip(order_id: int, driver_id: int) -> dict:
             # 1. Status o'zgartirish
             await complete_order(session, order_id)
             
-            # 2. Driver statistikasi
+            # 2. Driver statistikasi va bo'shatish
             from sqlalchemy import update
-            await session.execute(
-                update(Driver)
-                .where(Driver.driver_id == driver_id)
-                .values(
-                    total_trips=Driver.total_trips + 1,
-                    is_on_trip=False,
-                    available_seats=0,  # Reset
-                    last_trip_at=func.now()
-                )
+            
+            # Boshqa aktiv buyurtmalarni tekshirish
+            active_orders_result = await session.execute(
+                select(Order)
+                .where(Order.driver_id == driver_id)
+                .where(Order.status.in_([OrderStatus.ACCEPTED, OrderStatus.IN_PROGRESS]))
+                .where(Order.order_id != order_id)  # Hozirgi buyurtmani hisobga olmaslik
             )
+            other_active_orders = active_orders_result.scalars().all()
+            
+            # Agar boshqa aktiv buyurtmalar bo'lsa, is_on_trip=True qoladi
+            # Aks holda, is_on_trip=False va available_seats qaytariladi
+            has_other_active_orders = len(other_active_orders) > 0
+            
+            if has_other_active_orders:
+                # Boshqa aktiv buyurtmalar bor - faqat statistikani yangilash
+                await session.execute(
+                    update(Driver)
+                    .where(Driver.driver_id == driver_id)
+                    .values(
+                        total_trips=Driver.total_trips + 1,
+                        last_trip_at=func.now()
+                        # is_on_trip va available_seats o'zgarmaydi
+                    )
+                )
+            else:
+                # Boshqa aktiv buyurtmalar yo'q - to'liq bo'shatish
+                await session.execute(
+                    update(Driver)
+                    .where(Driver.driver_id == driver_id)
+                    .values(
+                        total_trips=Driver.total_trips + 1,
+                        is_on_trip=False,
+                        available_seats=Driver.available_seats + order.passenger_count,  # O'rinlarni qaytarish
+                        last_trip_at=func.now()
+                    )
+                )
             
             # 3. Passenger statistikasi
             await session.execute(

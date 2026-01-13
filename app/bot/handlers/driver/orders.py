@@ -15,10 +15,10 @@ from aiogram.types import CallbackQuery, Message
 from aiogram.fsm.context import FSMContext
 from loguru import logger
 
-from app.core.database import get_session
-from app.models.driver import get_driver_by_user_id
+from app.core.database import get_session, transaction
+from app.models.driver import get_driver_by_user_id, Driver
 from app.models.order import Order, get_order_by_id
-from sqlalchemy import select
+from sqlalchemy import select, update, func
 from sqlalchemy.orm import selectinload
 from app.models.passenger import Passenger
 from app.services.order_service import (
@@ -174,7 +174,101 @@ async def accept_order_handler(callback: CallbackQuery, state: FSMContext):
 
 
 # ============================================
-# YETIB KELDIM (GPS CHECK)
+# YO'LGA CHIQDIK (SAFAR BOSHLASH)
+# ============================================
+
+@router.message(
+    DriverStates.trip_in_progress,
+    F.text == "🚗 Yo'lga chiqdik"
+)
+async def driver_started_trip(message: Message, state: FSMContext):
+    """
+    Haydovchi "Yo'lga chiqdik" tugmasini bosdi - safar boshlandi
+    
+    NIMA BO'LADI:
+    1. Safar boshlandi (ACCEPTED → IN_PROGRESS)
+    2. Driver is_on_trip=True (15 daqiqa davomida yangi buyurtma olmaydi)
+    3. Qolgan bo'sh o'rinlar tekshiruvi
+    4. Agar o'rinlar to'lganda, navbatdan o'chirish
+    5. 15 daqiqadan keyin avtomatik yakunlash
+    """
+    user_id = message.from_user.id # type: ignore
+    data = await state.get_data()
+    order_id = data.get('current_order_id')
+    
+    if not order_id:
+        await message.answer("❌ Aktiv buyurtma topilmadi")
+        return
+    
+    async with get_session() as session:
+        driver = await get_driver_by_user_id(session, user_id)
+        
+        if not driver:
+            await message.answer("❌ Haydovchi topilmadi")
+            return
+        
+        # Order'ni olish
+        order = await get_order_by_id(session, order_id)
+        
+        if not order or order.driver_id != driver.driver_id:
+            await message.answer("❌ Buyurtma topilmadi yoki sizga tegishli emas")
+            return
+        
+        if order.status != OrderStatus.ACCEPTED:
+            await message.answer("⚠️ Bu buyurtma allaqachon boshlandi")
+            return
+        
+        # Safarni boshlash
+        result = await start_trip(order_id, driver.driver_id)
+        
+        if result['success']:
+            # Qolgan bo'sh o'rinlar tekshiruvi
+            remaining_seats = driver.available_seats - order.passenger_count
+            
+            # Agar o'rinlar to'lganda, navbatdan o'chirish
+            if remaining_seats <= 0:
+                from app.services.queue_service import driver_queue
+                await driver_queue.remove_driver(driver.driver_id, order.route_id)
+                logger.info(
+                    f"Driver {driver.driver_id} removed from queue: "
+                    f"no more seats available after trip started"
+                )
+            
+            # Avto-yakunlash task (15 daqiqa)
+            from app.tasks.matching import auto_complete_trip_task
+            auto_complete_trip_task.apply_async(args=[order_id], countdown=900)  # 15 daqiqa = 900 soniya
+            
+            await message.answer(
+                f"✅ <b>Yo'lga chiqdingiz!</b>\n\n"
+                f"📦 Buyurtma #{order_id}\n\n"
+                f"🚗 Xavfsiz yo'l!\n\n"
+                f"⏱ Safar 15 daqiqadan keyin avtomatik yakunlanadi.\n"
+                f"Yoki 'To'lgach ketish' tugmasini bosing.",
+                reply_markup=get_trip_active_keyboard(),
+                parse_mode="HTML"
+            )
+            
+            # Yo'lovchiga xabar
+            if order.passenger:
+                from app.bot.main import bot
+                try:
+                    await bot.send_message(
+                        chat_id=order.passenger.user_id,
+                        text=f"✅ <b>Haydovchi yo'lga chiqdi!</b>\n\n"
+                             f"📦 Buyurtma #{order_id}\n\n"
+                             f"🚗 Xavfsiz yo'l!",
+                        parse_mode="HTML"
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to notify passenger: {e}")
+            
+            logger.info(f"Trip started by driver: order={order_id}, driver={driver.driver_id}")
+        else:
+            await message.answer(f"❌ {result['message']}")
+
+
+# ============================================
+# YETIB KELDIM (GPS CHECK) - ESKILANGA
 # ============================================
 
 @router.message(
@@ -458,25 +552,113 @@ async def contact_passenger_handler(message: Message, state: FSMContext):
 
 
 @router.message(
-    DriverStates.trip_in_progress,
+    StateFilter(
+        DriverStates.trip_in_progress, 
+        DriverStates.trip_confirmation
+    ),
     F.text == "❌ Buyurtmani bekor qilish"
 )
 async def cancel_order_handler(message: Message, state: FSMContext):
     """
-    Haydovchi buyurtmani bekor qiladi
+    Haydovchi buyurtma(lar)ni bekor qiladi
+    Barcha aktiv buyurtmalar ko'rsatiladi va tanlash mumkin
     
     DIQQAT: Bu firibgarlik hisoblanadi!
     """
-    await message.answer(
-        "⚠️ <b>Buyurtmani bekor qilmoqchimisiz?</b>\n\n"
-        "Bu jiddiy harakat! Agar bekor qilsangiz:\n"
-        "• Komissiya qaytarilmaydi\n"
-        "• Warning olasiz\n"
-        "• 3 ta warning = 24 soat ban\n\n"
-        "Davom ettirish uchun 'Tasdiqlash' yozing"
-    )
+    user_id = message.from_user.id # type: ignore
+    
+    async with get_session() as session:
+        driver = await get_driver_by_user_id(session, user_id)
+        
+        if not driver:
+            await message.answer("❌ Haydovchi topilmadi")
+            return
+        
+        # Barcha aktiv buyurtmalarni olish
+        from app.models.order import OrderStatus
+        active_orders_result = await session.execute(
+            select(Order)
+            .options(selectinload(Order.passenger))
+            .where(Order.driver_id == driver.driver_id)
+            .where(Order.status.in_([OrderStatus.ACCEPTED, OrderStatus.IN_PROGRESS]))
+            .order_by(Order.created_at)
+        )
+        active_orders = active_orders_result.scalars().all()
+        
+        if not active_orders:
+            await message.answer("❌ Aktiv buyurtmalar topilmadi")
+            return
+        
+        # Agar bitta buyurtma bo'lsa, to'g'ridan-to'g'ri tasdiqlash so'rash
+        if len(active_orders) == 1:
+            order = active_orders[0]
+            await state.update_data(cancel_order_id=order.order_id)
+            await message.answer(
+                "⚠️ <b>Buyurtmani bekor qilmoqchimisiz?</b>\n\n"
+                f"📦 Buyurtma #{order.order_id}\n\n"
+                "Bu jiddiy harakat! Agar bekor qilsangiz:\n"
+                "• Komissiya qaytarilmaydi\n"
+                "• Warning olasiz\n"
+                "• 3 ta warning = 24 soat ban\n\n"
+                "Davom ettirish uchun 'Tasdiqlash' yozing"
+            )
+            await state.set_state(DriverStates.confirming_cancellation)
+            return
+        
+        # Ko'p buyurtma bo'lsa, tanlash uchun keyboard yaratish
+        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+        
+        keyboard_buttons = []
+        for order in active_orders:
+            passenger_name = order.passenger.full_name if order.passenger else "Noma'lum"
+            keyboard_buttons.append([
+                InlineKeyboardButton(
+                    text=f"❌ #{order.order_id} - {passenger_name}",
+                    callback_data=f"cancel_order_select:{order.order_id}"
+                )
+            ])
+        
+        keyboard_buttons.append([
+            InlineKeyboardButton(
+                text="❌ Barchasini bekor qilish",
+                callback_data="cancel_all_orders"
+            )
+        ])
+        
+        keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
+        
+        await message.answer(
+            "⚠️ <b>Qaysi buyurtmani bekor qilmoqchisiz?</b>\n\n"
+            "Tanlang:",
+            reply_markup=keyboard,
+            parse_mode="HTML"
+        )
+
+
+@router.callback_query(F.data.startswith("cancel_order_select:"))
+async def cancel_order_select_handler(callback: CallbackQuery, state: FSMContext):
+    """Bekor qilish uchun buyurtma tanlandi"""
+    if callback.data is None:
+        await callback.answer("Xatolik: data mavjud emas")
+        return
+    
+    order_id = int(callback.data.split(":")[1])
+    await state.update_data(cancel_order_id=order_id)
+    
+    if callback.message:
+        await callback.message.edit_text(
+            "⚠️ <b>Buyurtmani bekor qilmoqchimisiz?</b>\n\n"
+            f"📦 Buyurtma #{order_id}\n\n"
+            "Bu jiddiy harakat! Agar bekor qilsangiz:\n"
+            "• Komissiya qaytarilmaydi\n"
+            "• Warning olasiz\n"
+            "• 3 ta warning = 24 soat ban\n\n"
+            "Davom ettirish uchun 'Tasdiqlash' yozing",
+            parse_mode="HTML"
+        )
     
     await state.set_state(DriverStates.confirming_cancellation)
+    await callback.answer()
 
 
 @router.message(
@@ -489,20 +671,88 @@ async def confirm_cancellation(message: Message, state: FSMContext):
     """
     user_id = message.from_user.id # type: ignore
     data = await state.get_data()
-    order_id = data.get('current_order_id')
+    order_id = data.get('cancel_order_id') or data.get('current_order_id')
     
-    # Bekor qilish logikasi
-    # from app.services.order_service import cancel_order_by_driver
-    # result = await cancel_order_by_driver(order_id, driver.driver_id)
+    if not order_id:
+        await message.answer("❌ Buyurtma topilmadi")
+        await state.clear()
+        return
     
-    await message.answer(
-        "❌ <b>Buyurtma bekor qilindi</b>\n\n"
-        "⚠️ Warning olindingiz!",
-        reply_markup=get_driver_main_menu(),
-        parse_mode="HTML"
-    )
-    
-    await state.clear()
+    async with get_session() as session:
+        driver = await get_driver_by_user_id(session, user_id)
+        
+        if not driver:
+            await message.answer("❌ Haydovchi topilmadi")
+            await state.clear()
+            return
+        
+        # Bekor qilish logikasi
+        from app.models.order import OrderStatus
+        from sqlalchemy import update
+        from app.core.database import transaction
+        
+        async with transaction() as trans_session:
+            # Order'ni cancel qilish
+            order_result = await trans_session.execute(
+                select(Order).where(Order.order_id == order_id)
+            )
+            order = order_result.scalar_one_or_none()
+            
+            if not order or order.driver_id != driver.driver_id:
+                await message.answer("❌ Buyurtma topilmadi yoki sizga tegishli emas")
+                await state.clear()
+                return
+            
+            # Order'ni cancel qilish
+            await trans_session.execute(
+                update(Order)
+                .where(Order.order_id == order_id)
+                .values(
+                    status=OrderStatus.CANCELLED,
+                    cancellation_reason='driver_cancelled',
+                    cancelled_at=func.now(),
+                    driver_id=None
+                )
+            )
+            
+            # Driver'ni bo'shatish
+            await trans_session.execute(
+                update(Driver)
+                .where(Driver.driver_id == driver.driver_id)
+                .values(
+                    available_seats=Driver.available_seats + order.passenger_count,
+                    is_on_trip=False
+                )
+            )
+            
+            # Yo'lovchiga xabar
+            if order.passenger:
+                from app.bot.main import bot
+                try:
+                    await bot.send_message(
+                        chat_id=order.passenger.user_id,
+                        text=f"❌ <b>Buyurtma bekor qilindi</b>\n\n"
+                             f"📦 Buyurtma #{order_id}\n\n"
+                             f"Haydovchi buyurtmani bekor qildi.\n"
+                             f"Yangi haydovchi topilmoqda...",
+                        parse_mode="HTML"
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to notify passenger: {e}")
+            
+            # Yangi haydovchi topish
+            from app.tasks.matching import find_driver_for_order_task
+            find_driver_for_order_task.delay(order_id)
+        
+        await message.answer(
+            f"❌ <b>Buyurtma bekor qilindi</b>\n\n"
+            f"📦 Buyurtma #{order_id}\n\n"
+            f"⚠️ Warning olindingiz!",
+            reply_markup=get_driver_main_menu(),
+            parse_mode="HTML"
+        )
+        
+        await state.clear()
 
 
 def get_driver_main_menu():

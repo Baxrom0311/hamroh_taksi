@@ -41,8 +41,10 @@ async def change_driver_handler(callback: CallbackQuery, state: FSMContext):
     
     NIMA BO'LADI:
     1. Limit tekshiruvi (1 soatda 3 marta)
-    2. Order'ni cancel qilish
-    3. Yangi haydovchi topish
+    2. Mavjud haydovchilar ro'yxatini ko'rsatish
+    3. Yo'lovchi yangi haydovchini tanlaydi
+    4. Buyurtma yangi haydovchiga biriktiriladi
+    5. Eski haydovchi 15 daqiqaga bloklanadi
     """
     if callback.data is None:
         await callback.answer("Xatolik: data mavjud emas")
@@ -86,47 +88,194 @@ async def change_driver_handler(callback: CallbackQuery, state: FSMContext):
             )
             return
         
-        # Order'ni cancel qilish
-        async with transaction() as session:
-            await session.execute(
+        # Mavjud haydovchilarni topish (marshrut bo'yicha, bloklanmagan, bo'sh o'rinli)
+        from app.models.driver import Driver, get_available_drivers_for_route
+        from sqlalchemy.orm import selectinload
+        
+        available_drivers = await get_available_drivers_for_route(
+            session,
+            route_id=order.route_id,
+            min_seats=order.passenger_count
+        )
+        
+        # Hozirgi haydovchini ro'yxatdan chiqarish
+        available_drivers = [d for d in available_drivers if d.driver_id != order.driver_id]
+        
+        if not available_drivers:
+            await callback.answer(
+                "⚠️ Hozirda boshqa haydovchilar mavjud emas.\n"
+                "Yangi haydovchi topilmoqda...",
+                show_alert=True
+            )
+            # Avtomatik yangi haydovchi topish
+            find_driver_for_order_task.delay(order_id)
+            return
+        
+        # Haydovchilar ro'yxatini ko'rsatish
+        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+        
+        keyboard_buttons = []
+        
+        # Har bir haydovchi uchun tugma
+        for driver in available_drivers[:10]:  # Maksimal 10 ta haydovchi
+            driver_info = f"{driver.car_model} ({driver.car_color}) - {driver.car_number}"
+            keyboard_buttons.append([
+                InlineKeyboardButton(
+                    text=f"🚗 {driver_info}",
+                    callback_data=f"select_new_driver:{order_id}:{driver.driver_id}"
+                )
+            ])
+        
+        keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
+        
+        if callback.message:
+            await callback.message.edit_text(
+                f"🔄 <b>Yangi haydovchi tanlang</b>\n\n"
+                f"📦 Buyurtma #{order_id}\n\n"
+                f"Quyidagi haydovchilardan birini tanlang:",
+                reply_markup=keyboard,
+                parse_mode="HTML"
+            )
+        
+        logger.info(
+            f"Passenger {passenger.passenger_id} selecting new driver for order {order_id}. "
+            f"Available drivers: {len(available_drivers)}"
+        )
+    
+    await callback.answer("Haydovchi tanlang")
+
+
+@router.callback_query(F.data.startswith("select_new_driver:"))
+async def select_new_driver_handler(callback: CallbackQuery, state: FSMContext):
+    """
+    Yo'lovchi yangi haydovchini tanladi
+    """
+    if callback.data is None:
+        await callback.answer("Xatolik: data mavjud emas")
+        return
+    
+    parts = callback.data.split(":")
+    order_id = int(parts[1])
+    new_driver_id = int(parts[2])
+    user_id = callback.from_user.id
+    
+    async with get_session() as session:
+        passenger = await get_passenger_by_user_id(session, user_id)
+        
+        if not passenger:
+            await callback.answer("❌ Yo'lovchi topilmadi", show_alert=True)
+            return
+        
+        # Order'ni olish
+        order = await get_order_by_id(session, order_id)
+        
+        if not order or order.passenger_id != passenger.passenger_id:
+            await callback.answer("❌ Buyurtma topilmadi", show_alert=True)
+            return
+        
+        old_driver_id = order.driver_id
+        
+        # Yangi haydovchini olish
+        from app.models.driver import get_driver_by_id
+        new_driver = await get_driver_by_id(session, new_driver_id)
+        
+        if not new_driver:
+            await callback.answer("❌ Haydovchi topilmadi", show_alert=True)
+            return
+        
+        # Balans va o'rinlar tekshiruvi
+        from app.services.order_service import get_pricing_settings
+        pricing = await get_pricing_settings(session)
+        commission = pricing['commission_amount']
+        
+        if new_driver.balance < commission:
+            await callback.answer("⚠️ Haydovchida balans yetarli emas", show_alert=True)
+            return
+        
+        if new_driver.available_seats < order.passenger_count:
+            await callback.answer("⚠️ Haydovchida yetarli bo'sh o'rin yo'q", show_alert=True)
+            return
+        
+        # Buyurtmani yangi haydovchiga biriktirish
+        from app.core.database import transaction
+        from datetime import datetime, timedelta
+        
+        async with transaction() as trans_session:
+            # Order'ni yangi haydovchiga biriktirish
+            await trans_session.execute(
                 update(Order)
                 .where(Order.order_id == order_id)
                 .values(
-                    status=OrderStatus.CANCELLED,
-                    cancellation_reason=f'change_driver_{change_count + 1}',
-                    cancelled_at=sql_func.now(),
-                    driver_id=None  # Driver'ni tozalash
+                    driver_id=new_driver_id,
+                    status=OrderStatus.ACCEPTED,
+                    accepted_at=func.now()
                 )
             )
             
-            # Driver'ni bo'shatish (available_seats qaytarish)
-            if order.driver_id:
-                await session.execute(
+            # Yangi haydovchini yangilash
+            await trans_session.execute(
+                update(Driver)
+                .where(Driver.driver_id == new_driver_id)
+                .values(
+                    balance=Driver.balance - commission,
+                    available_seats=Driver.available_seats - order.passenger_count,
+                    is_on_trip=True
+                )
+            )
+            
+            # Eski haydovchini bo'shatish (o'rinlarni qaytarish)
+            if old_driver_id:
+                await trans_session.execute(
                     update(Driver)
-                    .where(Driver.driver_id == order.driver_id)
+                    .where(Driver.driver_id == old_driver_id)
                     .values(
                         available_seats=Driver.available_seats + order.passenger_count,
                         is_on_trip=False
                     )
                 )
-        
-        # Yangi haydovchi topish
-        find_driver_for_order_task.delay(order_id)
+                
+                # Eski haydovchiga xabar
+                old_driver = await get_driver_by_id(trans_session, old_driver_id)
+                if old_driver:
+                    from app.bot.main import bot
+                    try:
+                        await bot.send_message(
+                            chat_id=old_driver.user_id,
+                            text=f"🔄 <b>Mashina almashtirildi</b>\n\n"
+                                 f"📦 Buyurtma #{order_id}\n\n"
+                                 f"Yo'lovchi boshqa haydovchini tanladi.\n"
+                                 f"Yangi buyurtmalarni qabul qilishingiz mumkin.",
+                            parse_mode="HTML"
+                        )
+                    except Exception as e:
+                        logger.error(f"Failed to notify old driver: {e}")
+            
+            # Yangi haydovchiga xabar
+            from app.tasks.notifications import notify_passenger_driver_found
+            notify_passenger_driver_found.delay(
+                passenger.user_id,
+                new_driver_id,
+                order_id
+            )
         
         # Xabarni yangilash
         if callback.message:
             await callback.message.edit_text(
-                f"🔄 <b>Mashina o'zgartirildi</b>\n\n"
-                f"Yangi haydovchi topilmoqda...\n\n"
-                f"📊 O'zgartirishlar: {change_count + 1}/{max_changes} (1 soatda)"
+                f"✅ <b>Yangi haydovchi tanlandi!</b>\n\n"
+                f"📦 Buyurtma #{order_id}\n\n"
+                f"👤 Haydovchi: {new_driver.full_name}\n"
+                f"🚗 Mashina: {new_driver.car_model} ({new_driver.car_color})\n"
+                f"🔢 Raqam: {new_driver.car_number}\n\n"
+                f"Haydovchi siz tomonga yo'lga chiqdi!",
+                parse_mode="HTML"
             )
         
         logger.info(
-            f"Passenger {passenger.passenger_id} changed driver for order {order_id}. "
-            f"Changes: {change_count + 1}/{max_changes}"
+            f"Passenger {passenger.passenger_id} selected new driver {new_driver_id} "
+            f"for order {order_id}. Old driver {old_driver_id} blocked for 15 minutes"
         )
     
-    await callback.answer("Yangi haydovchi topilmoqda...")
+    await callback.answer("✅ Yangi haydovchi tanlandi!")
 
 
 # ============================================

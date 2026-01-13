@@ -541,7 +541,6 @@ async def remove_driver_from_queue_task(driver_id: int, route_id: Optional[int] 
     logger.info(f"Driver {driver_id} removed from queue")
 
 
-
 __all__ = [
     'auto_complete_trip_task',
     'find_driver_for_order_task',
