@@ -8,6 +8,7 @@ BU HANDLER NIMA QILADI:
 - Safar boshlash
 - Safar yakunlash
 """
+from aiogram.filters import StateFilter
 
 from aiogram import Router, F
 from aiogram.types import CallbackQuery, Message
@@ -341,7 +342,10 @@ async def complete_trip_handler(message: Message, state: FSMContext):
 # ============================================
 
 @router.message(
-    (DriverStates.trip_in_progress | DriverStates.trip_confirmation),
+    StateFilter(
+        DriverStates.trip_in_progress, 
+        DriverStates.trip_confirmation
+        ),
     F.text == "📞 Yo'lovchi bilan bog'lanish"
 )
 async def contact_passenger_handler(message: Message, state: FSMContext):
