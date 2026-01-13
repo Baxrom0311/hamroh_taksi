@@ -24,12 +24,7 @@ def get_google_maps_link(lat: float, lon: float, label: Optional[str] = None) ->
     Returns:
         Google Maps URL
     """
-    if label:
-        # Label bilan
-        return f"https://www.google.com/maps/search/?api=1&query={lat},{lon}&query_place_id={label}"
-    else:
-        # Oddiy koordinatalar
-        return f"https://www.google.com/maps?q={lat},{lon}"
+    return f"https://www.google.com/maps?q={lat},{lon}"
 
 
 def get_telegram_location_link(lat: float, lon: float) -> str:
