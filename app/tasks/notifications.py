@@ -215,14 +215,7 @@ Haydovchi siz tomonga yo'lga chiqdi!
         # Klaviatura
         keyboard_buttons = []
         
-        # Telefon raqami to'g'ri bo'lsa qo'ng'iroq tugmasini qo'shish
-        if phone_valid:
-            keyboard_buttons.append([
-                InlineKeyboardButton(
-                    text="📞 Qo'ng'iroq qilish",
-                    url=f"tel:{phone_number}"
-                )
-            ])
+        # Telefon raqami faqat matn sifatida ko'rsatiladi (tel: URL Telegram tomonidan qo'llab-quvvatlanmaydi)
         
         # Mashinani o'zgartirish tugmasi (limit bo'lsa)
         if can_change:
@@ -301,13 +294,7 @@ async def request_passenger_confirmation(order_id: int, driver_id: int):
         # Klaviatura tugmalari
         keyboard_buttons = []
         
-        if phone_valid:
-            keyboard_buttons.append([
-                InlineKeyboardButton(
-                    text="📞 Qo'ng'iroq qilish",
-                    url=f"tel:{driver_phone}"
-                )
-            ])
+        # Telefon raqami faqat matn sifatida ko'rsatiladi (tel: URL Telegram tomonidan qo'llab-quvvatlanmaydi)
         
         if driver.user:
             keyboard_buttons.append([

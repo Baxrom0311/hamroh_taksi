@@ -267,10 +267,6 @@ async def view_driver_info(callback: CallbackQuery):
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text="📞 Qo'ng'iroq",
-                    url=f"tel:{driver.phone_number}"
-                ),
-                InlineKeyboardButton(
                     text="💬 Telegram",
                     url=f"tg://user?id={driver.user_id}"
                 )

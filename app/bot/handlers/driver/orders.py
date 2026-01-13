@@ -350,81 +350,105 @@ async def complete_trip_handler(message: Message, state: FSMContext):
 )
 async def contact_passenger_handler(message: Message, state: FSMContext):
     """
-    Haydovchi yo'lovchi bilan bog'lanish uchun ma'lumotlarni ko'radi
+    Haydovchi yo'lovchi(lar) bilan bog'lanish uchun ma'lumotlarni ko'radi
+    Barcha aktiv buyurtmalardagi yo'lovchilar ko'rsatiladi
     """
     user_id = message.from_user.id # type: ignore
-    data = await state.get_data()
-    order_id = data.get('current_order_id')
-    
-    if not order_id:
-        await message.answer("❌ Aktiv buyurtma topilmadi")
-        return
     
     async with get_session() as session:
-        order_result = await session.execute(
-            select(Order)
-            .options(selectinload(Order.passenger).selectinload(Passenger.user))
-            .where(Order.order_id == order_id)
-        )
-        order = order_result.scalar_one_or_none()
+        driver = await get_driver_by_user_id(session, user_id)
         
-        if not order or not order.passenger:
-            await message.answer("❌ Yo'lovchi ma'lumotlari topilmadi")
+        if not driver:
+            await message.answer("❌ Haydovchi topilmadi")
             return
         
-        passenger = order.passenger
-        passenger_phone = passenger.user.phone_number if passenger.user else "N/A"
-        passenger_name = passenger.full_name
+        # Barcha aktiv buyurtmalarni olish (ACCEPTED va IN_PROGRESS) - passenger ma'lumotlari bilan
+        from app.models.order import OrderStatus
+        active_orders_result = await session.execute(
+            select(Order)
+            .options(selectinload(Order.passenger).selectinload(Passenger.user))
+            .where(Order.driver_id == driver.driver_id)
+            .where(Order.status.in_([OrderStatus.ACCEPTED, OrderStatus.IN_PROGRESS]))
+            .order_by(Order.created_at)
+        )
+        active_orders = active_orders_result.scalars().all()
         
-        # Buyurtma turi va pochtani aniqlash
-        order_info = ""
-        if order.passenger_count == 0 and order.has_luggage:
-            order_info = "📦 Pochta"
-            if order.luggage_count > 1:
-                order_info += f" ({order.luggage_count} dona)"
-            if order.luggage_description:
-                order_info += f"\n📝 {order.luggage_description}"
-        elif order.has_luggage and order.passenger_count > 0:
-            order_info = f"👥 {order.passenger_count} kishi"
-            if order.luggage_count > 0:
-                order_info += f" + 📦 Pochta ({order.luggage_count} dona)"
+        if not active_orders:
+            await message.answer("❌ Aktiv buyurtmalar topilmadi")
+            return
+        
+        # Barcha yo'lovchilar ma'lumotlarini yig'ish
+        from app.utils.location_helpers import get_google_maps_link
+        
+        passengers_info = []
+        
+        for idx, order in enumerate(active_orders, 1):
+            if not order.passenger:
+                continue
+                
+            passenger = order.passenger
+            passenger_name = passenger.full_name
+            passenger_phone = passenger.user.phone_number if passenger.user else "N/A"
+            
+            # Google Maps link
+            google_maps_link = get_google_maps_link(
+                float(order.pickup_lat),
+                float(order.pickup_lon),
+                order.pickup_location
+            )
+            
+            # Buyurtma turi
+            order_type = ""
+            if order.passenger_count == 0 and order.has_luggage:
+                order_type = "📦 Pochta"
+                if order.luggage_count > 1:
+                    order_type += f" ({order.luggage_count} dona)"
                 if order.luggage_description:
-                    order_info += f"\n📝 {order.luggage_description}"
-        else:
-            order_info = f"👥 {order.passenger_count} kishi"
+                    order_type += f"\n📝 {order.luggage_description}"
+            elif order.has_luggage and order.passenger_count > 0:
+                order_type = f"👥 {order.passenger_count} kishi"
+                if order.luggage_count > 0:
+                    order_type += f" + 📦 Pochta ({order.luggage_count} dona)"
+                    if order.luggage_description:
+                        order_type += f"\n📝 {order.luggage_description}"
+            else:
+                order_type = f"👥 {order.passenger_count} kishi"
+            
+            # Yo'lovchi ma'lumotlari
+            passenger_text = f"""
+<b>{idx}-mijoz</b>
+👤 <b>Ism:</b> {passenger_name}
+📍 <b>Manzil:</b> <a href="{google_maps_link}">{order.pickup_location}</a>
+📱 <b>Telefon:</b> <code>{passenger_phone}</code>
+{order_type}
+            """.strip()
+            
+            passengers_info.append(passenger_text)
         
-        # Telefon raqamini tekshirish
-        phone_valid = passenger_phone and passenger_phone != "N/A" and passenger_phone != "UNKNOWN" and passenger_phone.strip()
+        # Barcha ma'lumotlarni birlashtirish
+        contact_text = f"""
+📞 <b>Yo'lovchilar ma'lumotlari</b>
+
+{chr(10).join(passengers_info)}
+        """.strip()
         
+        # Telegram linklar uchun keyboard (faqat birinchi yo'lovchi uchun yoki barchasi uchun)
         from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
         
         keyboard_buttons = []
         
-        if phone_valid:
-            keyboard_buttons.append([
-                InlineKeyboardButton(
-                    text="📞 Qo'ng'iroq qilish",
-                    url=f"tel:{passenger_phone}"
-                )
-            ])
-        
-        if passenger.user:
-            keyboard_buttons.append([
-                InlineKeyboardButton(
-                    text="💬 Telegram",
-                    url=f"tg://user?id={passenger.user.user_id}"
-                )
-            ])
+        # Har bir yo'lovchi uchun Telegram link
+        for order in active_orders:
+            if order.passenger and order.passenger.user:
+                passenger_name = order.passenger.full_name
+                keyboard_buttons.append([
+                    InlineKeyboardButton(
+                        text=f"💬 {passenger_name}",
+                        url=f"tg://user?id={order.passenger.user.user_id}"
+                    )
+                ])
         
         keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons) if keyboard_buttons else None
-        
-        contact_text = f"""
-📞 <b>Yo'lovchi ma'lumotlari</b>
-
-👤 <b>Ism:</b> {passenger_name}
-📱 <b>Telefon:</b> <code>{passenger_phone}</code>
-{order_info}
-        """
         
         await message.answer(
             contact_text,
