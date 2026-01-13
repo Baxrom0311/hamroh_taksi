@@ -20,7 +20,7 @@ from loguru import logger
 from app.admin.auth import get_current_user
 from app.core.database import get_session
 from app.core.redis_client import redis_client
-from app.models.route import Route, create_route, get_all_active_routes
+from app.models.route import Route, create_route, get_all_active_routes, get_all_routes
 from sqlalchemy import select, update, delete
 
 
@@ -159,11 +159,11 @@ async def get_routes_list(
     current_user: dict = Depends(get_current_user)
 ):
     """
-    Barcha marshrutlar
+    Barcha marshrutlar (aktiv va nofaol)
     """
     try:
         async with get_session() as session:
-            routes = await get_all_active_routes(session)
+            routes = await get_all_routes(session)
             
             routes_list = [
                 {
@@ -252,6 +252,54 @@ async def create_new_route(
     
     except Exception as e:
         logger.error(f"Failed to create route: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put("/routes/{route_id}/toggle")
+async def toggle_route_status(
+    route_id: int,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Marshrut holatini o'zgartirish (enable/disable)
+    """
+    try:
+        async with get_session() as session:
+            # Route'ni olish
+            from app.models.route import get_route_by_id
+            route = await get_route_by_id(session, route_id)
+            
+            if not route:
+                raise HTTPException(
+                    status_code=404,
+                    detail="Marshrut topilmadi"
+                )
+            
+            # Holatni o'zgartirish
+            new_status = not route.is_active
+            await session.execute(
+                update(Route)
+                .where(Route.route_id == route_id)
+                .values(is_active=new_status)
+            )
+            
+            await session.commit()
+            
+            logger.info(
+                f"Route {route_id} {'activated' if new_status else 'deactivated'} "
+                f"by {current_user['username']}"
+            )
+            
+            return {
+                'success': True,
+                'message': f"Marshrut {'faollashtirildi' if new_status else 'nofaollashtirildi'}",
+                'is_active': new_status
+            }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to toggle route status: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

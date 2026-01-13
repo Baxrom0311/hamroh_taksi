@@ -35,7 +35,8 @@
                             <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full" :class="route.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-200 text-gray-600'" x-text="route.is_active ? 'Aktiv' : 'Nofaol'"></span>
                         </td>
                         <td class="px-6 py-4 text-right text-sm space-x-2">
-                            <button @click="deactivateRoute(route.route_id)" class="text-red-600 hover:text-red-800">O'chirish</button>
+                            <button @click="toggleRoute(route.route_id)" class="px-3 py-1 rounded text-xs font-medium mr-2" :class="route.is_active ? 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200' : 'bg-green-100 text-green-800 hover:bg-green-200'" x-text="route.is_active ? 'Nofaollashtirish' : 'Faollashtirish'"></button>
+                            <button @click="deleteRoute(route.route_id)" class="text-red-600 hover:text-red-800 text-xs">O'chirish</button>
                         </td>
                     </tr>
                 </template>
@@ -149,11 +150,24 @@ function routesApp() {
             }
         },
 
-        async deactivateRoute(routeId) {
-            if (!confirm("Marshrutni o'chirasizmi?")) return;
+        async toggleRoute(routeId) {
+            const route = this.routes.find(r => r.route_id === routeId);
+            const action = route?.is_active ? 'nofaollashtirish' : 'faollashtirish';
+            if (!confirm(`Marshrutni ${action}ni tasdiqlaysizmi?`)) return;
+            
+            const res = await this.apiCall(`/api/settings/routes/${routeId}/toggle`, 'PUT');
+            if (res?.success) {
+                await this.fetchRoutes();
+                alert(res.message);
+            }
+        },
+
+        async deleteRoute(routeId) {
+            if (!confirm("Marshrutni o'chirasizmi? Bu amalni qaytarib bo'lmaydi.")) return;
             const res = await this.apiCall(`/api/settings/routes/${routeId}`, 'DELETE');
             if (res?.success) {
                 await this.fetchRoutes();
+                alert('Marshrut o\'chirildi');
             }
         },
 

@@ -341,6 +341,13 @@ async def accept_order_by_driver(
                         'message': '❌ Haydovchi topilmadi'
                     }
                 
+                # 2.2.5. Safarda emasligini tekshirish
+                if driver.is_on_trip:
+                    return {
+                        'success': False,
+                        'message': '⚠️ Siz hozir safardasiz!\n\nAvval safarni yakunlang.'
+                    }
+                
                 # 2.3. Balans tekshirish (dynamic settings)
                 pricing = await get_pricing_settings(session)
                 commission = Decimal(pricing['commission_amount'])

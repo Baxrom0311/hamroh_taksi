@@ -37,6 +37,7 @@ async def find_driver_for_order_task(self, order_id: int):
     RETRY LOGIC:
     - 30 soniya oralig'i bilan 5 marta retry
     - Har bir retry'da yangi haydovchilar qidiriladi
+    - Max retry'dan keyin passenger'ga xabar yuboriladi va order cancel qilinadi
     """
         
     async with get_session() as session:
@@ -49,7 +50,7 @@ async def find_driver_for_order_task(self, order_id: int):
         
         # Agar allaqachon qabul qilingan bo'lsa
         if order.status != OrderStatus.PENDING:
-            logger.warning(f"Order {order_id} already accepted")
+            logger.info(f"Order {order_id} already accepted (status: {order.status})")
             return {'success': True, 'reason': 'already_accepted'}
         
         # Eng yaxshi haydovchini topish
@@ -77,13 +78,31 @@ async def find_driver_for_order_task(self, order_id: int):
             }
         
         else:
-            # ❌ Haydovchi topilmadi - retry
-            logger.warning(
-                f"No driver found for order {order_id} "
-                f"(attempt {self.request.retries + 1}/{self.max_retries})"
-            )
+            # ❌ Haydovchi topilmadi
+            current_attempt = self.request.retries + 1
+            
+            # Max retry'dan keyin graceful handling
+            if current_attempt >= self.max_retries:
+                logger.info(
+                    f"No driver found for order {order_id} after {current_attempt} attempts. "
+                    f"Notifying passenger and cancelling order."
+                )
+                
+                # Passenger'ga xabar yuborish va order'ni cancel qilish
+                notify_passenger_no_driver_task.delay(order_id)
+                
+                return {
+                    'success': False,
+                    'reason': 'no_driver_available',
+                    'attempts': current_attempt
+                }
             
             # Retry
+            logger.info(
+                f"No driver found for order {order_id} "
+                f"(attempt {current_attempt}/{self.max_retries}). Retrying in 30s..."
+            )
+            
             raise self.retry(countdown=30)
 
 
@@ -399,15 +418,29 @@ async def notify_passenger_no_driver_task(order_id: int):
 
     from app.bot.main import bot
     from aiogram.enums import ParseMode
+    from sqlalchemy.orm import selectinload
+    from app.models.passenger import Passenger
     
     async with get_session() as session:
-        order = await get_order_by_id(session, order_id)
+        # Order'ni passenger va user ma'lumotlari bilan yuklash
+        result = await session.execute(
+            select(Order)
+            .options(selectinload(Order.passenger).selectinload(Passenger.user))
+            .where(Order.order_id == order_id)
+        )
+        order = result.scalar_one_or_none()
         
         if not order:
+            logger.warning(f"Order {order_id} not found for no driver notification")
+            return
+        
+        # Agar allaqachon qabul qilingan bo'lsa, xabar yubormaymiz
+        if order.status != OrderStatus.PENDING:
+            logger.info(f"Order {order_id} already processed (status: {order.status}), skipping notification")
             return
         
         message = """
-😔 <b>Haydovchi topilmadi</b>
+😔 <b>Taksi topilmadi</b>
 
 Hozirda bu yo'nalish bo'yicha bo'sh haydovchilar yo'q.
 
@@ -419,29 +452,38 @@ Noqulaylik uchun uzr so'raymiz!
         """
         
         try:
-            await bot.send_message(
-                chat_id=order.passenger_id,
-                text=message,
-                parse_mode=ParseMode.HTML
-            )
+            # Passenger'ning user_id'sini olish
+            if order.passenger and order.passenger.user:
+                passenger_user_id = order.passenger.user.user_id
+                
+                await bot.send_message(
+                    chat_id=passenger_user_id,
+                    text=message,
+                    parse_mode=ParseMode.HTML
+                )
+                
+                logger.info(f"Notified passenger {passenger_user_id} about no driver for order {order_id}")
+            else:
+                logger.warning(f"Passenger or user not found for order {order_id}")
             
             # Order'ni cancel qilish
             from sqlalchemy import update
-            from app.models.order import Order
             
             await session.execute(
                 update(Order)
                 .where(Order.order_id == order_id)
                 .values(
                     status=OrderStatus.CANCELLED,
-                    cancellation_reason='no_driver_available'
+                    cancellation_reason='no_driver_available',
+                    cancelled_at=func.now()
                 )
             )
             
             await session.commit()
+            logger.info(f"Order {order_id} cancelled due to no driver available")
         
         except Exception as e:
-            logger.error(f"Failed to notify passenger: {e}")
+            logger.error(f"Failed to notify passenger or cancel order: {e}")
     
     
 

@@ -180,6 +180,16 @@ async def get_all_active_routes(session) -> list[Route]:
     return result.scalars().all()
 
 
+async def get_all_routes(session) -> list[Route]:
+    """Barcha marshrutlar (aktiv va nofaol)"""
+    from sqlalchemy import select
+    result = await session.execute(
+        select(Route)
+        .order_by(Route.is_active.desc(), Route.from_location, Route.to_location)
+    )
+    return result.scalars().all()
+
+
 async def create_route(
     session,
     from_location: str,
