@@ -271,7 +271,11 @@ class Order(Base):
         Index('idx_orders_route_status', 'route_id', 'status'),
         
         # Check constraints
-        CheckConstraint('passenger_count >= 1 AND passenger_count <= 4', name='check_passenger_count'),
+        # Pochta uchun passenger_count=0 bo'lishi mumkin, yo'lovchi uchun 1-4 orasida
+        CheckConstraint(
+            '(has_luggage = true AND passenger_count = 0) OR (has_luggage = false AND passenger_count >= 1 AND passenger_count <= 4)',
+            name='check_passenger_count'
+        ),
         CheckConstraint('luggage_count >= 0', name='check_luggage_count'),
     )
     

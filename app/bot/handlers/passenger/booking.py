@@ -205,7 +205,12 @@ async def finalize_order(message, state: FSMContext):
             
             logger.success(f"Order created: {result['order_id']}")
         else:
-            await message.answer(f"❌ {result['message']}")
+            # HTML escape qilish - xatolik xabarlarida HTML taglar bo'lmasligi uchun
+            error_message = str(result['message']).replace('<', '&lt;').replace('>', '&gt;')
+            await message.answer(
+                f"❌ {error_message}",
+                parse_mode="HTML"
+            )
     
     await state.clear()
 
