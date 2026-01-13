@@ -180,7 +180,7 @@ async def finalize_order(message, state: FSMContext):
         # Location description bilan birlashtirish
         pickup_location = data['pickup_location']
         if data.get('location_description'):
-            pickup_location = f"{pickup_location}\n📝 {data['location_description']}"
+            pickup_location = f"{pickup_location}\n 📝 {data['location_description']}"
         
         # Buyurtma yaratish
         result = await create_new_order(

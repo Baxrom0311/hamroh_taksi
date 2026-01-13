@@ -94,13 +94,13 @@ async def accept_order_handler(callback: CallbackQuery, state: FSMContext):
                     if order.luggage_count > 1:
                         order_type += f" ({order.luggage_count} dona)"
                     if order.luggage_description:
-                        order_type += f"\n📝 {order.luggage_description}"
+                        order_type += f"\n 📝 {order.luggage_description}"
                 elif order.has_luggage and order.passenger_count > 0:
                     order_type = f"👥 {order.passenger_count} kishi"
                     if order.luggage_count > 0:
                         order_type += f" + 📦 Pochta ({order.luggage_count} dona)"
                         if order.luggage_description:
-                            order_type += f"\n📝 {order.luggage_description}"
+                            order_type += f"\n 📝 {order.luggage_description}"
                 else:
                     order_type = f"👥 {order.passenger_count} kishi"
                 
@@ -404,13 +404,13 @@ async def contact_passenger_handler(message: Message, state: FSMContext):
                 if order.luggage_count > 1:
                     order_type += f" ({order.luggage_count} dona)"
                 if order.luggage_description:
-                    order_type += f"\n📝 {order.luggage_description}"
+                    order_type += f"\n  📝 {order.luggage_description}"
             elif order.has_luggage and order.passenger_count > 0:
                 order_type = f"👥 {order.passenger_count} kishi"
                 if order.luggage_count > 0:
                     order_type += f" + 📦 Pochta ({order.luggage_count} dona)"
                     if order.luggage_description:
-                        order_type += f"\n📝 {order.luggage_description}"
+                        order_type += f"\n 📝 {order.luggage_description}"
             else:
                 order_type = f"👥 {order.passenger_count} kishi"
             

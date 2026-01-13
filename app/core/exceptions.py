@@ -489,7 +489,7 @@ if __name__ == "__main__":
     print("\n🧪 Testing Custom Exceptions...\n")
     
     # Test 1: InsufficientBalanceError
-    print("📝 Test 1: InsufficientBalanceError")
+    print(" 📝 Test 1: InsufficientBalanceError")
     try:
         raise InsufficientBalanceError(
             required=5000,
@@ -505,7 +505,7 @@ if __name__ == "__main__":
     print()
     
     # Test 2: LocationTooFarException
-    print("📝 Test 2: LocationTooFarException")
+    print(" 📝 Test 2: LocationTooFarException")
     try:
         raise LocationTooFarException(
             distance=75.5,
@@ -520,7 +520,7 @@ if __name__ == "__main__":
     print()
     
     # Test 3: handle_exception
-    print("📝 Test 3: handle_exception")
+    print(" 📝 Test 3: handle_exception")
     try:
         raise OrderNotFoundException(order_id=789)
     except Exception as e:
