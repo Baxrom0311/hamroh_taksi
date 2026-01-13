@@ -16,9 +16,9 @@
                     <th class="px-6 py-4 text-right">Amallar</th>
                 </tr>
             </thead>
-            <tbody class="divide-y divide-gray-100">
+            <tbody id="transactionRows" class="divide-y divide-gray-100">
                 {% for tx in transactions %}
-                <tr class="hover:bg-gray-50 transition">
+                <tr class="hover:bg-gray-50 transition" data-row="{{ loop.index0 }}">
                     <td class="px-6 py-4 text-sm font-bold text-gray-900">{{ tx.driver_name }}</td>
                     <td class="px-6 py-4">
                         <div class="text-sm font-bold text-green-600">+{{ "{:,.0f}".format(tx.amount) }} so'm</div>
@@ -63,15 +63,27 @@
                 {% endfor %}
             </tbody>
         </table>
+        <!-- Pagination -->
+        <div class="px-6 py-4 bg-gray-50 border-t border-gray-200 flex items-center justify-between text-sm">
+            <span>Jami: <b id="transactionTotal">{{ transactions|length }}</b></span>
+            <div class="flex items-center gap-2">
+                <button id="transactionPrev" class="px-3 py-1 border rounded bg-white disabled:opacity-50" disabled>Oldingi</button>
+                <span id="transactionPageInfo" class="text-gray-600"></span>
+                <button id="transactionNext" class="px-3 py-1 border rounded bg-white disabled:opacity-50">Keyingi</button>
+            </div>
+        </div>
     </div>
 </div>
 
 <!-- Receipt Modal -->
 <div id="receiptModal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
     <div class="bg-white rounded-xl p-6 max-w-2xl w-full mx-4">
-        <h3 class="text-lg font-bold mb-4">Chek rasmi</h3>
-        <div class="mb-4">
-            <img id="receiptImage" src="" alt="Chek rasmi" class="w-full rounded-lg border" />
+        <div class="flex items-center justify-between mb-4">
+            <h3 class="text-lg font-bold">Chek rasmi</h3>
+            <a id="receiptNewTab" href="#" target="_blank" class="text-blue-600 text-sm hover:underline">Yangi oynada ochish ↗</a>
+        </div>
+        <div class="mb-4 max-h-[70vh]">
+            <img id="receiptImage" src="" alt="Chek rasmi" class="w-full max-h-[70vh] object-contain rounded-lg border" />
         </div>
         <div class="flex justify-end">
             <button onclick="closeReceiptModal()" class="bg-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-400">Yopish</button>
@@ -125,6 +137,40 @@
 
 <script>
 const BOT_TOKEN = '{{ settings.BOT_TOKEN }}';
+const txPageSize = 20;
+let txCurrentPage = 1;
+let currentReceiptUrl = null;
+
+function renderTransactionsPage() {
+    const rows = Array.from(document.querySelectorAll('#transactionRows tr[data-row]'));
+    const total = rows.length;
+    const start = (txCurrentPage - 1) * txPageSize;
+    const end = start + txPageSize;
+    rows.forEach((row, idx) => {
+        row.classList.toggle('hidden', !(idx >= start && idx < end));
+    });
+    const totalPages = Math.max(1, Math.ceil(total / txPageSize));
+    document.getElementById('transactionPageInfo').textContent = `${txCurrentPage} / ${totalPages}`;
+    document.getElementById('transactionPrev').disabled = txCurrentPage === 1;
+    document.getElementById('transactionNext').disabled = end >= total;
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    renderTransactionsPage();
+    document.getElementById('transactionPrev').addEventListener('click', () => {
+        if (txCurrentPage > 1) {
+            txCurrentPage -= 1;
+            renderTransactionsPage();
+        }
+    });
+    document.getElementById('transactionNext').addEventListener('click', () => {
+        const total = document.querySelectorAll('#transactionRows tr[data-row]').length;
+        if (txCurrentPage * txPageSize < total) {
+            txCurrentPage += 1;
+            renderTransactionsPage();
+        }
+    });
+});
 
 function showReceipt(fileId, transactionId) {
     // Telegram file_id dan rasm URL olish
@@ -139,7 +185,9 @@ function showReceipt(fileId, transactionId) {
             if (data.ok) {
                 const filePath = data.result.file_path;
                 const imageUrl = `https://api.telegram.org/file/bot${BOT_TOKEN}/${filePath}`;
+                currentReceiptUrl = imageUrl;
                 document.getElementById('receiptImage').src = imageUrl;
+                document.getElementById('receiptNewTab').href = imageUrl;
                 document.getElementById('receiptModal').classList.remove('hidden');
             } else {
                 alert('❌ Rasm yuklab bo\'lmadi');

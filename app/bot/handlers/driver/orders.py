@@ -247,6 +247,10 @@ async def trip_confirmed(callback: CallbackQuery, state: FSMContext):
         result = await start_trip(order_id, driver.driver_id)
         
         if result['success']:
+            # Avto-yakunlash task (10 daqiqa)
+            from app.tasks.matching import auto_complete_trip_task
+            auto_complete_trip_task.apply_async(args=[order_id], countdown=600)
+            
             if callback.message is not None:
                 await callback.message.edit_text( # type: ignore
                     f"✅ <b>Safar boshlandi!</b>\n\n"

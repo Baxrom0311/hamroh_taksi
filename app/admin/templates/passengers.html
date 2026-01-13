@@ -17,15 +17,22 @@
                     <th class="px-6 py-4 text-right">Amallar</th>
                 </tr>
             </thead>
-            <tbody class="divide-y divide-gray-100">
+            <tbody id="passengerRows" class="divide-y divide-gray-100">
                 {% for p in passengers %}
-                <tr class="hover:bg-gray-50 transition">
+                <tr class="hover:bg-gray-50 transition" data-row="{{ loop.index0 }}">
                     <td class="px-6 py-4">
                         <div class="text-sm font-bold text-gray-900">{{ p.full_name }}</div>
                         <div class="text-xs text-gray-500">{{ p.phone_number }}</div>
                     </td>
                     <td class="px-6 py-4">
-                        <div class="text-sm text-gray-700">{{ p.gender }}</div>
+                        <div class="text-sm text-gray-700">
+                            {% if p.gender %}
+                                {% set g = p.gender|lower %}
+                                {{ 'Erkak' if g in ['male','erkak','m','man'] else 'Ayol' }}
+                            {% else %}
+                                -
+                            {% endif %}
+                        </div>
                         <div class="text-xs text-gray-400">{{ p.age }} yosh</div>
                     </td>
                     <td class="px-6 py-4">
@@ -73,6 +80,15 @@
                 {% endfor %}
             </tbody>
         </table>
+        <!-- Pagination -->
+        <div class="px-6 py-4 bg-gray-50 border-t border-gray-200 flex items-center justify-between text-sm">
+            <span>Jami: <b id="passengerTotal">{{ passengers|length }}</b></span>
+            <div class="flex items-center gap-2">
+                <button id="passengerPrev" class="px-3 py-1 border rounded bg-white disabled:opacity-50" disabled>Oldingi</button>
+                <span id="passengerPageInfo" class="text-gray-600"></span>
+                <button id="passengerNext" class="px-3 py-1 border rounded bg-white disabled:opacity-50">Keyingi</button>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -135,13 +151,48 @@
 
 <script>
 const passengers = {{ passengers|tojson }};
+const pageSize = 25;
+let currentPage = 1;
+
+function renderPassengerPage() {
+    const rows = Array.from(document.querySelectorAll('#passengerRows tr[data-row]'));
+    const total = rows.length;
+    const start = (currentPage - 1) * pageSize;
+    const end = start + pageSize;
+    rows.forEach((row, idx) => {
+        row.classList.toggle('hidden', !(idx >= start && idx < end));
+    });
+    const pageInfo = document.getElementById('passengerPageInfo');
+    const totalPages = Math.max(1, Math.ceil(total / pageSize));
+    pageInfo.textContent = `${currentPage} / ${totalPages}`;
+    document.getElementById('passengerPrev').disabled = currentPage === 1;
+    document.getElementById('passengerNext').disabled = end >= total;
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    renderPassengerPage();
+    document.getElementById('passengerPrev').addEventListener('click', () => {
+        if (currentPage > 1) {
+            currentPage -= 1;
+            renderPassengerPage();
+        }
+    });
+    document.getElementById('passengerNext').addEventListener('click', () => {
+        const total = passengers.length;
+        if (currentPage * pageSize < total) {
+            currentPage += 1;
+            renderPassengerPage();
+        }
+    });
+});
 
 function editPassenger(index) {
     const passenger = passengers[index];
     document.getElementById('editPassengerIndex').value = index;
     document.getElementById('editPassengerName').value = passenger.full_name;
     document.getElementById('editPassengerPhone').value = passenger.phone_number;
-    document.getElementById('editPassengerGender').value = passenger.gender === 'Erkak' ? 'MALE' : 'FEMALE';
+    const g = (passenger.gender || '').toString().toUpperCase();
+    document.getElementById('editPassengerGender').value = g.includes('MALE') || g.startsWith('E') ? 'MALE' : 'FEMALE';
     document.getElementById('editPassengerAge').value = passenger.age;
     document.getElementById('editPassengerModal').classList.remove('hidden');
 }
