@@ -539,31 +539,25 @@ async def start_trip(order_id: int, driver_id: int) -> dict:
 # ============================================
 # 5. SAFAR YAKUNLASH
 # ============================================
-
 async def complete_trip(order_id: int, driver_id: int) -> dict:
     """
     Safar yakunlash
     
-    STATUS: in_progress → completed
-    
     NIMA BO'LADI:
-    1. Status o'zgartirish
-    2. Driver statistikasini yangilash
-    3. Passenger statistikasini yangilash
-    4. Driver'ni bo'shatish
-    
-    ISHLATISH:
-        result = await complete_trip(order_id=123, driver_id=1)
+    1. Order statusini 'completed'ga o'zgartirish
+    2. Modelni refresh qilib, duration_minutes ni hisoblab olish
+    3. Haydovchining boshqa aktiv buyurtmalari borligini tekshirish
+    4. Haydovchi va Yo'lovchi statistikasini yangilash
     """
-    
     try:
         async with transaction() as session:
-            # Order tekshirish
+            # 1. Orderni bazadan olish
             order = await get_order_by_id(session, order_id)
             
             if not order:
                 raise OrderNotFoundException(order_id=order_id)
             
+            # Tekshiruvlar
             if order.driver_id != driver_id:
                 return {
                     'success': False,
@@ -576,73 +570,76 @@ async def complete_trip(order_id: int, driver_id: int) -> dict:
                     'message': f'⚠️ Buyurtma holati noto\'g\'ri: {order.status.value}'
                 }
             
-            # 1. Status o'zgartirish
+            # 2. Statusni o'zgartirish (Bazada status = 'completed' va completed_at = now())
             await complete_order(session, order_id)
             
-            # 2. Driver statistikasi va bo'shatish
-            from sqlalchemy import update
+            # 3. MUHIM: Modelni refresh qilish
+            # Bu completed_at vaqtini bazadan qayta o'qiydi, natijada 
+            # order.duration_minutes (property) xatosiz ishlaydi.
+            await session.refresh(order)
             
-            # Boshqa aktiv buyurtmalarni tekshirish
+            # Qiymatni o'zgaruvchiga olib qo'yamiz (session yopilishidan oldin)
+            duration = order.duration_minutes
+            passenger_id = order.passenger_id
+            passenger_count = order.passenger_count
+
+            # 4. Haydovchining boshqa aktiv buyurtmalarini tekshirish
+            from sqlalchemy import select, update
+            
             active_orders_result = await session.execute(
                 select(Order)
                 .where(Order.driver_id == driver_id)
                 .where(Order.status.in_([OrderStatus.ACCEPTED, OrderStatus.IN_PROGRESS]))
-                .where(Order.order_id != order_id)  # Hozirgi buyurtmani hisobga olmaslik
+                .where(Order.order_id != order_id)
             )
             other_active_orders = active_orders_result.scalars().all()
-            
-            # Agar boshqa aktiv buyurtmalar bo'lsa, is_on_trip=True qoladi
-            # Aks holda, is_on_trip=False va available_seats qaytariladi
             has_other_active_orders = len(other_active_orders) > 0
             
+            # 5. Haydovchi statistikasini yangilash va bo'shatish
             if has_other_active_orders:
-                # Boshqa aktiv buyurtmalar bor - faqat statistikani yangilash
+                # Faqat trips sonini oshiramiz
                 await session.execute(
                     update(Driver)
                     .where(Driver.driver_id == driver_id)
                     .values(
                         total_trips=Driver.total_trips + 1,
                         last_trip_at=func.now()
-                        # is_on_trip va available_seats o'zgarmaydi
                     )
                 )
             else:
-                # Boshqa aktiv buyurtmalar yo'q - to'liq bo'shatish
+                # Boshqa buyurtma yo'q - is_on_trip=False va seats qaytariladi
                 await session.execute(
                     update(Driver)
                     .where(Driver.driver_id == driver_id)
                     .values(
                         total_trips=Driver.total_trips + 1,
                         is_on_trip=False,
-                        available_seats=Driver.available_seats + order.passenger_count,  # O'rinlarni qaytarish
+                        available_seats=Driver.available_seats + passenger_count,
                         last_trip_at=func.now()
                     )
                 )
             
-            # 3. Passenger statistikasi
+            # 6. Yo'lovchi statistikasini yangilash
             await session.execute(
                 update(Passenger)
-                .where(Passenger.passenger_id == order.passenger_id)
+                .where(Passenger.passenger_id == passenger_id)
                 .values(total_trips=Passenger.total_trips + 1)
             )
             
-            # COMMIT (async with transaction() avtomatik)
-            
-            logger.success(f"✅ Trip completed: order_id={order_id}, driver_id={driver_id}")
+            logger.success(f"✅ Trip completed successfully: order_id={order_id}")
             
             return {
                 'success': True,
                 'message': '✅ Safar yakunlandi!',
-                'duration_minutes': order.duration_minutes
+                'duration_minutes': duration
             }
-    
+
     except Exception as e:
         logger.error(f"❌ Failed to complete trip: {e}")
         return {
             'success': False,
             'message': f'❌ Xatolik: {str(e)}'
         }
-
 
 # ============================================
 # EXPORT

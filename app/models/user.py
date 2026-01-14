@@ -185,6 +185,8 @@ class User(Base):
         
         # Phone number index (allaqachon unique=True'da bor)
         # Index('idx_users_phone', 'phone_number'),
+        
+        {'extend_existing': True}
     )
     
     # ============================================

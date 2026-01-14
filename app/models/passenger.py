@@ -39,6 +39,7 @@ class Passenger(Base):
     """Yo'lovchi model"""
     
     __tablename__ = "passengers"
+    __table_args__ = {'extend_existing': True}
     
     # PRIMARY KEY
     passenger_id: Mapped[int] = mapped_column(

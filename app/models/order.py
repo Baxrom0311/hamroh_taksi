@@ -277,6 +277,8 @@ class Order(Base):
             name='check_passenger_count'
         ),
         CheckConstraint('luggage_count >= 0', name='check_luggage_count'),
+        
+        {'extend_existing': True}
     )
     
     # ============================================
@@ -346,13 +348,19 @@ class Order(Base):
 # ============================================
 # HELPER FUNCTIONS
 # ============================================
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 
-async def get_order_by_id(session, order_id: int) -> Optional[Order]:
-    """Order'ni ID bo'yicha olish"""
-    from sqlalchemy import select
-    result = await session.execute(
-        select(Order).where(Order.order_id == order_id)
+async def get_order_by_id(
+    session,
+    order_id: int
+) -> Optional[Order]:
+    stmt = (
+        select(Order)
+        .options(selectinload(Order.passenger))
+        .where(Order.order_id == order_id)
     )
+    result = await session.execute(stmt)
     return result.scalar_one_or_none()
 
 

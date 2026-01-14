@@ -322,6 +322,8 @@ class Driver(Base):
         CheckConstraint('rating >= 1.00 AND rating <= 5.00', name='check_rating_range'),
         CheckConstraint('available_seats >= 0 AND available_seats <= 8', name='check_seats_range'),
         CheckConstraint('balance >= 0', name='check_balance_positive'),
+        
+        {'extend_existing': True}
     )
     
     # ============================================

@@ -344,7 +344,7 @@ async def request_passenger_confirmation(order_id: int, driver_id: int):
             # 30 daqiqa ichida "Ketdik" yoki bekor qilish kutiladi
             # Agar 30 daqiqada hech narsa bo'lmasa, sessiya yopiladi
             from app.tasks.matching import auto_confirm_trip_task
-            auto_confirm_trip_task.apply_async(args=[order_id], countdown=1800)  # 30 daqiqa = 1800 soniya
+            auto_confirm_trip_task.apply_async(args=[order_id], countdown=120)  # 30 daqiqa = 1800 soniya
             
         except Exception as e:
             logger.error(f"Confirmation request failed: {e}")

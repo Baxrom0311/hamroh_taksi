@@ -72,6 +72,7 @@ class SystemSettings(Base):
     # INDEXES
     __table_args__ = (
         Index('idx_settings_key', 'setting_key'),
+        {'extend_existing': True}
     )
     
     def to_dict(self) -> dict:

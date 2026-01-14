@@ -31,8 +31,15 @@ from kombu import Exchange, Queue
 from loguru import logger
 
 from config.settings import settings
+import threading
+_thread_locals = threading.local()
 
-_worker_loop = None
+def get_worker_loop():
+    if not hasattr(_thread_locals, 'loop'):
+        _thread_locals.loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(_thread_locals.loop)
+    return _thread_locals.loop
+_worker_loop = get_worker_loop()
 
 # ============================================
 # CELERY APP YARATISH

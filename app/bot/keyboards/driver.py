@@ -66,7 +66,7 @@ def get_trip_active_keyboard():
     """Aktiv safar"""
     return ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text="To'lgach ketish")],
+            [KeyboardButton(text="🚗 Safarni yakunlash")],
             [KeyboardButton(text="📞 Yo'lovchi bilan bog'lanish")]
         ],
         resize_keyboard=True,

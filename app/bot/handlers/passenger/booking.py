@@ -3,7 +3,7 @@ app/bot/handlers/passenger/booking.py
 """
 
 from aiogram import Router, F
-from aiogram.types import Message, CallbackQuery, ReplyKeyboardMarkup, KeyboardButton
+from aiogram.types import Message, CallbackQuery, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
 from aiogram.fsm.context import FSMContext
 from loguru import logger
 from sqlalchemy import func
@@ -94,7 +94,8 @@ async def location_received(message: Message, state: FSMContext):
     await message.answer(
         "✅ Lokatsiya qabul qilindi\n\n"
         "📍 Lokatsiya haqida qo'shimcha ma'lumot yozing:\n"
-        "(Masalan: \"Uy oldida\", \"Kafe yonida\", \"Ko'cha 5\")"
+        "(Masalan: \"Uy oldida\", \"Kafe yonida\", \"Ko'cha 5\")",
+        reply_markup=ReplyKeyboardRemove() # <--- MATN YOZILGANDA HAM TUGMALARNI OLIB TASHLAYMIZ
     )
     
     await state.set_state(PassengerStates.location_description)

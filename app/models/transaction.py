@@ -139,6 +139,7 @@ class Transaction(Base):
     __table_args__ = (
         Index('idx_transactions_status_created', 'status', 'created_at'),
         Index('idx_transactions_driver_status', 'driver_id', 'status'),
+        {'extend_existing': True}
     )
     
     def to_dict(self) -> dict:
@@ -233,6 +234,7 @@ class TransactionLog(Base):
     
     __table_args__ = (
         Index('idx_transaction_logs_driver_created', 'driver_id', 'created_at'),
+        {'extend_existing': True}
     )
     
     def __repr__(self) -> str:

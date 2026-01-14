@@ -42,6 +42,8 @@ router = Router()
 
 @router.callback_query(F.data.startswith("accept_order:"))
 async def accept_order_handler(callback: CallbackQuery, state: FSMContext):
+    from aiogram.types import Message
+    
     if callback.data is None:
         await callback.answer("Xatolik: malumot mavjud emas")
         return
@@ -49,9 +51,10 @@ async def accept_order_handler(callback: CallbackQuery, state: FSMContext):
     user_id = callback.from_user.id
     
     # 1. Loading holati
-    if callback.message:
+    if isinstance(callback.message, Message):
         await callback.message.edit_text("⏳ <b>Qabul qilinmoqda...</b>")
-    
+    else:
+        await callback.answer("Xabar eskirgan", show_alert=True)
     async with get_session() as session:
         driver = await get_driver_by_user_id(session, user_id)
 
@@ -76,12 +79,16 @@ async def accept_order_handler(callback: CallbackQuery, state: FSMContext):
             order = order_result.scalar_one_or_none()
             
             # 3. ESKI XABARNI TAHRIRLASH (Tugmalarni yo'qotish uchun)
-            await callback.message.edit_text(
-                f"✅ <b>Buyurtma #{order_id} qabul qilindi!</b>\n\n"
-                f"💰 Komissiya: <b>{result['order']['commission']:,} so'm</b>\n"
-                f"📊 Yangi balans: <b>{result['order']['new_balance']:,} so'm</b>"
-            )
-            
+            from aiogram.types import Message
+            if isinstance(callback.message, Message):
+                await callback.message.edit_text(
+                    f"✅ <b>Buyurtma #{order_id} qabul qilindi!</b>\n\n"
+                    f"💰 Komissiya: <b>{result['order']['commission']:,} so'm</b>\n"
+                    f"📊 Yangi balans: <b>{result['order']['new_balance']:,} so'm</b>"
+                )
+            else:
+                await callback.answer("Xabar eskirgan", show_alert=True)
+                        
             # 4. Mijoz ma'lumotlarini yuborish (qabul qilganda)
             if order and order.passenger:
                 passenger = order.passenger
@@ -107,8 +114,8 @@ async def accept_order_handler(callback: CallbackQuery, state: FSMContext):
                 # Lokatsiya linklari
                 from app.utils.location_helpers import get_google_maps_link, get_telegram_location_link
                 
-                google_maps_link = get_google_maps_link(order.pickup_lat, order.pickup_lon, order.pickup_location)
-                telegram_location_link = get_telegram_location_link(order.pickup_lat, order.pickup_lon)
+                google_maps_link = get_google_maps_link(float(order.pickup_lat), float(order.pickup_lon), order.pickup_location)
+                telegram_location_link = get_telegram_location_link(float(order.pickup_lat), float(order.pickup_lon))
                 
                 passenger_info = f"""
 ✅ <b>Buyurtma qabul qilindi!</b>
@@ -118,11 +125,20 @@ async def accept_order_handler(callback: CallbackQuery, state: FSMContext):
 {order_type}
 📱 <b>Telefon:</b> <code>{passenger_phone}</code>
                 """
-                
-                await callback.message.answer(
-                    passenger_info,
-                    parse_mode="HTML"
-                )
+                from aiogram.types import Message # Message klassini import qiling
+
+                if isinstance(callback.message, Message):
+                    await callback.message.answer(
+                        passenger_info,
+                        parse_mode="HTML"
+                    )
+                else:
+                    # Agar xabar InaccessibleMessage bo'lsa (masalan, juda eski xabar)
+                    await callback.bot.send_message(
+                        chat_id=callback.from_user.id,
+                        text=passenger_info,
+                        parse_mode="HTML"
+                    )
             
             # 5. YANGI XABAR YUBORISH (Sizning Reply klaviaturangizni chiqarish uchun)
             from app.bot.keyboards.driver import get_trip_confirmation_keyboard
@@ -213,7 +229,7 @@ async def driver_started_trip(message: Message, state: FSMContext):
         if not order or order.driver_id != driver.driver_id:
             await message.answer("❌ Buyurtma topilmadi yoki sizga tegishli emas")
             return
-        
+        from app.models.order import OrderStatus
         if order.status != OrderStatus.ACCEPTED:
             await message.answer("⚠️ Bu buyurtma allaqachon boshlandi")
             return
@@ -243,7 +259,7 @@ async def driver_started_trip(message: Message, state: FSMContext):
                 f"📦 Buyurtma #{order_id}\n\n"
                 f"🚗 Xavfsiz yo'l!\n\n"
                 f"⏱ Safar 15 daqiqadan keyin avtomatik yakunlanadi.\n"
-                f"Yoki 'To'lgach ketish' tugmasini bosing.",
+                f"Yoki '<b><i>🚗 Safarni yakunlash</i></b>' tugmasini bosing.",
                 reply_markup=get_trip_active_keyboard(),
                 parse_mode="HTML"
             )
@@ -365,7 +381,7 @@ async def trip_confirmed(callback: CallbackQuery, state: FSMContext):
                     f"✅ <b>Safar boshlandi!</b>\n\n"
                     f"📦 Buyurtma #{order_id}\n\n"
                     f"🚗 Xavfsiz yo'l!\n\n"
-                    f"⏭ Safar yakunlangach 'To'lgach ketish' tugmasini bosing",
+                    f"⏭ Safar yakunlangach '🚗 Safarni yakunlash' tugmasini bosing",
                     reply_markup=get_trip_active_keyboard()
                 )
             
@@ -384,7 +400,7 @@ async def trip_confirmed(callback: CallbackQuery, state: FSMContext):
 
 @router.message(
     DriverStates.trip_in_progress,
-    F.text == "To'lgach ketish"
+    F.text == "🚗 Safarni yakunlash"
 )
 async def complete_trip_handler(message: Message, state: FSMContext):
     """
@@ -418,8 +434,8 @@ async def complete_trip_handler(message: Message, state: FSMContext):
             )
             
             # Yo'lovchiga xabar
-            # from app.tasks.notifications import notify_trip_completed
-            # notify_trip_completed.delay(order_id)
+            from app.tasks.notifications import notify_trip_completed
+            notify_trip_completed.delay(order_id)
             
             await state.clear()
             

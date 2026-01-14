@@ -126,6 +126,8 @@ class Route(Base):
         
         # Active routes
         Index('idx_routes_active', 'is_active'),
+        
+        {'extend_existing': True}
     )
     
     # ============================================
