@@ -10,6 +10,7 @@ BU HANDLER NIMA QILADI:
 """
 from ..base import *
 from aiogram.filters import StateFilter
+from aiogram.types import InaccessibleMessage
 from app.core.database import transaction
 from app.models.order import Order, get_order_by_id, OrderStatus
 from app.models.transaction import create_transaction, TransactionType
@@ -68,11 +69,11 @@ async def accept_order_handler(callback: CallbackQuery, session: AsyncSession, d
         
         # 3. ESKI XABARNI TAHRIRLASH (Tugmalarni yo'qotish uchun)
         if isinstance(callback.message, Message):
-            await callback.message.edit_text( # type: ignore
+            await callback.message.edit_text(
                 Messages.Driver.ORDER_ACCEPTED.format(
                     order_id=order_id,
                     commission=commission_amount,
-                    new_balance=driver.balance
+                    new_balance=result['order']['new_balance']
                 ),
                 parse_mode="HTML"
             )
@@ -102,14 +103,12 @@ async def accept_order_handler(callback: CallbackQuery, session: AsyncSession, d
                 phone=passenger_phone
             )
 
-
-
             if isinstance(callback.message, Message):
                 await callback.message.answer(
                     passenger_info,
                     parse_mode="HTML"
                 )
-            else:
+            elif callback.bot:
                 # Agar xabar InaccessibleMessage bo'lsa (masalan, juda eski xabar)
                 await callback.bot.send_message(
                     chat_id=callback.from_user.id,
@@ -121,22 +120,31 @@ async def accept_order_handler(callback: CallbackQuery, session: AsyncSession, d
         from app.services.queue_service import driver_queue
         
         # Qolgan bo'sh o'rinlar
-        remaining_seats = result['order'].get('available_seats', 0)
-        has_more_seats = result['order'].get('has_more_seats', False)
+        remaining_seats = result['order']['available_seats']
+        has_more_seats = result['order']['has_more_seats']
         
         trip_message = Messages.Driver.TRIP_ACCEPTED_PROMPT.format(order_id=order_id)
         
         if has_more_seats:
             trip_message += Messages.Driver.REMAINING_SEATS_INFO.format(remaining_seats=remaining_seats)
         
-        await callback.message.answer(
-            trip_message,
-            reply_markup=get_trip_confirmation_keyboard(order_id),
-            parse_mode="HTML"
-        )
+        if isinstance(callback.message, Message):
+            await callback.message.answer(
+                trip_message,
+                reply_markup=get_trip_confirmation_keyboard(order_id),
+                parse_mode="HTML"
+            )
+        else:
+            from app.bot.main import bot
+            await bot.send_message(
+                chat_id=callback.from_user.id,
+                text=trip_message,
+                reply_markup=get_trip_confirmation_keyboard(order_id),
+                parse_mode="HTML"
+            )
         
         # MUHIM: Agar o'rinlar to'lganda, navbatdan o'chirish
-        if not has_more_seats:
+        if not has_more_seats and order:
             # O'rinlar to'ldi - navbatdan o'chirish
             await driver_queue.remove_driver(driver.driver_id, order.route_id)
             logger.info(
@@ -150,8 +158,9 @@ async def accept_order_handler(callback: CallbackQuery, session: AsyncSession, d
         
         # Yo'lovchiga xabar yuborish
         from app.tasks.notifications import notify_passenger_driver_found
-        if order.passenger and order.passenger.user:
-            await callback.bot.send_message(
+        if order and order.passenger and order.passenger.user:
+            from app.bot.main import bot
+            await bot.send_message(
                 chat_id=order.passenger.user.user_id,
                 text=Messages.Passenger.DRIVER_FOUND.format(
                     order_id=order_id,
@@ -167,7 +176,8 @@ async def accept_order_handler(callback: CallbackQuery, session: AsyncSession, d
     
     else:
         # Xato bo'lsa
-        await callback.message.edit_text(f"❌ <b>Xatolik:</b>\n{result['message']}")
+        if isinstance(callback.message, Message):
+            await callback.message.edit_text(f"❌ <b>Xatolik:</b>\n{result['message']}")
         logger.warning(f"Accept failed: {result['message']}")
     
     await callback.answer()
@@ -215,11 +225,8 @@ async def driver_started_trip(message: Message, session: AsyncSession, driver: D
     result = await start_trip(order_id, driver.driver_id)
     
     if result['success']:
-        # Qolgan bo'sh o'rinlar tekshiruvi
-        remaining_seats = driver.available_seats - order.passenger_count
-            
         # Agar o'rinlar to'lganda, navbatdan o'chirish
-        if remaining_seats <= 0:
+        if driver.available_seats <= 0:
             from app.services.queue_service import driver_queue
             await driver_queue.remove_driver(driver.driver_id, order.route_id)
             logger.info(
@@ -229,7 +236,7 @@ async def driver_started_trip(message: Message, session: AsyncSession, driver: D
         
         # Avto-yakunlash task (10 daqiqa - aniq)
         from app.tasks.matching import auto_complete_trip_task
-        auto_complete_trip_task.apply_async(args=[order_id], countdown=600)  # 10 daqiqa = 600 soniya
+        auto_complete_trip_task.apply_async(args=[order_id], countdown=600)  # type: ignore
             
         # Haydovchiga xabar (Safar menyusi)
         await message.answer(
@@ -298,7 +305,7 @@ async def driver_arrived(message: Message, session: AsyncSession, driver: Driver
     
     # Celery task (yo'lovchiga tasdiqlash so'rash + auto-confirm)
     from app.tasks.notifications import request_passenger_confirmation
-    request_passenger_confirmation.delay(order_id, driver.driver_id)
+    request_passenger_confirmation.delay(order_id, driver.driver_id) # type: ignore
     
     await state.set_state(DriverStates.trip_confirmation)
 
@@ -327,19 +334,21 @@ async def trip_confirmed(callback: CallbackQuery, session: AsyncSession, driver:
     if result['success']:
         # Avto-yakunlash task (10 daqiqa)
         from app.tasks.matching import auto_complete_trip_task
-        auto_complete_trip_task.apply_async(args=[order_id], countdown=600)
+        auto_complete_trip_task.apply_async(args=[order_id], countdown=600) # type: ignore
         
         # State yangilash - safar boshlandi
         await state.update_data(current_order_id=order_id)
         await state.set_state(DriverStates.trip_in_progress)
         
-        if callback.message is not None:
-            await callback.message.edit_text( # type: ignore
+        if isinstance(callback.message, Message):
+            await callback.message.answer(
                 f"✅ <b>Safar boshlandi!</b>\n\n"
                 f"📦 Buyurtma #{order_id}\n\n"
                 f"⏱ <b>10 daqiqadan so'ng</b> safar avtomatik yakunlanadi.",
-                reply_markup=get_trip_active_keyboard(order_id)
+                reply_markup=get_trip_active_keyboard(order_id),
+                parse_mode="HTML"
             )
+            await callback.message.delete()
         
         logger.info(f"Trip started: order={order_id}, driver={driver.driver_id}")
     
@@ -520,7 +529,7 @@ async def cancel_order_select_handler(callback: CallbackQuery, state: FSMContext
     order_id = int(callback.data.split(":")[1])
     await state.update_data(cancel_order_id=order_id)
     
-    if callback.message:
+    if isinstance(callback.message, Message):
         await callback.message.edit_text(
             "⚠️ <b>Buyurtmani bekor qilmoqchimisiz?</b>\n\n"
             f"📦 Buyurtma #{order_id}\n\n"
@@ -574,15 +583,16 @@ async def confirm_cancellation(message: Message, session: AsyncSession, driver: 
         await state.clear()
         return
     
-    # Order'ni cancel qilish
+    # Order'ni PENDING qilish (qayta match qilish uchun)
     await session.execute(
         update(Order)
         .where(Order.order_id == order_id)
         .values(
-            status=OrderStatus.CANCELLED,
+            status=OrderStatus.PENDING,
             cancellation_reason='driver_cancelled',
             cancelled_at=func.now(),
-            driver_id=None
+            driver_id=None,
+            accepted_at=None
         )
     )
     
@@ -612,7 +622,7 @@ async def confirm_cancellation(message: Message, session: AsyncSession, driver: 
             logger.error(f"Failed to notify passenger: {e}")
     
     # Yangi haydovchi topish
-    find_driver_for_order_task.delay(order_id)
+    find_driver_for_order_task.delay(order_id) # type: ignore
     
     await message.answer(
         Messages.Driver.ORDER_CANCELLED.format(order_id=order_id),
@@ -647,43 +657,52 @@ async def reject_order_handler(callback: CallbackQuery, session: AsyncSession, d
         )
         return
     
-    from datetime import datetime
+    # Bugungi rad etishlar sonini Redis'dan olish
+    from app.services.queue_service import driver_queue
+    today_rejects = await driver_queue.get_driver_reject_count(driver.driver_id)
     
-    today_start = datetime.now().replace(hour=0, minute=0, second=0)
-    
-    # Bugungi rad etilgan buyurtmalar soni
-    result = await session.execute(
-        select(func.count(Order.order_id))
-        .where(Order.driver_id == driver.driver_id)
-        .where(Order.status == OrderStatus.CANCELLED)
-        .where(Order.cancelled_at >= today_start)
-    )
-    
-    today_rejects = result.scalar() or 0
-    
-    # Kunlik limit tekshiruvi
+    # Kunlik limit tekshiruvi (config/settings dan)
     from config.settings import settings
     max_rejects = settings.MAX_DRIVER_REJECTS_PER_DAY
     
     if today_rejects >= max_rejects:
-        await callback.message.edit_text( # type: ignore
-            f"⚠️ <b>Kunlik limit yetdi!</b>\n\n"
-            f"Siz bugun {max_rejects} ta buyurtmani rad etdingiz.\n"
-            f"Ertaga qayta urinib ko'ring."
-        )
+        if callback.message and isinstance(callback.message, Message):
+            await callback.message.edit_text(
+                f"⚠️ <b>Kunlik limit yetdi!</b>\n\n"
+                f"Siz bugun {max_rejects} ta buyurtmani rad etdingiz.\n"
+                f"Ertaga qayta urinib ko'ring.",
+                parse_mode="HTML"
+            )
         await callback.answer("Kunlik limit yetdi", show_alert=True)
         return
     
-    # Xabarni yangilash
-    if callback.message is not None:
-        await callback.message.edit_text( # type: ignore
+    # 1. Rad etishni sanash va skip qilish
+    await driver_queue.track_driver_reject(driver.driver_id)
+    await driver_queue.skip_driver_for_order(driver.driver_id, order_id)
+    
+    # 2. Xabarni yangilash
+    if callback.message and isinstance(callback.message, Message):
+        await callback.message.edit_text(
             f"❌ <b>Buyurtma rad etildi</b>\n\n"
             f"📊 Bugungi rad etishlar: {today_rejects + 1}/{max_rejects}\n\n"
-            f"⏳ Yangi buyurtma kutyapsiz..."
+            f"⏳ Yangi buyurtma kutyapsiz...",
+            parse_mode="HTML"
         )
     
+    # Keyingi haydovchini topish uchun orderni PENDING qilib re-queue qilish
+    # Driverni bu order uchun skip qilish (Redis'da saqlash mumkin, hozircha shunchaki find_driver chaqiramiz)
+    await session.execute(
+        update(Order)
+        .where(Order.order_id == order_id)
+        .values(
+            status=OrderStatus.PENDING,
+            driver_id=None,
+            accepted_at=None
+        )
+    )
+    
     # Keyingi haydovchiga yuborish
-    find_driver_for_order_task.delay(order_id)
+    find_driver_for_order_task.delay(order_id) # type: ignore
     
     logger.info(
         f"Driver {driver.driver_id} rejected order {order_id}. "

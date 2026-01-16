@@ -19,7 +19,7 @@ except ImportError:
     Geometry = Any
 
 __all__ = [
-    'annotations', 'datetime', 'Optional', 'List', 'Any', 'TYPE_CHECKING', 'Union', 'Callable',
+    'datetime', 'Optional', 'List', 'Any', 'TYPE_CHECKING', 'Union', 'Callable',
     'Decimal', 'enum', 'BigInteger', 'Integer', 'String', 'Boolean', 'DateTime', 
     'ForeignKey', 'Numeric', 'SQLEnum', 'Index', 'CheckConstraint', 'func', 
     'select', 'update', 'delete', 'desc', 'text', 'Mapped', 'mapped_column', 

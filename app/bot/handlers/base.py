@@ -5,6 +5,7 @@ from aiogram.filters import Command, CommandStart
 
 from loguru import logger
 from sqlalchemy import select, update, delete, func, desc
+from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_session
@@ -26,5 +27,6 @@ __all__ = [
     'with_passenger_session', 'with_admin_session', 'with_session', 
     'Messages', 'User', 'UserRole', 'get_user_by_id', 'Driver', 
     'get_driver_by_user_id', 'Passenger', 'get_passenger_by_user_id',
-    'get_driver_or_error', 'get_passenger_or_error', 'get_order_or_error'
+    'get_driver_or_error', 'get_passenger_or_error', 'get_order_or_error',
+    'selectinload'
 ]

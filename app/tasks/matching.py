@@ -61,7 +61,8 @@ async def find_driver_for_order_task(self, order_id: int):
                 'lon': float(order.pickup_lon)
             },
             passenger_count=order.passenger_count,
-            max_distance_km=50
+            max_distance_km=50,
+            order_id=order_id  # ✅ Skip logic uchun
         )
         
         if driver_id:

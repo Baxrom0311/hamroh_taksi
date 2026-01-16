@@ -230,6 +230,34 @@ class DriverQueueManager:
             return 0
     
     # ========================================
+    # SKIP & REJECT TRACKING
+    # ========================================
+    
+    async def skip_driver_for_order(self, driver_id: int, order_id: int, ttl: int = 300):
+        """Haydovchini ma'lum buyurtma uchun vaqtincha skip ro'yxatiga qo'shish"""
+        skip_key = f"order_skip:{order_id}:{driver_id}"
+        await self.redis.set(skip_key, "1", ex=ttl)
+    
+    async def is_driver_skipped(self, driver_id: int, order_id: int) -> bool:
+        """Haydovchi bu buyurtma uchun skip qilinganmi?"""
+        skip_key = f"order_skip:{order_id}:{driver_id}"
+        return await self.redis.exists(skip_key)
+    
+    async def track_driver_reject(self, driver_id: int):
+        """Haydovchining rad etishlarini hisoblash"""
+        day_str = datetime.now().strftime("%Y-%m-%d")
+        reject_key = f"driver_rejects:{day_str}:{driver_id}"
+        await self.redis.incr(reject_key)
+        await self.redis.expire(reject_key, 86400) # 24 soat
+        
+    async def get_driver_reject_count(self, driver_id: int) -> int:
+        """Haydovchining bugungi rad etishlari soni"""
+        day_str = datetime.now().strftime("%Y-%m-%d")
+        reject_key = f"driver_rejects:{day_str}:{driver_id}"
+        val = await self.redis.get(reject_key)
+        return int(val) if val else 0
+    
+    # ========================================
     # MATCHING
     # ========================================
     
@@ -238,7 +266,8 @@ class DriverQueueManager:
         route_id: int,
         passenger_location: Dict[str, float],
         passenger_count: int = 1,
-        max_distance_km: float = 50
+        max_distance_km: float = 50,
+        order_id: Optional[int] = None
     ) -> Optional[int]:
         """
         Keyingi eng yaxshi haydovchini topish
@@ -287,6 +316,11 @@ class DriverQueueManager:
                     driver = await get_driver_by_id(session, driver_id)
                     
                     if not driver:
+                        continue
+                    
+                    # 0. Skip tekshiruvi (agar order_id berilgan bo'lsa)
+                    if order_id and await self.is_driver_skipped(driver_id, order_id):
+                        logger.debug(f"Driver {driver_id}: skipped for order {order_id}")
                         continue
                     
                     # 1. Aktiv va bo'sh

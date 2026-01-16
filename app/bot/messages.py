@@ -14,6 +14,8 @@ class Messages:
         ACTIVE_ORDER_NOT_FOUND = "❌ Aktiv buyurtma topilmadi"
         ORDER_BUT_DRIVER_MISMATCH = "❌ Buyurtma topilmadi yoki sizga tegishli emas"
         SOMETHING_WENT_WRONG = "❌ Xatolik yuz berdi"
+        MESSAGE_OUTDATED = "⚠️ Bu xabar eskirgan"
+        GENERIC = "❌ Xatolik yuz berdi. Iltimos, qayta urinib ko'ring."
         
         SUPPORT_INFO = (
             "📞 <b>Support xizmati</b>\n\n"
@@ -82,6 +84,8 @@ class Messages:
             "📦 Buyurtma #{order_id}\n\n"
             "⚠️ Warning olindingiz!"
         )
+        TRIP_ACCEPTED_PROMPT = "✅ <b>Buyurtma #{order_id} qabul qilindi!</b>"
+        REMAINING_SEATS_INFO = "\n\n👥 Qolgan bo'sh joylar: <b>{remaining_seats}</b>"
 
     class Passenger:
         NO_ROUTES = "❌ Hozirda aktiv marshrutlar yo'q"
@@ -105,16 +109,7 @@ class Messages:
             "📱 Haydovchi topilgach xabar beramiz!"
         )
         DRIVER_FOUND = (
-            "✅ <b>Yangi haydovchi tanlandi!</b>\n\n"
-            "📦 Buyurtma #{order_id}\n\n"
-            "👤 Haydovchi: {full_name}\n"
-            "🚗 Mashina: {car_model} ({car_color})\n"
-            "🔢 Raqam: {car_number}\n\n"
-            "Haydovchi siz tomonga yo'lga chiqdi!"
-        )
-
-        DRIVER_FOUND = (
-            "✅ <b>Yangi haydovchi tanlandi!</b>\n\n"
+            "✅ <b>Haydovchi topildi!</b>\n\n"
             "📦 Buyurtma #{order_id}\n\n"
             "👤 Haydovchi: {full_name}\n"
             "🚗 Mashina: {car_model} ({car_color})\n"
