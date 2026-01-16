@@ -557,6 +557,42 @@ async def health_check():
 
 
 # ============================================
+# PERFORMANCE METRICS
+# ============================================
+
+@app.get("/api/metrics/stats")
+async def get_metrics_stats(
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Performance metrics
+    
+    Returns:
+        {
+            'api_calls': {...},
+            'memory': {...}
+        }
+    """
+    from app.utils.metrics import api_metrics, get_memory_usage
+    
+    stats = api_metrics.get_stats()
+    memory = get_memory_usage()
+    
+    return {
+        'success': True,
+        'metrics': {
+            'api_calls': stats,
+            'memory': {
+                'rss_mb': round(memory['rss'] / 1024 / 1024, 2),
+                'vms_mb': round(memory['vms'] / 1024 / 1024, 2),
+                'percent': round(memory['percent'], 2)
+            }
+        }
+    }
+
+
+
+# ============================================
 # ERROR HANDLERS
 # ============================================
 

@@ -185,6 +185,8 @@ async def start_trip_handler(message: Message):
 async def cancel_trip_handler(callback: CallbackQuery):
     """
     Trip'ni bekor qilish - Tripdagi barcha orderlar CANCELLED
+    
+    ✅ YANGI LOGIC: Faqat PENDING orderlarni bekor qilish mumkin
     """
     if not callback.data:
         await callback.answer("Xatolik")
@@ -198,29 +200,25 @@ async def cancel_trip_handler(callback: CallbackQuery):
         if not driver:
             return
         
-        # Trip olish
-        from app.models.trip import get_trip_by_id, cancel_trip
-        trip = await get_trip_by_id(session, trip_id)
+        # ✅ Permission check
+        from app.services.trip_service import can_cancel_trip, cancel_pending_orders_in_trip
         
-        if not trip or trip.driver_id != driver.driver_id:
-            await callback.answer("Trip topilmadi yoki sizga tegishli emas")
+        check_result = await can_cancel_trip(trip_id, driver.driver_id)
+        
+        if not check_result['can_cancel']:
+            await callback.answer(check_result['reason'], show_alert=True)
+            return
+        
+        # ✅ Faqat PENDING orderlarni bekor qilish va komissiya qaytarish
+        result = await cancel_pending_orders_in_trip(trip_id, driver.driver_id)
+        
+        if not result['success']:
+            await callback.answer(result['message'], show_alert=True)
             return
         
         # Trip bekor qilish
+        from app.models.trip import get_trip_by_id, cancel_trip
         await cancel_trip(session, trip_id)
-        
-        # Barcha orderlarni bekor qilish
-        from sqlalchemy import update
-        await session.execute(
-            update(Order)
-            .where(Order.trip_id == trip_id)
-            .where(Order.status.in_([OrderStatus.ACCEPTED, OrderStatus.IN_PROGRESS]))
-            .values(
-                status=OrderStatus.CANCELLED,
-                cancellation_reason='driver_cancelled_trip',
-                cancelled_at=sql_func.now()
-            )
-        )
         
         # Driver'ni yangilash
         await session.execute(
@@ -237,14 +235,15 @@ async def cancel_trip_handler(callback: CallbackQuery):
         
         if callback.message:
             await callback.message.edit_text(
-                "❌ <b>Trip bekor qilindi</b>\n\n"
-                "Barcha buyurtmalar bekor qilindi.",
+                f"✅ {result['message']}\\n\\n"
+                f"🚗 Trip #{trip_id} bekor qilindi.",
                 parse_mode="HTML"
             )
         
-        logger.warning(f"Trip #{trip_id} cancelled by driver {driver.driver_id}")
+        logger.warning(f"Trip #{trip_id} cancelled by driver {driver.driver_id}: {result}")
     
     await callback.answer("Trip bekor qilindi")
 
 
 __all__ = ['router']
+

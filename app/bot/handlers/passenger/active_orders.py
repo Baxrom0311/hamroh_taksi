@@ -7,18 +7,20 @@ Yo'lovchi o'zining barcha faol buyurtmalarini (PENDING, ACCEPTED, IN_PROGRESS) k
 """
 
 from aiogram import Router, F
-from aiogram.types import Message
+from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
 from loguru import logger
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from app.core.database import get_session
-from app.models.order import Order, OrderStatus
+from app.models.order import Order, OrderStatus, get_order_by_id
 from app.models.passenger import get_passenger_by_user_id, Passenger
 from app.models.driver import Driver
 from app.bot.utils import get_passenger_or_error
 from app.bot.keyboards.passenger import get_passenger_main_menu
+from app.services.trip_service import refund_commission_for_order
+from app.tasks.matching import find_driver_for_order_task
 
 router = Router()
 
@@ -121,6 +123,80 @@ async def view_active_orders(message: Message, state: FSMContext):
         )
         
         logger.info(f"Passenger {passenger.passenger_id} viewed {len(active_orders)} active orders")
+
+
+# ============================================
+# MASHINANI ALMASHTIRISH (Yo'lovchi haydovchini o'zgartirmoqchi)
+# ============================================
+
+@router.callback_query(F.data.startswith("change_car:"))
+async def change_car_handler(callback: CallbackQuery):
+    """
+    Yo'lovchi mashinani almashtirishni xohlasa
+    
+    QACHON:
+    - Order ACCEPTED holatida (haydovchi topilgan, lekin hali yetib kelmagan)
+    - Komissiya haydovchiga qaytariladi
+    - Order CANCELLED bo'ladi
+    - Yangi haydovchi topish boshlaydi
+    """
+    if not callback.data:
+        await callback.answer("Xatolik")
+        return
+    
+    order_id = int(callback.data.split(":")[1])
+    user_id = callback.from_user.id
+    
+    async with get_session() as session:
+        passenger = await get_passenger_or_error(session, user_id, callback)
+        if not passenger:
+            return
+        
+        # Order'ni tekshirish
+        order = await get_order_by_id(session, order_id)
+        
+        if not order or order.passenger_id != passenger.passenger_id:
+            await callback.answer("Buyurtma topilmadi yoki sizga tegishli emas")
+            return
+        
+        if order.status not in [OrderStatus.ACCEPTED, OrderStatus.PENDING]:
+            await callback.answer(
+                "Bu buyurtmani bekor qilib bo'lmaydi (allaqachon boshlangan yoki yakunlangan)",
+                show_alert=True
+            )
+            return
+        
+        # ✅ Komissiya qaytarish (trip_service orqali)
+        
+        result = await refund_commission_for_order(
+            order_id,
+            reason="passenger_changed_car"
+        )
+        
+        if not result['success']:
+            await callback.answer(result['message'], show_alert=True)
+            return
+        
+        # Order yangilash (cancel)
+        await session.commit()
+        
+        if callback.message:
+            await callback.message.edit_text(
+                f"✅ <b>Buyurtma bekor qilindi</b>\n\n"
+                f"💰 Haydovchiga {result.get('refunded_amount', 0):,.0f} so'm qaytarildi\n\n"
+                f"🔄 Yangi haydovchi topilmoqda...",
+                parse_mode="HTML"
+            )
+        
+        # Yangi haydovchi topish task
+        find_driver_for_order_task.delay(order_id)
+        
+        logger.info(
+            f"Passenger {passenger.passenger_id} changed car for order {order_id}, "
+            f"refunded {result.get('refunded_amount', 0)}"
+        )
+    
+    await callback.answer("Buyurtma bekor qilindi, yangi haydovchi topilmoqda")
 
 
 __all__ = ['router']

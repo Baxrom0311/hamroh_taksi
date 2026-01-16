@@ -320,7 +320,11 @@ async def accept_order_by_driver(
                 if not order:
                     raise OrderNotFoundException(order_id=order_id)
                 
+                # ✅ DOUBLE CHECK - Lock timeout'dan keyin ham tekshirish
                 if order.status != OrderStatus.PENDING:
+                    logger.warning(
+                        f"Order {order_id} status changed during lock: {order.status}"
+                    )
                     raise OrderAlreadyAcceptedException(
                         order_id=order_id,
                         current_driver=order.driver_id
@@ -442,6 +446,18 @@ async def accept_order_by_driver(
                     f"✅ Order accepted: order_id={order_id}, "
                     f"driver_id={driver_id}, commission={commission}"
                 )
+                
+                # ✅ 2.7. Agar seats tugasa, queue'dan o'chirish
+                if new_available_seats < 1:
+                    from app.services.queue_service import driver_queue
+                    try:
+                        await driver_queue.remove_driver(driver_id, order.route_id)
+                        logger.info(
+                            f"Driver {driver_id} removed from queue {order.route_id}: "
+                            f"no more available seats"
+                        )
+                    except Exception as e:
+                        logger.warning(f"Failed to remove driver from queue: {e}")
                 
                 # 3. Yo'lovchiga xabar yuborish (Celery task)
                 # from app.tasks.notifications import notify_passenger_driver_found
