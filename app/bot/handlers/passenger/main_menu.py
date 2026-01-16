@@ -7,22 +7,17 @@ from aiogram.types import Message
 from loguru import logger
 
 from app.core.database import get_session
-from app.models.passenger import get_passenger_by_user_id
+from app.models.passenger import get_passenger_by_user_id, Passenger
+from app.bot.decorators import with_passenger_session  # ✅ NEW
+from sqlalchemy.ext.asyncio import AsyncSession
 
 router = Router()
 
 
 @router.message(F.text == "📍 Mening buyurtmalarim")
-async def my_orders(message: Message):
-    """Yo'lovchining aktiv buyurtmalari"""
-    user_id = message.from_user.id # type: ignore
-    
-    async with get_session() as session:
-        passenger = await get_passenger_by_user_id(session, user_id)
-        
-        if not passenger:
-            await message.answer("❌ Ma'lumotlar topilmadi")
-            return
+@with_passenger_session  # ✅ Decorator
+async def my_orders(message: Message, session: AsyncSession, passenger: Passenger):
+    """Yo'lovchining aktiv buyurtmalari - ✅ REFACTORED"""
         
         # Aktiv buyurtmalarni olish
         from sqlalchemy import select
@@ -70,16 +65,9 @@ async def my_orders(message: Message):
 
 
 @router.message(F.text == "⭐ Tarix")
-async def order_history(message: Message):
-    """Buyurtmalar tarixi"""
-    user_id = message.from_user.id # type: ignore
-    
-    async with get_session() as session:
-        passenger = await get_passenger_by_user_id(session, user_id)
-        
-        if not passenger:
-            await message.answer("❌ Ma'lumotlar topilmadi")
-            return
+@with_passenger_session  # ✅ Decorator
+async def order_history(message: Message, session: AsyncSession, passenger: Passenger):
+    """Buyurtmalar tarixi - ✅ REFACTORED"""
         
         await message.answer(
             f"📊 <b>Statistika</b>\n\n"
@@ -90,16 +78,9 @@ async def order_history(message: Message):
 
 
 @router.message(F.text == "⚙️ Sozlamalar")
-async def passenger_settings(message: Message):
-    """Yo'lovchi sozlamalari"""
-    user_id = message.from_user.id # type: ignore
-    
-    async with get_session() as session:
-        passenger = await get_passenger_by_user_id(session, user_id)
-        
-        if not passenger:
-            await message.answer("❌ Ma'lumotlar topilmadi")
-            return
+@with_passenger_session  # ✅ Decorator
+async def passenger_settings(message: Message, session: AsyncSession, passenger: Passenger):
+    """Yo'lovchi sozlamalari - ✅ REFACTORED"""
         
         settings_text = f"""
 ⚙️ <b>Sozlamalar</b>
