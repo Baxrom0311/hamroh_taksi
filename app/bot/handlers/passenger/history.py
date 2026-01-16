@@ -15,11 +15,13 @@ from sqlalchemy.orm import selectinload
 
 from app.core.database import get_session
 from app.models.order import Order, OrderStatus
-from app.models.passenger import get_passenger_by_user_id
+from app.models.passenger import get_passenger_by_user_id, Passenger
 from app.models.driver import Driver
 from app.bot.utils import get_passenger_or_error
 from app.bot.keyboards.passenger import get_passenger_main_menu
 from app.bot.states.passenger import PassengerStates
+from app.bot.decorators import with_passenger_session  # ✅ NEW
+from sqlalchemy.ext.asyncio import AsyncSession
 
 router = Router()
 
