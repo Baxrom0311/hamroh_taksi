@@ -398,13 +398,13 @@ Xavfsiz yetib borgansizdan xursandmiz!
         rating_keyboard = {
             'inline_keyboard': [
                 [
-                    {'text': '⭐', 'callback_data': f'rate:{order_id}:1'},
-                    {'text': '⭐⭐', 'callback_data': f'rate:{order_id}:2'},
-                    {'text': '⭐⭐⭐', 'callback_data': f'rate:{order_id}:3'},
+                    {'text': '⭐️ 1', 'callback_data': f'rate_driver:{order_id}:1'},
+                    {'text': '⭐️ 2', 'callback_data': f'rate_driver:{order_id}:2'},
+                    {'text': '⭐️ 3', 'callback_data': f'rate_driver:{order_id}:3'},
                 ],
                 [
-                    {'text': '⭐⭐⭐⭐', 'callback_data': f'rate:{order_id}:4'},
-                    {'text': '⭐⭐⭐⭐⭐', 'callback_data': f'rate:{order_id}:5'},
+                    {'text': '⭐️ 4', 'callback_data': f'rate_driver:{order_id}:4'},
+                    {'text': '⭐️ 5', 'callback_data': f'rate_driver:{order_id}:5'},
                 ]
             ]
         }

@@ -15,9 +15,11 @@ ISHLATISH:
 
 from .base import *
 from app.admin.routes import settings
-from app.bot.keyboards.driver import get_driver_main_menu
+from app.bot.keyboards.driver import get_driver_main_menu, get_trip_active_keyboard
 from app.bot.keyboards.passenger import get_passenger_main_menu
 from app.bot.keyboards.common import get_registration_choice_keyboard, get_support_keyboard
+from app.bot.states.driver import DriverStates
+from app.models.order import Order, OrderStatus
 
 
 # Router yaratish
@@ -87,8 +89,40 @@ async def cmd_start(message: Message, session: AsyncSession, state: FSMContext):
                 "Support bilan bog'laning: @support"
             )
             return
+
+        # Agar safarda bo'lsa, aktiv buyurtmani qayta yuklab state ni tiklash
+        if driver.is_on_trip:
+            order_result = await session.execute(
+                select(Order)
+                .where(Order.driver_id == driver.driver_id)
+                .where(Order.status.in_([OrderStatus.ACCEPTED, OrderStatus.IN_PROGRESS]))
+                .order_by(Order.created_at.desc())
+                .limit(1)
+            )
+            active_order = order_result.scalar_one_or_none()
+
+            if active_order:
+                await state.update_data(current_order_id=active_order.order_id)
+                await state.set_state(DriverStates.trip_in_progress)
+                await message.answer(
+                    Messages.Driver.ALREADY_ON_TRIP,
+                    reply_markup=get_trip_active_keyboard(active_order.order_id),
+                    parse_mode="HTML"
+                )
+                return
+            else:
+                # DB flag safarda, lekin aktiv order topilmadi -> flagni tozalaymiz
+                await session.execute(
+                    update(Driver)
+                    .where(Driver.driver_id == driver.driver_id)
+                    .values(is_on_trip=False)
+                )
+                await session.commit()
+                await state.clear()
         
         # Driver menyusiga yo'naltirish
+        # Oldingi state'larni tozalaymiz (safarda bo'lmasa)
+        await state.clear()
         await message.answer(
             f"👋 Xush kelibsiz, <b>{driver.full_name}</b>!\n\n"
             f"🚗 {driver.car_model} ({driver.car_number})\n"

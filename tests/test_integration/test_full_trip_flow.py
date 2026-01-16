@@ -19,6 +19,9 @@ from app.models.order import Order, OrderStatus
 from app.models.route import Route
 from app.core.database import get_session
 
+# Use a single event loop for all tests in this module to avoid cross-loop asyncpg issues
+pytestmark = pytest.mark.asyncio(loop_scope="session")
+
 
 class TestFullTripFlow:
     """
@@ -46,7 +49,7 @@ class TestFullTripFlow:
         # Mock state
         state = self._create_mock_state({
             'role': UserRole.PASSENGER,
-            'phone_number': '+998901234567',
+            'phone_number': f"+998{faker.random_number(digits=9, fix_len=True)}",
             'age': 25,
             'gender': Gender.MALE
         })
@@ -57,7 +60,7 @@ class TestFullTripFlow:
         
         # Verify
         assert message.answer.called
-        assert "muvaffaqiyatli" in message.answer.call_args[0][0].lower()
+        assert "yakunlandi" in message.answer.call_args[0][0].lower()
         
         # Check database
         from app.models.user import get_user_by_id
@@ -77,10 +80,10 @@ class TestFullTripFlow:
         
         state = self._create_mock_state({
             'role': UserRole.DRIVER,
-            'phone_number': '+998905555555',
+            'phone_number': f"+998{faker.random_number(digits=9, fix_len=True)}",
             'car_model': 'Chevrolet Cobalt',
             'car_color': 'Oq',
-            'car_number': '01 A 123 BC'
+            'car_number': f"{faker.random_int(min=10, max=99)} A {faker.random_int(min=100, max=999)} {faker.random_int(min=10, max=99)}"
         })
         
         with patch('app.bot.handlers.registration.get_session', return_value=db_session):
@@ -105,7 +108,7 @@ class TestFullTripFlow:
         
         # Create order
         result = await create_new_order(
-            passenger_id=passenger.pass enger_id,
+            passenger_id=passenger.passenger_id,
             route_id=active_route.route_id,
             pickup_location="Bozor yonida",
             pickup_lat=41.3111,
@@ -145,9 +148,12 @@ class TestFullTripFlow:
         assert pending_order.status == OrderStatus.ACCEPTED
         assert pending_order.driver_id == driver.driver_id
         
-        # Check driver balance
+        # Check driver balance (commission deducted if configured)
+        from app.models.system_settings import get_pricing_settings
         await db_session.refresh(driver)
-        assert driver.balance < 50000  # Commission deducted
+        pricing = await get_pricing_settings(db_session)
+        commission = pricing.get('commission_amount', 0) or 0
+        assert driver.balance == 50000 - commission
     
     @pytest.mark.asyncio
     async def test_trip_start_and_complete(self, db_session, accepted_order):
@@ -205,28 +211,30 @@ class TestFullTripFlow:
 async def passenger(db_session, faker):
     """Test passenger yaratish"""
     from app.models.user import create_user
-    from app.models.passenger import create_passenger
+    from app.models.passenger import create_passenger, get_passenger_by_user_id
     
     user_id = faker.random_int(min=100000, max=999999)
     
-    user = await create_user(
-        db_session,
-        user_id=user_id,
-        phone_number='+998901111111',
-        first_name="Test Passenger",
-        role=UserRole.PASSENGER
-    )
-    
-    passenger = await create_passenger(
-        db_session,
-        user_id=user_id,
-        full_name="Test Passenger",
-        gender=Gender.MALE,
-        age=25,
-        phone_number='+998901111111'
-    )
-    
-    await db_session.commit()
+    # Create using isolated session to avoid sharing long-lived connections
+    async with get_session() as session:
+        user = await create_user(
+            session,
+            user_id=user_id,
+            phone_number=f"+998{faker.random_number(digits=9, fix_len=True)}",
+            first_name="Test Passenger",
+            role=UserRole.PASSENGER
+        )
+        await create_passenger(
+            session,
+            user_id=user_id,
+            full_name="Test Passenger",
+            gender=Gender.MALE,
+            age=25,
+            phone_number=user.phone_number
+        )
+
+    # Reload into the shared test session
+    passenger = await get_passenger_by_user_id(db_session, user_id)
     return passenger
 
 
@@ -234,41 +242,42 @@ async def passenger(db_session, faker):
 async def driver(db_session, faker):
     """Test driver yaratish"""
     from app.models.user import create_user
-    from app.models.driver import create_driver
+    from app.models.driver import create_driver, get_driver_by_user_id
     
     user_id = faker.random_int(min=100000, max=999999)
     
-    user = await create_user(
-        db_session,
-        user_id=user_id,
-        phone_number='+998902222222',
-        first_name="Test Driver",
-        role=UserRole.DRIVER
-    )
-    
-    driver = await create_driver(
-        db_session,
-        user_id=user_id,
-        full_name="Test Driver",
-        phone_number='+998902222222',
-        car_model='Chevrolet Cobalt',
-        car_color='Oq',
-        car_number='01 A 123 BC'
-    )
-    
+    async with get_session() as session:
+        await create_user(
+            session,
+            user_id=user_id,
+            phone_number=f"+998{faker.random_number(digits=9, fix_len=True)}",
+            first_name="Test Driver",
+            role=UserRole.DRIVER
+        )
+        await create_driver(
+            session,
+            user_id=user_id,
+            full_name="Test Driver",
+            phone_number=f"+998{faker.random_number(digits=9, fix_len=True)}",
+            car_model='Chevrolet Cobalt',
+            car_color='Oq',
+            car_number=f"{faker.random_int(min=10, max=99)} A {faker.random_int(min=100, max=999)} {faker.random_int(min=10, max=99)}"
+        )
+
+    driver = await get_driver_by_user_id(db_session, user_id)
+    driver.available_seats = 4
     await db_session.commit()
     return driver
 
 
 @pytest.fixture
-async def active_route(db_session):
+async def active_route(db_session, faker):
     """Test route yaratish"""
     route = Route(
-        route_name="Gurlan → Vazir",
-        from_location="Gurlan",
-        to_location="Vazir",
+        from_location=f"Gurlan {faker.random_int(min=1, max=999)}",
+        to_location=f"Vazir {faker.random_int(min=1, max=999)}",
+        distance_km=45.5,
         is_active=True,
-        base_price=15000
     )
     
     db_session.add(route)

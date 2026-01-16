@@ -10,10 +10,9 @@ BU HANDLER NIMA QILADI:
 """
 from ..base import *
 from aiogram.filters import StateFilter
-from aiogram.types import InaccessibleMessage
 from app.core.database import transaction
 from app.models.order import Order, get_order_by_id, OrderStatus
-from app.models.transaction import create_transaction, TransactionType
+from app.models.trip import Trip, TripStatus
 from app.services.order_service import (
     accept_order_by_driver,
     start_trip,
@@ -210,8 +209,13 @@ async def driver_started_trip(message: Message, session: AsyncSession, driver: D
         await message.answer(Messages.Error.ACTIVE_ORDER_NOT_FOUND)
         return
     
-    # Order'ni olish
-    order = await get_order_by_id(session, order_id)
+    # Order'ni eager load bilan olish (lazy load -> MissingGreenlet bo'lmasligi uchun)
+    order_result = await session.execute(
+        select(Order)
+        .options(selectinload(Order.passenger).selectinload(Passenger.user))
+        .where(Order.order_id == order_id)
+    )
+    order = order_result.scalar_one_or_none()
     
     if not order or order.driver_id != driver.driver_id:
         await message.answer(Messages.Error.ORDER_BUT_DRIVER_MISMATCH)
@@ -225,6 +229,9 @@ async def driver_started_trip(message: Message, session: AsyncSession, driver: D
     result = await start_trip(order_id, driver.driver_id)
     
     if result['success']:
+        # Refresh driver data because accept_order_by_driver updated DB
+        await session.refresh(driver)
+        
         # Agar o'rinlar to'lganda, navbatdan o'chirish
         if driver.available_seats <= 0:
             from app.services.queue_service import driver_queue
@@ -360,18 +367,74 @@ async def trip_confirmed(callback: CallbackQuery, session: AsyncSession, driver:
 
 
 # ============================================
-# SAFAR YAKUNLASH (MANUAL - O'CHIRILDI)
+# SAFAR YAKUNLASH (MANUAL FALLBACK)
 # ============================================
 
-# @router.message(
-#     DriverStates.trip_in_progress,
-#     F.text == "🚗 Safarni yakunlash"
-# )
-# async def complete_trip_handler(message: Message, state: FSMContext):
-#     """
-#     Safar yakunlandi (Manual) - O'CHIRILDI (User talabi bilan 10 daqiqa auto)
-#     """
-#     await message.answer("⚠️ Safar avtomatik yakunlanadi (10 daqiqa).")
+@router.message(
+    DriverStates.trip_in_progress,
+    F.text == "✅ Safarni yakunlash"
+)
+@with_driver_session
+async def manual_complete_trip(message: Message, session: AsyncSession, driver: Driver, state: FSMContext):
+    """
+    Haydovchi o'zi safarni yakunlasa (timer ishlamagan holatlarga fallback).
+    """
+    data = await state.get_data()
+    order_id = data.get('current_order_id')
+
+    if not order_id:
+        await message.answer(Messages.Error.ACTIVE_ORDER_NOT_FOUND)
+        return
+
+    result = await complete_trip(order_id, driver.driver_id)
+    if not result['success']:
+        await message.answer(result['message'])
+        return
+
+    updated_order_result = await session.execute(
+        select(Order)
+        .options(selectinload(Order.passenger).selectinload(Passenger.user))
+        .where(Order.order_id == order_id)
+    )
+    updated_order = updated_order_result.scalar_one_or_none()
+
+    await message.answer(
+        f"✅ Safar yakunlandi!\n\n"
+        f"📦 Buyurtma #{order_id}\n"
+        f"⏱ Davomiyligi: {result.get('duration_minutes', 'N/A')} daqiqa",
+        reply_markup=get_driver_main_menu(),
+        parse_mode="HTML"
+    )
+    await state.clear()
+
+    # Yo'lovchidan reyting so'rash
+    if updated_order and updated_order.passenger and updated_order.passenger.user:
+        from app.bot.main import bot
+        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+        rating_kb = InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(text="⭐️ 1", callback_data=f"rate_driver:{order_id}:1"),
+                InlineKeyboardButton(text="⭐️ 2", callback_data=f"rate_driver:{order_id}:2"),
+                InlineKeyboardButton(text="⭐️ 3", callback_data=f"rate_driver:{order_id}:3"),
+            ],
+            [
+                InlineKeyboardButton(text="⭐️ 4", callback_data=f"rate_driver:{order_id}:4"),
+                InlineKeyboardButton(text="⭐️ 5", callback_data=f"rate_driver:{order_id}:5"),
+            ]
+        ])
+        try:
+            await bot.send_message(
+                chat_id=updated_order.passenger.user.user_id,
+                text=(
+                    f"✅ <b>Safar yakunlandi</b>\n\n"
+                    f"📦 Buyurtma #{order_id}\n"
+                    f"✨ <b>Haydovchiga baho bering:</b>"
+                ),
+                parse_mode="HTML",
+                reply_markup=rating_kb
+            )
+        except Exception as e:
+            logger.error(f"Failed to send rating prompt: {e}")
 
 
 # ============================================
@@ -392,16 +455,31 @@ async def contact_passenger_handler(message: Message, session: AsyncSession, dri
     
     ✅ REFACTORED: Session va driver avtomatik
     """
-    # Barcha aktiv buyurtmalarni olish (ACCEPTED va IN_PROGRESS) - passenger ma'lumotlari bilan
-    active_orders_result = await session.execute(
-        select(Order)
-        .options(selectinload(Order.passenger).selectinload(Passenger.user))
-        .where(Order.driver_id == driver.driver_id)
-        .where(Order.status.in_([OrderStatus.ACCEPTED, OrderStatus.IN_PROGRESS]))
-        .order_by(Order.created_at)
+    # Faqat joriy aktiv tripdagi buyurtmalarni ko'rsatamiz
+    trip_result = await session.execute(
+        select(Trip)
+        .options(
+            selectinload(Trip.orders)
+            .options(
+                selectinload(Order.passenger).selectinload(Passenger.user)
+            )
+        )
+        .where(Trip.driver_id == driver.driver_id)
+        .where(Trip.status == TripStatus.ACTIVE)
+        .order_by(Trip.created_at.desc())
+        .limit(1)
     )
-    active_orders = active_orders_result.scalars().all()
-    
+    active_trip = trip_result.scalar_one_or_none()
+
+    if not active_trip:
+        await message.answer(Messages.Error.ACTIVE_ORDER_NOT_FOUND)
+        return
+
+    active_orders = [
+        order for order in active_trip.orders
+        if order.status in (OrderStatus.ACCEPTED, OrderStatus.IN_PROGRESS)
+    ]
+
     if not active_orders:
         await message.answer(Messages.Error.ACTIVE_ORDER_NOT_FOUND)
         return
@@ -578,8 +656,8 @@ async def confirm_cancellation(message: Message, session: AsyncSession, driver: 
         await state.clear()
         return
     
-    if order.driver_id != driver.driver_id:
-        await message.answer(Messages.Error.ORDER_BUT_DRIVER_MISMATCH)
+    if order.driver_id != driver.driver_id or order.status not in [OrderStatus.ACCEPTED, OrderStatus.IN_PROGRESS]:
+        await message.answer("⚠️ Bu buyurtmani bekor qilib bo'lmaydi (yakunlangan yoki noto'g'ri status)")
         await state.clear()
         return
     
@@ -589,8 +667,8 @@ async def confirm_cancellation(message: Message, session: AsyncSession, driver: 
         .where(Order.order_id == order_id)
         .values(
             status=OrderStatus.PENDING,
-            cancellation_reason='driver_cancelled',
-            cancelled_at=func.now(),
+            cancellation_reason=None,
+            cancelled_at=None,
             driver_id=None,
             accepted_at=None
         )
@@ -690,19 +768,23 @@ async def reject_order_handler(callback: CallbackQuery, session: AsyncSession, d
         )
     
     # Keyingi haydovchini topish uchun orderni PENDING qilib re-queue qilish
-    # Driverni bu order uchun skip qilish (Redis'da saqlash mumkin, hozircha shunchaki find_driver chaqiramiz)
-    await session.execute(
+    # MUHIM: Faqat PENDING holatdagi buyurtmani yangilaymiz (race condition'ni oldini olish uchun)
+    result = await session.execute(
         update(Order)
         .where(Order.order_id == order_id)
+        .where(Order.status == OrderStatus.PENDING)
         .values(
-            status=OrderStatus.PENDING,
             driver_id=None,
             accepted_at=None
         )
     )
     
-    # Keyingi haydovchiga yuborish
-    find_driver_for_order_task.delay(order_id) # type: ignore
+    if result.rowcount > 0:
+        # Keyingi haydovchiga yuborish
+        find_driver_for_order_task.delay(order_id) # type: ignore
+        logger.info(f"Order {order_id} re-queued for matching after reject.")
+    else:
+        logger.warning(f"Order {order_id} was already accepted by another driver, skipping re-queue.")
     
     logger.info(
         f"Driver {driver.driver_id} rejected order {order_id}. "

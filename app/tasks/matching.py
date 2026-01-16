@@ -13,7 +13,7 @@ BU TASK'LAR NIMA QILADI:
 import asyncio
 from typing import Optional
 from loguru import logger
-from sqlalchemy import select
+from sqlalchemy import select, update
 from app.core.celery_app import async_to_sync # <--- import
 
 from app.core.celery_app import celery_app
@@ -336,89 +336,128 @@ async def auto_confirm_trip_task(order_id: int):
 
 @celery_app.task(name="app.tasks.matching.auto_complete_trip_task")
 @async_to_sync
-async def auto_complete_trip_task(order_id: int):
+async def auto_complete_trip_task(target_id: int):
     """
-    "Ketdik" bosilgandan keyin 10 daqiqadan keyin safar avtomatik yakunlanadi.
+    "Ketdik" bosilgandan keyin 10 daqiqa o'tsa safarni avtomatik yakunlash.
     
-    STATUS: IN_PROGRESS → COMPLETED
+    target_id:
+        - trip_id (Trip bo'lsa) → tripdagi IN_PROGRESS orderlarning barchasini yakunlash
+        - order_id (Order bo'lsa) → faqat shu orderni yakunlash
     """
-    from sqlalchemy import update, select
+    from sqlalchemy import select
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     from app.models.order import Order, OrderStatus
+    from app.models.trip import Trip, TripStatus
     from app.models.driver import Driver
     from app.models.passenger import Passenger
     from sqlalchemy.orm import selectinload
     from app.services.order_service import complete_trip
-    
+    from app.bot.main import bot
+
     async with get_session() as session:
-        order_result = await session.execute(
-            select(Order)
-            .options(selectinload(Order.passenger).selectinload(Passenger.user))
-            .where(Order.order_id == order_id)
+        # Avval trip sifatida qidiramiz
+        trip_result = await session.execute(
+            select(Trip)
+            .options(
+                selectinload(Trip.orders)
+                .options(selectinload(Order.passenger).selectinload(Passenger.user))
+            )
+            .where(Trip.trip_id == target_id)
         )
-        order = order_result.scalar_one_or_none()
-        
-        # Agar order hali ham IN_PROGRESS holatda bo'lsa, avtomatik yakunlash
-        if order and order.status == OrderStatus.IN_PROGRESS:
-            logger.info(f"Auto-completing trip for order {order_id} after 10 minutes")
-            
-            # Safarni yakunlash
-            if order.driver_id:
-                result = await complete_trip(order_id, order.driver_id)
-                
-                if result['success']:
-                    # Haydovchiga xabar
-                    driver_result = await session.execute(
-                        select(Driver).where(Driver.driver_id == order.driver_id)
+        trip = trip_result.scalar_one_or_none()
+
+        orders_to_complete: list[Order] = []
+
+        if trip and trip.status == TripStatus.ACTIVE:
+            orders_to_complete = [
+                o for o in trip.orders if o.status == OrderStatus.IN_PROGRESS
+            ]
+            logger.info(f"Auto-completing trip #{trip.trip_id} with {len(orders_to_complete)} orders")
+        else:
+            # Trip topilmasa, target_id ni order_id deb qaraymiz
+            order_result = await session.execute(
+                select(Order)
+                .options(selectinload(Order.passenger).selectinload(Passenger.user))
+                .where(Order.order_id == target_id)
+            )
+            order = order_result.scalar_one_or_none()
+            if order and order.status == OrderStatus.IN_PROGRESS:
+                orders_to_complete = [order]
+                logger.info(f"Auto-completing single order #{target_id}")
+
+        if not orders_to_complete:
+            logger.info(f"Auto-complete skipped: nothing to complete for id={target_id}")
+            return
+
+        # Yakunlash va xabar berish
+        for order in orders_to_complete:
+            driver_id = order.driver_id
+            if not driver_id:
+                continue
+
+            result = await complete_trip(order.order_id, driver_id)
+            if not result.get('success'):
+                logger.error(f"Failed to auto-complete order {order.order_id}: {result.get('message')}")
+                continue
+
+            # Haydovchiga xabar
+            driver_result = await session.execute(
+                select(Driver).where(Driver.driver_id == driver_id)
+            )
+            driver = driver_result.scalar_one_or_none()
+            if driver:
+                try:
+                    await bot.send_message(
+                        chat_id=driver.user_id,
+                        text=(
+                            f"✅ <b>Safar avtomatik yakunlandi</b>\n\n"
+                            f"📦 Buyurtma #{order.order_id}\n"
+                            f"⏱ Davomiyligi: {result.get('duration_minutes', 10)} daqiqa\n\n"
+                            f"✨ Rahmat!"
+                        ),
+                        parse_mode="HTML"
                     )
-                    driver = driver_result.scalar_one_or_none()
-                    if driver:
-                        from app.bot.main import bot
-                        try:
-                            await bot.send_message(
-                                chat_id=driver.user_id,
-                                text=f"✅ <b>Safar avtomatik yakunlandi</b>\n\n"
-                                     f"📦 Buyurtma #{order_id}\n"
-                                     f"⏱ Davomiyligi: {result.get('duration_minutes', 10)} daqiqa\n\n"
-                                     f"✨ Rahmat! Keyingi safarga muvaffaqiyat tilaymiz!",
-                                parse_mode="HTML"
-                            )
-                        except Exception as e:
-                            logger.error(f"Failed to notify driver: {e}")
-                    
-                    logger.info(f"Order {order_id} auto-completed after 10 minutes")
-                    
-                    # Yo'lovchiga xabar va REYTING
-                    if order.passenger and order.passenger.user:
-                        from app.bot.main import bot
-                        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-                        
-                        # Reyting klaviaturasi
-                        rating_kb = InlineKeyboardMarkup(inline_keyboard=[
-                            [
-                                InlineKeyboardButton(text="⭐️ 1", callback_data=f"rate_driver:{order_id}:1"),
-                                InlineKeyboardButton(text="⭐️ 2", callback_data=f"rate_driver:{order_id}:2"),
-                                InlineKeyboardButton(text="⭐️ 3", callback_data=f"rate_driver:{order_id}:3"),
-                            ],
-                            [
-                                InlineKeyboardButton(text="⭐️ 4", callback_data=f"rate_driver:{order_id}:4"),
-                                InlineKeyboardButton(text="⭐️ 5", callback_data=f"rate_driver:{order_id}:5"),
-                            ]
-                        ])
-                        
-                        try:
-                            await bot.send_message(
-                                chat_id=order.passenger.user.user_id,
-                                text=f"✅ <b>Safar yakunlandi (Avtomatik 10 daqiqa)</b>\n\n"
-                                     f"📦 Buyurtma #{order_id}\n"
-                                     f"⏱ Davomiyligi: {result.get('duration_minutes', 10)} daqiqa\n\n"
-                                     f"✨ <b>Haydovchiga baho bering:</b>",
-                                parse_mode="HTML",
-                                reply_markup=rating_kb
-                            )
-                        except Exception as e:
-                            logger.error(f"Failed to notify passenger: {e}")
-                else:
-                    logger.error(f"Failed to auto-complete trip: {result.get('message')}")
+                except Exception as e:
+                    logger.error(f"Failed to notify driver: {e}")
+
+            # Yo'lovchiga baho so'rash
+            if order.passenger and order.passenger.user:
+                rating_kb = InlineKeyboardMarkup(inline_keyboard=[
+                    [
+                        InlineKeyboardButton(text="⭐️ 1", callback_data=f"rate_driver:{order.order_id}:1"),
+                        InlineKeyboardButton(text="⭐️ 2", callback_data=f"rate_driver:{order.order_id}:2"),
+                        InlineKeyboardButton(text="⭐️ 3", callback_data=f"rate_driver:{order.order_id}:3"),
+                    ],
+                    [
+                        InlineKeyboardButton(text="⭐️ 4", callback_data=f"rate_driver:{order.order_id}:4"),
+                        InlineKeyboardButton(text="⭐️ 5", callback_data=f"rate_driver:{order.order_id}:5"),
+                    ]
+                ])
+                try:
+                    await bot.send_message(
+                        chat_id=order.passenger.user.user_id,
+                        text=(
+                            f"✅ <b>Safar yakunlandi (avtomatik)</b>\n\n"
+                            f"📦 Buyurtma #{order.order_id}\n"
+                            f"⏱ Davomiyligi: {result.get('duration_minutes', 10)} daqiqa\n\n"
+                            f"✨ <b>Haydovchiga baho bering:</b>"
+                        ),
+                        parse_mode="HTML",
+                        reply_markup=rating_kb
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to notify passenger: {e}")
+
+        # Agar trip ishlovdan o'tgan bo'lsa, statusni COMPLETED ga o'zgartiramiz
+        if trip and trip.status == TripStatus.ACTIVE:
+            await session.execute(
+                update(Trip)
+                .where(Trip.trip_id == trip.trip_id)
+                .values(
+                    status=TripStatus.COMPLETED,
+                    completed_at=func.now()
+                )
+            )
 
 
 

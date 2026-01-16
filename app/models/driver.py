@@ -238,7 +238,7 @@ class Driver(Base):
     
     # PostGIS geometry (POINT)
     location: Mapped[Optional[bytes]] = mapped_column(
-        Geometry('POINT', srid=4326),  # WGS84 coordinate system
+        Geometry('POINT', srid=4326, spatial_index=False),  # spatial_index=False → qo'lda indeks qo'yamiz
         nullable=True,
         comment="Lokatsiya (PostGIS geometry)"
     )

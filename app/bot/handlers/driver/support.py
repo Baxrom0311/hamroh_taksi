@@ -27,7 +27,8 @@ router = Router()
 # ============================================
 
 @router.message(F.text.in_(["📞 Support", "📞 Support xizmati", "SOS"]))
-async def support_menu(message: Message, state: FSMContext):
+@with_driver_session
+async def support_menu(message: Message, session: AsyncSession, driver: Driver, state: FSMContext):
     """
     Support bo'limi
     """
@@ -162,7 +163,8 @@ Admin panel: /admin/transactions/{transaction_obj.transaction_id}
 # ============================================
 
 @router.message(F.text == "📝 Shikoyat yuborish")
-async def start_complaint(message: Message, state: FSMContext):
+@with_driver_session
+async def start_complaint(message: Message, session: AsyncSession, driver: Driver, state: FSMContext):
     """
     Shikoyat yuborishni boshlash
     """
@@ -178,7 +180,8 @@ async def start_complaint(message: Message, state: FSMContext):
 
 
 @router.message(F.text == "💡 Taklif yuborish")
-async def start_suggestion(message: Message, state: FSMContext):
+@with_driver_session
+async def start_suggestion(message: Message, session: AsyncSession, driver: Driver, state: FSMContext):
     """
     Taklif yuborishni boshlash
     """

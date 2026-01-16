@@ -20,7 +20,7 @@ except ImportError:
 
 __all__ = [
     'datetime', 'Optional', 'List', 'Any', 'TYPE_CHECKING', 'Union', 'Callable',
-    'Decimal', 'enum', 'BigInteger', 'Integer', 'String', 'Boolean', 'DateTime', 
+    'Decimal', 'enum', 'BigInteger', 'Integer', 'String', 'Boolean', 'DateTime', 'Text',
     'ForeignKey', 'Numeric', 'SQLEnum', 'Index', 'CheckConstraint', 'func', 
     'select', 'update', 'delete', 'desc', 'text', 'Mapped', 'mapped_column', 
     'relationship', 'selectinload', 'AsyncSession', 'Base', 'get_session', 'Geometry'

@@ -3,6 +3,7 @@ app/bot/handlers/passenger/rating.py
 """
 
 from ..base import *
+from aiogram.exceptions import TelegramBadRequest
 from app.models.order import Order
 
 
@@ -43,54 +44,80 @@ async def rate_driver_handler(callback: CallbackQuery, session: AsyncSession):
         await callback.answer("Haydovchi topilmadi", show_alert=True)
         return
 
-        # Haydovchini olish
-        driver_stmt = select(Driver).where(Driver.driver_id == driver_id)
-        driver_result = await session.execute(driver_stmt)
-        driver = driver_result.scalar_one_or_none()
+    # Haydovchini olish
+    driver_stmt = select(Driver).where(Driver.driver_id == driver_id)
+    driver_result = await session.execute(driver_stmt)
+    driver = driver_result.scalar_one_or_none()
 
-        if not driver:
-            await callback.answer("Haydovchi topilmadi", show_alert=True)
-            return
+    if not driver:
+        await callback.answer("Haydovchi topilmadi", show_alert=True)
+        return
 
-        # Reytingni yangilash
-        # Formula: (Eski * (N) + Yangi) / (N + 1)
-        # Hozircha oddiyroq:
-        current_rating = float(driver.rating)
-        # Agar bu birinchi safar bo'lsa yoki count yo'q bo'lsa, oddiy o'rtacha olamiz
-        # Total trips tahminan ratinglar soni deb olamiz (aniq emas, lekin MVP uchun yetadi)
-        total_rated = max(1, driver.total_trips) 
-        
-        new_rating = ((current_rating * total_rated) + stars) / (total_rated + 1)
-        # Cheklov 5.0
-        new_rating = min(5.0, new_rating)
+    # Reytingni yangilash
+    # Formula: (Eski * (N) + Yangi) / (N + 1)
+    current_rating = float(driver.rating)
+    # Total trips ni reytinglar soni sifatida taxmin qilamiz (MVP)
+    total_rated = max(1, driver.total_trips)
 
-        # DB update
-        await session.execute(
-            update(Driver)
-            .where(Driver.driver_id == driver_id)
-            .values(rating=new_rating)
-        )
-        await session.commit()
+    new_rating = ((current_rating * total_rated) + stars) / (total_rated + 1)
+    new_rating = min(5.0, new_rating)
 
-        # Passengerga javob
-        await callback.message.edit_text(
-            f"✅ <b>Rahmat!</b>\n\n"
-            f"Sizning bahoingiz: {'⭐️' * stars}",
-            reply_markup=None,
+    # DB update
+    await session.execute(
+        update(Driver)
+        .where(Driver.driver_id == driver_id)
+        .values(rating=new_rating)
+    )
+    await session.commit()
+
+    thank_text = (
+        f"✅ <b>Rahmat!</b>\n\n"
+        f"Sizning bahoingiz: {'⭐️' * stars}"
+    )
+
+    # Passengerga javob: xabarni o'chirib, alohida rahmat xabarini yuboramiz
+    from app.bot.main import bot
+    sent_thanks = False
+    if callback.message:
+        try:
+            await callback.message.delete()
+            await bot.send_message(
+                chat_id=callback.from_user.id,
+                text=thank_text,
+                parse_mode="HTML"
+            )
+            sent_thanks = True
+        except TelegramBadRequest:
+            # Agar o'chirib bo'lmasa, mavjud xabarni yangilaymiz
+            await callback.message.edit_text(
+                thank_text,
+                reply_markup=None,
+                parse_mode="HTML"
+            )
+            sent_thanks = True
+
+    if not sent_thanks:
+        # Fallback: to'g'ridan-to'g'ri yuborish
+        await bot.send_message(
+            chat_id=callback.from_user.id,
+            text=thank_text,
             parse_mode="HTML"
         )
 
-        # Haydovchiga xabar
-        from app.bot.main import bot
-        try:
-            await bot.send_message(
-                chat_id=driver.user_id,
-                text=f"⭐️ <b>Sizga yangi baho!</b>\n\n"
-                     f"Buyurtma #{order_id}\n"
-                     f"Baho: {'⭐️' * stars}",
-                parse_mode="HTML"
-            )
-        except Exception as e:
-            logger.warning(f"Failed to notify driver about rating: {e}")
+    # Haydovchiga xabar
+    try:
+        await bot.send_message(
+            chat_id=driver.user_id,
+            text=f"⭐️ <b>Sizga yangi baho!</b>\n\n"
+                 f"Buyurtma #{order_id}\n"
+                 f"Baho: {'⭐️' * stars}",
+            parse_mode="HTML"
+        )
+    except Exception as e:
+        logger.warning(f"Failed to notify driver about rating: {e}")
 
-    await callback.answer("Baho qabul qilindi!")
+    # Callbackga javob – kech qolgan holatlarda (query is too old) xatoni yutamiz
+    try:
+        await callback.answer("Baho qabul qilindi!")
+    except TelegramBadRequest:
+        pass

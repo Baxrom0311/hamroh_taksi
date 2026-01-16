@@ -50,7 +50,7 @@ class Settings(BaseSettings):
     # DATABASE SOZLAMALARI
     # ============================================
     
-    DB_HOST: str = "10.254.128.106"
+    DB_HOST: str = "127.0.0.1"
     DB_PORT: int = 5432
     DB_NAME: str = "hamroh_bot"
     DB_USER: str = "hamroh_user"
@@ -83,7 +83,7 @@ class Settings(BaseSettings):
     # REDIS SOZLAMALARI
     # ============================================
     
-    REDIS_HOST: str = "10.254.128.106"
+    REDIS_HOST: str = "127.0.0.1"
     REDIS_PORT: int = 6379
     REDIS_PASSWORD: Optional[str] = None  # Ixtiyoriy
     REDIS_DB: int = 0  # Database raqami (0-15)

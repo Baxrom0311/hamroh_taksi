@@ -30,7 +30,9 @@ from app.models.driver import Driver
 from app.models.passenger import Passenger
 from app.models.transaction import Transaction, TransactionStatus
 from sqlalchemy import select
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
+from app.core.metrics import API_RESPONSE_TIME
 # ============================================
 # FASTAPI APP
 # ============================================
@@ -103,6 +105,13 @@ async def log_requests(request: Request, call_next):
     response = await call_next(request)
     
     duration = (datetime.now() - start_time).total_seconds()
+    try:
+        API_RESPONSE_TIME.labels(
+            endpoint=request.url.path,
+            method=request.method
+        ).observe(duration)
+    except Exception as metrics_err:
+        logger.debug(f"Metrics observe failed: {metrics_err}")
     
     logger.info(
         f"{request.method} {request.url.path} - "
@@ -216,6 +225,18 @@ async def routes_page(
             "now": datetime.now()
         }
     )
+
+
+# ============================================
+# METRICS ENDPOINT (PROMETHEUS SCRAPE)
+# ============================================
+
+@app.get("/metrics")
+async def metrics_endpoint():
+    """
+    Prometheus scraping endpoint for Grafana dashboards.
+    """
+    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 @app.get("/broadcast", response_class=HTMLResponse)
 async def broadcast_page(

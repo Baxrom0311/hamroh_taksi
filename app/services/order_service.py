@@ -121,7 +121,10 @@ async def create_new_order(
             logger.info(f"✅ Order created: order_id={order.order_id}, passenger_id={passenger_id}")
 
             # Haydovchi topishni boshlash (async)
-            find_driver_for_order_task.delay(order.order_id)
+            try:
+                find_driver_for_order_task.delay(order.order_id)
+            except Exception as task_err:
+                logger.warning(f"Could not enqueue driver search for order {order.order_id}: {task_err}")
             
             return {
                 'success': True,
@@ -383,7 +386,7 @@ async def accept_order_by_driver(
                         session,
                         driver_id=driver_id,
                         route_id=order.route_id,
-                        total_seats=driver.available_seats + order.passenger_count
+                        total_seats=driver.available_seats  # Case: available_seats IS the capacity
                     )
                     logger.info(f"✅ New trip created: trip_id={active_trip.trip_id}")
                 
@@ -636,29 +639,37 @@ async def complete_trip(order_id: int, driver_id: int) -> dict:
             other_active_orders = active_orders_result.scalars().all()
             has_other_active_orders = len(other_active_orders) > 0
             
-            # 5. Haydovchi statistikasini yangilash va bo'shatish
-            if has_other_active_orders:
-                # Faqat trips sonini oshiramiz
+            # 5. Haydovchi statistikasini yangilash va o'rinlarni qaytarish
+            # available_seats har doim qaytarilishi kerak (order tugadi)
+            await session.execute(
+                update(Driver)
+                .where(Driver.driver_id == driver_id)
+                .values(
+                    total_trips=Driver.total_trips + 1,
+                    available_seats=Driver.available_seats + passenger_count,
+                    last_trip_at=func.now()
+                )
+            )
+
+            if not has_other_active_orders:
+                # Boshqa buyurtma yo'q - is_on_trip=False va Trip statusini yopish
                 await session.execute(
                     update(Driver)
                     .where(Driver.driver_id == driver_id)
-                    .values(
-                        total_trips=Driver.total_trips + 1,
-                        last_trip_at=func.now()
-                    )
+                    .values(is_on_trip=False)
                 )
-            else:
-                # Boshqa buyurtma yo'q - is_on_trip=False va seats qaytariladi
-                await session.execute(
-                    update(Driver)
-                    .where(Driver.driver_id == driver_id)
-                    .values(
-                        total_trips=Driver.total_trips + 1,
-                        is_on_trip=False,
-                        available_seats=Driver.available_seats + passenger_count,
-                        last_trip_at=func.now()
+                
+                # Trip holatini ham COMPLETED qilish
+                if order.trip_id:
+                    from app.models.trip import Trip, TripStatus
+                    await session.execute(
+                        update(Trip)
+                        .where(Trip.trip_id == order.trip_id)
+                        .values(
+                            status=TripStatus.COMPLETED,
+                            completed_at=func.now()
+                        )
                     )
-                )
             
             # 6. Yo'lovchi statistikasini yangilash
             await session.execute(

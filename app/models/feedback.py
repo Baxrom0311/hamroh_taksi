@@ -3,13 +3,9 @@ app/models/feedback.py
 """
 
 from .dependencies import *
-
-
-
 # ============================================
 # ENUMS
 # ============================================
-
 class FeedbackType(str, enum.Enum):
     """Fikr turi"""
     COMPLAINT = "complaint"    # Shikoyat
@@ -21,12 +17,9 @@ class FeedbackStatus(str, enum.Enum):
     IN_PROGRESS = "in_progress" # Ko'rilmoqda
     RESOLVED = "resolved"  # Hal qilingan
     IGNORED = "ignored"    # Bekor qilingan
-
-
 # ============================================
 # FEEDBACK MODEL
 # ============================================
-
 class Feedback(Base):
     """
     Feedback (Shikoyat va Takliflar) modeli

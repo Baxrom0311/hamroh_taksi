@@ -420,6 +420,71 @@ class TripService:
             return {'success': False, 'error': str(e)}
 
 
+# ========================================
+# COMMISSION REFUND (ORDER RESET)
+# ========================================
+
+async def refund_commission_for_order(
+    order_id: int,
+    reason: str = "cancelled_by_passenger"
+) -> Dict:
+    """
+    Safar bekor qilinsa komissiyani haydovchiga qaytarib,
+    buyurtmani yana pending holatga qaytaradi (yangi haydovchi topish uchun).
+    """
+    try:
+        async with transaction() as session:
+            result = await session.execute(
+                select(Order)
+                .options(selectinload(Order.driver))
+                .where(Order.order_id == order_id)
+                .with_for_update()
+            )
+            order_obj = result.scalar_one_or_none()
+
+            if not order_obj or not order_obj.driver_id:
+                return {'success': False, 'message': 'Order yoki haydovchi topilmadi'}
+
+            commission = order_obj.commission_amount or Decimal(0)
+
+            if commission > 0:
+                refund_result = await payment_service.refund_commission(
+                    session,
+                    driver_id=order_obj.driver_id,
+                    order_id=order_obj.order_id,
+                    amount=commission,
+                    reason=reason
+                )
+                if not refund_result.get('success'):
+                    raise Exception(refund_result.get('error', 'Refund failed'))
+
+            # Reset order to allow rematching
+            order_obj.status = OrderStatus.PENDING
+            order_obj.driver_id = None
+            order_obj.accepted_at = None
+            order_obj.completed_at = None
+            order_obj.started_at = None
+            order_obj.driver_arrived = False
+            order_obj.auto_confirmed = False
+            order_obj.commission_amount = None
+
+            # Free the driver flag if needed
+            if order_obj.driver:
+                order_obj.driver.is_on_trip = False
+
+            return {
+                'success': True,
+                'refunded_amount': float(commission)
+            }
+
+    except Exception as e:
+        logger.error(f"Refund commission error for order {order_id}: {e}")
+        return {
+            'success': False,
+            'message': str(e)
+        }
+
+
 # ============================================
 # GLOBAL INSTANCE
 # ============================================
@@ -427,4 +492,4 @@ class TripService:
 trip_service = TripService()
 
 
-__all__ = ['trip_service', 'TripService']
+__all__ = ['trip_service', 'TripService', 'refund_commission_for_order']

@@ -55,6 +55,14 @@ async def create_admin_user(
     """
     
     logger.info(f"Creating admin user: {username} ({phone_number})")
+
+    if not phone_number:
+        raise ValueError("Telefon raqam bo'sh bo'lishi mumkin emas")
+
+    # Bcrypt 72 byte cheklovi
+    if len(password.encode("utf-8")) > 72:
+        logger.warning("Parol 72 baytdan uzun, avtomatik qisqartirildi")
+        password = password.encode("utf-8")[:72].decode("utf-8", errors="ignore")
     
     # Database init
     await init_database()
@@ -113,6 +121,10 @@ async def interactive_create():
     username = input("👤 Username (default: admin): ").strip() or "admin"
     first_name = input("📝 Ism (default: Admin): ").strip() or "Admin"
     password = input("🔐 Parol (default: admin123): ").strip() or "admin123"
+
+    if not phone:
+        print("❌ Telefon raqam bo'sh bo'lishi mumkin emas.")
+        return
     
     # Role
     print("\n🎭 Rol tanlang:")

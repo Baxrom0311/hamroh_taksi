@@ -29,21 +29,53 @@ router = Router()
 # TRIP BLOCKER (SAFAR PAYTIDA MENYUNI BLOKLASH)
 # ============================================
 
+_trip_allowed = {
+    "📞 Yo'lovchi bilan bog'lanish",
+    "🚗 Yo'lga chiqdik",
+    "✅ Safarni yakunlash"
+}
+
+
 @router.message(
     DriverStates.trip_in_progress,
-    ~F.text.contains("bog'lanish")
+    ~F.text.in_(_trip_allowed)
 )
-async def trip_in_progress_blocker(message: Message, state: FSMContext):
+@with_driver_session
+async def trip_in_progress_blocker(message: Message, session: AsyncSession, driver: Driver, state: FSMContext):
     """
     Agar haydovchi safarda bo'lsa, boshqa menyularga kirishni taqiqlash.
     """
-    # Order ID ni olish
     data = await state.get_data()
     order_id = data.get('current_order_id')
-    
-    # Trip keyboardni qaytarish
-    from app.bot.keyboards.driver import get_trip_active_keyboard
-    
+
+    # DB bilan tekshirib, aktiv order qolmagan bo'lsa state ni tozalab yuboramiz
+    active_orders_result = await session.execute(
+        select(Order)
+        .where(Order.driver_id == driver.driver_id)
+        .where(Order.status.in_([OrderStatus.ACCEPTED, OrderStatus.IN_PROGRESS]))
+        .order_by(Order.created_at.desc())
+        .limit(1)
+    )
+    active_order = active_orders_result.scalar_one_or_none()
+
+    if not active_order:
+        await state.clear()
+        await session.execute(
+            update(Driver)
+            .where(Driver.driver_id == driver.driver_id)
+            .values(is_on_trip=False)
+        )
+        await session.commit()
+        await message.answer(
+            "✅ Safar tugadi. Asosiy menyu:",
+            reply_markup=get_driver_main_menu()
+        )
+        return
+
+    if not order_id:
+        order_id = active_order.order_id
+        await state.update_data(current_order_id=order_id)
+
     await message.answer(
         "⚠️ <b>Siz hozir safardasiz!</b>\n\n"
         "Safar tugaguncha boshqa menyular ishlamaydi.\n"

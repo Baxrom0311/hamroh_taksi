@@ -66,7 +66,8 @@ def get_trip_active_keyboard(order_id: int = None):
     """Aktiv safar (10 daqiqalik taymer paytida)"""
     return ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text="📞 Yo'lovchi bilan bog'lanish")]
+            [KeyboardButton(text="📞 Yo'lovchi bilan bog'lanish")],
+            [KeyboardButton(text="✅ Safarni yakunlash")]
         ],
         resize_keyboard=True,
         one_time_keyboard=False

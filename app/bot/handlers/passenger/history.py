@@ -7,6 +7,7 @@ Yo'lovchi o'zining tugallangan safarlari tarixini ko'ra oladi (pagination bilan)
 """
 
 from ..base import *
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from app.models.order import Order, OrderStatus
 from app.bot.keyboards.passenger import get_passenger_main_menu
 from app.bot.states.passenger import PassengerStates

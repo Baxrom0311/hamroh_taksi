@@ -11,7 +11,7 @@ LIMITS:
 
 from typing import Callable, Dict, Any, Awaitable
 from aiogram import BaseMiddleware
-from aiogram.types import Update, Message
+from aiogram.types import Update, Message, CallbackQuery
 from loguru import logger
 import time
 
@@ -50,12 +50,22 @@ class RateLimitMiddleware(BaseMiddleware):
         """
         Middleware handler
         """
-        # Get user ID
+        # Get user ID and reply target safely (Aiogram v3 passes concrete event like Message/CallbackQuery)
         user_id = None
-        if event.message:
-            user_id = event.message.from_user.id
-        elif event.callback_query:
-            user_id = event.callback_query.from_user.id
+        reply_target = None
+        if isinstance(event, Message):
+            user_id = event.from_user.id if event.from_user else None
+            reply_target = event
+        elif isinstance(event, CallbackQuery):
+            user_id = event.from_user.id if event.from_user else None
+            reply_target = event.message
+        elif isinstance(event, Update):
+            if event.message:
+                user_id = event.message.from_user.id if event.message.from_user else None
+                reply_target = event.message
+            elif event.callback_query:
+                user_id = event.callback_query.from_user.id if event.callback_query.from_user else None
+                reply_target = event.callback_query.message
         
         if not user_id:
             # No user ID - skip rate limiting
@@ -68,8 +78,8 @@ class RateLimitMiddleware(BaseMiddleware):
         if is_banned:
             logger.warning(f"🚫 Rate limit: User {user_id} is banned")
             
-            if event.message:
-                await event.message.answer(
+            if reply_target:
+                await reply_target.answer(
                     "⚠️ Siz vaqtincha bloklangansiz.\n\n"
                     "Iltimos, 5 daqiqadan keyin qayta urinib ko'ring."
                 )
@@ -124,8 +134,8 @@ class RateLimitMiddleware(BaseMiddleware):
                         f"due to {violation_count} violations"
                     )
                     
-                    if event.message:
-                        await event.message.answer(
+                    if reply_target:
+                        await reply_target.answer(
                             "🚫 <b>Siz bloklangansiz!</b>\n\n"
                             "Sabab: Ko'p marta limit oshirildi\n"
                             f"Davomiyligi: {self.ban_duration // 60} daqiqa",
@@ -142,8 +152,8 @@ class RateLimitMiddleware(BaseMiddleware):
                     return  # Don't call handler
                 
                 # Warning message
-                if event.message:
-                    await event.message.answer(
+                if reply_target:
+                    await reply_target.answer(
                         f"⚠️ Sekinroq! ({request_count}/{self.rate_limit})\n\n"
                         "Iltimos, biroz kuting."
                     )

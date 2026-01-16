@@ -1,0 +1,9 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: "admin_panel"
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["admin_panel:8000"]

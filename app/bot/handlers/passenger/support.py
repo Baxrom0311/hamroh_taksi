@@ -19,13 +19,14 @@ router = Router()
 # ============================================
 
 @router.message(F.text.in_(["📞 Support", "📞 Support xizmati", "SOS"]))
-async def support_menu(message: Message, state: FSMContext):
+@with_passenger_session
+async def support_menu(message: Message, session: AsyncSession, passenger: Passenger, state: FSMContext):
     """
     Support bo'limi
     """
     keyboard = ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text="📝 Shikoyat yuborish"), KeyboardButton(text="� Taklif yuborish")],
+            [KeyboardButton(text="📝 Shikoyat yuborish"), KeyboardButton(text="💡 Taklif yuborish")],
             [KeyboardButton(text="⬅️ Orqaga")]
         ],
         resize_keyboard=True
@@ -43,7 +44,8 @@ async def support_menu(message: Message, state: FSMContext):
 # ============================================
 
 @router.message(F.text == "📝 Shikoyat yuborish")
-async def start_complaint(message: Message, state: FSMContext):
+@with_passenger_session
+async def start_complaint(message: Message, session: AsyncSession, passenger: Passenger, state: FSMContext):
     """
     Shikoyat yuborishni boshlash
     """
@@ -59,12 +61,13 @@ async def start_complaint(message: Message, state: FSMContext):
 
 
 @router.message(F.text == "💡 Taklif yuborish")
-async def start_suggestion(message: Message, state: FSMContext):
+@with_passenger_session
+async def start_suggestion(message: Message, session: AsyncSession, passenger: Passenger, state: FSMContext):
     """
     Taklif yuborishni boshlash
     """
     await message.answer(
-        "� <b>Taklif yuborish</b>\n\n"
+        "💡 <b>Taklif yuborish</b>\n\n"
         "Taklifingizni yozing:\n\n"
         "Biz xizmat sifatini yaxshilash uchun harakat qilamiz!",
         parse_mode="HTML"

@@ -57,12 +57,9 @@ async def route_selected(callback: CallbackQuery, session: AsyncSession, state: 
     
     await state.update_data(route_id=route_id, route_name=route_name)
     
-    await callback.message.answer( # type: ignore
-        Messages.Passenger.WHERE_FROM
-    )
-    
-    await callback.message.answer( # type: ignore
-        Messages.Passenger.SEND_LOCATION,
+    # Bitta xabarda ko'rsatamiz (takrorlarsiz)
+    await callback.message.answer(  # type: ignore
+        Messages.Passenger.WHERE_FROM,
         reply_markup=get_passenger_location_keyboard()
     )
     
@@ -182,11 +179,15 @@ async def finalize_order(message, session: AsyncSession, state: FSMContext):
     )
     
     if result['success']:
-        await message.edit_text( # type: ignore
+        # Inline callback message cannot carry ReplyKeyboardMarkup, so split into edit + new message
+        await message.edit_text(  # type: ignore
             Messages.Passenger.ORDER_CREATED.format(order_id=result['order_id']),
-            reply_markup=get_passenger_main_menu(),
             parse_mode="HTML"
-        )    
+        )
+        await message.answer(
+            "🔝 Asosiy menyu:",
+            reply_markup=get_passenger_main_menu()
+        )
         logger.success(f"Order created: {result['order_id']}")
     else:
         # HTML escape qilish - xatolik xabarlarida HTML taglar bo'lmasligi uchun

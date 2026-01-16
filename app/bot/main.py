@@ -46,57 +46,7 @@ dp: Dispatcher | None = None
 # HANDLER'LARNI RO'YXATGA OLISH
 # ============================================
 
-def register_handlers():
-    """
-    Barcha handler'larni ro'yxatga olish
-    
-    TARTIB MUHIM:
-    - Avval middleware'lar
-    - Keyin handler'lar (yuqoridan pastga priority)
-    """
-    
-    # Middleware'lar
-    from app.bot.middlewares.auth import AuthMiddleware
-    from app.bot.middlewares.logging import LoggingMiddleware
-    if dp is None:
-        raise ValueError("Dispatcher is not initialized")
-    dp.message.middleware(LoggingMiddleware())
-    dp.message.middleware(AuthMiddleware())
-    dp.callback_query.middleware(AuthMiddleware())
-    
-    # Handler router'lari
-    from app.bot.handlers.start import router as start_router
-    from app.bot.handlers.registration import router as registration_router
-    from app.bot.handlers.admin.feedback import router as admin_feedback_router
-    
-    # Driver handlers
-    from app.bot.handlers.driver.main_menu import router as driver_menu_router
-    from app.bot.handlers.driver.orders import router as driver_orders_router
-    from app.bot.handlers.driver.balance import router as driver_balance_router
-    from app.bot.handlers.driver.location import router as driver_location_router
-    from app.bot.handlers.driver.support import router as driver_support_router
-    
-    # Passenger handlers
-    from app.bot.handlers.passenger.main_menu import router as passenger_menu_router
-    from app.bot.handlers.passenger.booking import router as passenger_booking_router
-    from app.bot.handlers.passenger.support import router as passenger_support_router
-    from app.bot.handlers.passenger.rating import router as passenger_rating_router
-    
-    # Router'larni qo'shish (TARTIB MUHIM!)
-    dp.include_router(admin_feedback_router)
-    dp.include_router(start_router)
-    dp.include_router(registration_router)
-    dp.include_router(driver_menu_router)
-    dp.include_router(driver_location_router)  # MUHIM: Location handler birinchi bo'lishi kerak!
-    dp.include_router(driver_orders_router)
-    dp.include_router(driver_balance_router)
-    dp.include_router(driver_support_router)
-    dp.include_router(passenger_menu_router)
-    dp.include_router(passenger_booking_router)
-    dp.include_router(passenger_support_router)
-    dp.include_router(passenger_rating_router)
-    
-    logger.success("✅ All handlers registered")
+# Handlers are now registered via dispatcher.py
 
 
 # ============================================
@@ -113,12 +63,11 @@ async def on_startup():
     # Database
     await init_database()
     
-    # Redis
+    # Redis & Dispatcher
     await init_redis()
+    from app.bot.dispatcher import setup_dispatcher
     storage = RedisStorage(redis=redis_client.client)
-    dp = Dispatcher(storage=storage)
-    # Handler'larni ro'yxatga olish
-    register_handlers()
+    dp = setup_dispatcher(storage=storage)
     
     # Bot ma'lumotlarini olish
     bot_info = await bot.get_me()

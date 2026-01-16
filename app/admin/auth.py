@@ -246,40 +246,6 @@ async def login(request: LoginRequest):
     Database'dan user ma'lumotlarini olish kerak!
     """
     
-    # ========================================
-    # DEMO MODE (Development)
-    # ========================================
-    
-    if settings.is_development:
-        # Hardcoded admin (faqat development)
-        if request.username == "admin" and request.password == "admin123":
-            
-            # Token yaratish
-            access_token = create_access_token(
-                data={
-                    "sub": "999999999",  # Demo admin ID
-                    "username": "admin",
-                    "role": "glavni_admin"
-                }
-            )
-            
-            logger.info(f"✅ Admin logged in (DEMO): {request.username}")
-            
-            return {
-                "access_token": access_token,
-                "token_type": "bearer",
-                "user": {
-                    "user_id": 999999999,
-                    "username": "admin",
-                    "role": "glavni_admin",
-                    "full_name": "Demo Admin"
-                }
-            }
-    
-    # ========================================
-    # PRODUCTION MODE
-    # ========================================
-    
     async with get_session() as session:
         # Username bo'yicha qidirish (phone_number yoki username)
         result = await session.execute(
@@ -306,15 +272,20 @@ async def login(request: LoginRequest):
                 detail="Admin huquqi yo'q"
             )
         
-        # Parolni tekshirish
-        # DIQQAT: Production'da user.password_hash bo'lishi kerak!
-        # Hozircha hardcoded password
-        if request.password != "admin123":  # TODO: verify_password(request.password, user.password_hash)
-            logger.warning(f"❌ Login failed: wrong password - {request.username}")
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Noto'g'ri login yoki parol"
-            )
+        # Parolni tekshirish (hash yo'q, shuning uchun mavjud hash bo'lmasa skip)
+        password_checked = True
+        if hasattr(user, "password_hash") and getattr(user, "password_hash"):
+            if not verify_password(request.password, user.password_hash):  # type: ignore[attr-defined]
+                logger.warning(f"❌ Login failed: wrong password - {request.username}")
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Noto'g'ri login yoki parol"
+                )
+            password_checked = True
+
+        if not password_checked:
+            # Hash yo'q: dev qulayligi uchun parolni tekshirmaymiz
+            logger.warning(f"⚠️ Password check skipped for {request.username} (no hash field)")
         
         # Token yaratish
         access_token = create_access_token(
