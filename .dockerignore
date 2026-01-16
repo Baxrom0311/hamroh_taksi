@@ -1,0 +1,10 @@
+.venv
+__pycache__
+*.pyc
+*.pyo
+*.log
+logs
+celerybeat-schedule.db
+.git
+.gitignore
+.DS_Store
