@@ -90,7 +90,7 @@ class Messages:
     class Passenger:
         NO_ROUTES = "❌ Hozirda aktiv marshrutlar yo'q"
         WHERE_TO = "📍 <b>Qayerga borasiz?</b>\n\nMarshrutni tanlang:"
-        WHERE_FROM = "📍 <b>Qayerdan olishni xohlaysiz?</b>\n\nLokatsiyangizni yuboring yoki manzilni yozing:"
+        WHERE_FROM = "📍 <b>Qayerga borishni xohlaysiz?</b>\nLokatsiyangizni yuboring yoki manzilni yozing:"
         SEND_LOCATION = "📍 Lokatsiyangizni yuboring:"
         LOCATION_RECEIVED = (
             "✅ Lokatsiya qabul qilindi\n\n"
@@ -110,8 +110,10 @@ class Messages:
         )
         DRIVER_FOUND = (
             "✅ <b>Haydovchi topildi!</b>\n\n"
-            "📦 Buyurtma #{order_id}\n\n"
+            "📦 Buyurtma: #{order_id}\n\n"
             "👤 Haydovchi: {full_name}\n"
+            "📱 <b>Telefon:</b> <code>{phone_number}</code>\n"
+            "🎨 <b>Rang:</b> {car_color}\n"
             "🚗 Mashina: {car_model} ({car_color})\n"
             "🔢 Raqam: {car_number}\n\n"
             "Haydovchi siz tomonga yo'lga chiqdi!"

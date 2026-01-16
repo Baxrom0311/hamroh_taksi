@@ -78,8 +78,30 @@ async def cmd_start(message: Message, session: AsyncSession, state: FSMContext):
         )
         return
     
-    # Role bo'yicha yo'naltirish
-    if user.is_driver:
+    # Role bo'yicha yo'naltirish (avval passenger, keyin driver)
+    if user.is_passenger:
+        # YO'LOVCHI
+        passenger = await get_passenger_by_user_id(session, user_id)
+        
+        if not passenger:
+            await message.answer(
+                "❌ Yo'lovchi ma'lumotlari topilmadi.\n"
+                "Support bilan bog'laning: @support"
+            )
+            return
+        
+        # Har qanday eski state'ni tozalab yuboramiz (driver state i yoki boshqalar)
+        await state.clear()
+
+        # Passenger menyusiga yo'naltirish
+        await message.answer(
+            f"👋 Xush kelibsiz, <b>{passenger.full_name}</b>!\n\n"
+            f"🚕 Jami safarlar: <b>{passenger.total_trips}</b>\n\n"
+            f"📍 Qayerga borishni xohlaysiz?",
+            reply_markup=get_passenger_main_menu()
+        )
+
+    elif user.is_driver:
         # HAYDOVCHI
         driver = await get_driver_by_user_id(session, user_id)
         
@@ -123,6 +145,7 @@ async def cmd_start(message: Message, session: AsyncSession, state: FSMContext):
         # Driver menyusiga yo'naltirish
         # Oldingi state'larni tozalaymiz (safarda bo'lmasa)
         await state.clear()
+        await state.set_state(DriverStates.waiting_orders)
         await message.answer(
             f"👋 Xush kelibsiz, <b>{driver.full_name}</b>!\n\n"
             f"🚗 {driver.car_model} ({driver.car_number})\n"
@@ -131,26 +154,7 @@ async def cmd_start(message: Message, session: AsyncSession, state: FSMContext):
             f"🚕 Jami safarlar: <b>{driver.total_trips}</b>",
             reply_markup=get_driver_main_menu()
         )
-    
-    elif user.is_passenger:
-        # YO'LOVCHI
-        passenger = await get_passenger_by_user_id(session, user_id)
-        
-        if not passenger:
-            await message.answer(
-                "❌ Yo'lovchi ma'lumotlari topilmadi.\n"
-                "Support bilan bog'laning: @support"
-            )
-            return
-        
-        # Passenger menyusiga yo'naltirish
-        await message.answer(
-            f"👋 Xush kelibsiz, <b>{passenger.full_name}</b>!\n\n"
-            f"🚕 Jami safarlar: <b>{passenger.total_trips}</b>\n\n"
-            f"📍 Qayerga borishni xohlaysiz?",
-            reply_markup=get_passenger_main_menu()
-        )
-    
+
     elif user.is_admin:
         # ADMIN
         await message.answer(

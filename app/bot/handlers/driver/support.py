@@ -10,6 +10,8 @@ BU HANDLER NIMA QILADI:
 """
 
 from ..base import *
+from aiogram.filters import StateFilter
+from aiogram.fsm.state import default_state
 from config.settings import settings
 from app.core.database import transaction
 from app.models.transaction import Transaction, TransactionType, create_transaction
@@ -26,7 +28,15 @@ router = Router()
 # SUPPORT MENYU
 # ============================================
 
-@router.message(F.text.in_(["📞 Support", "📞 Support xizmati", "SOS"]))
+@router.message(
+    StateFilter(
+        DriverStates.waiting_orders,
+        DriverStates.choose_route,
+        DriverStates.enter_seats,
+        DriverStates.trip_in_progress
+    ),
+    F.text.in_(["📞 Support", "📞 Support xizmati", "SOS"])
+)
 @with_driver_session
 async def support_menu(message: Message, session: AsyncSession, driver: Driver, state: FSMContext):
     """
@@ -252,8 +262,18 @@ async def complaint_text_entered(message: Message, session: AsyncSession, driver
 # ORQAGA
 # ============================================
 
-@router.message(F.text == "⬅️ Orqaga")
-async def back_to_main_menu(message: Message, state: FSMContext):
+@router.message(
+    StateFilter(
+        DriverStates.support_receipt_amount,
+        DriverStates.support_receipt_photo,
+        DriverStates.support_complaint,
+        DriverStates.waiting_orders,
+        DriverStates.trip_in_progress
+    ),
+    F.text == "⬅️ Orqaga"
+)
+@with_driver_session
+async def back_to_main_menu(message: Message, session: AsyncSession, driver: Driver, state: FSMContext):
     """Asosiy menyuga qaytish"""
     await state.clear()
     await message.answer(

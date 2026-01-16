@@ -19,7 +19,8 @@ from app.bot.keyboards.driver import (
     get_seats_keyboard,
     get_driver_active_keyboard,
     get_location_request_keyboard,
-    get_driver_main_menu
+    get_driver_main_menu,
+    get_trip_active_keyboard
 )
 from app.models.order import Order, OrderStatus
 
@@ -32,58 +33,87 @@ router = Router()
 
 _trip_allowed = {
     "📞 Yo'lovchi bilan bog'lanish",
-    "🚗 Yo'lga chiqdik",
     "✅ Safarni yakunlash"
 }
 
 
-@router.message(
-    DriverStates.trip_in_progress,
-    ~F.text.in_(_trip_allowed)
-)
-@with_driver_session
-async def trip_in_progress_blocker(message: Message, session: AsyncSession, driver: Driver, state: FSMContext):
+@router.message(DriverStates.trip_in_progress)
+async def trip_in_progress_blocker(message: Message, state: FSMContext):
     """
     Agar haydovchi safarda bo'lsa, boshqa menyularga kirishni taqiqlash.
     """
     data = await state.get_data()
     order_id = data.get('current_order_id')
-
-    # DB bilan tekshirib, aktiv order qolmagan bo'lsa state ni tozalab yuboramiz
-    active_orders_result = await session.execute(
-        select(Order)
-        .where(Order.driver_id == driver.driver_id)
-        .where(Order.status.in_([OrderStatus.ACCEPTED, OrderStatus.IN_PROGRESS]))
-        .order_by(Order.created_at.desc())
-        .limit(1)
-    )
-    active_order = active_orders_result.scalar_one_or_none()
-
-    if not active_order:
-        await state.clear()
-        await session.execute(
-            update(Driver)
-            .where(Driver.driver_id == driver.driver_id)
-            .values(is_on_trip=False)
-        )
-        await session.commit()
-        await message.answer(
-            "✅ Safar tugadi. Asosiy menyu:",
-            reply_markup=get_driver_main_menu()
-        )
+    user_id = message.from_user.id if message.from_user else None
+    if not user_id:
         return
 
-    if not order_id:
-        order_id = active_order.order_id
-        await state.update_data(current_order_id=order_id)
+    from app.core.database import get_session
+    from app.models.driver import get_driver_by_user_id
+    async with get_session() as session:
+        driver = await get_driver_by_user_id(session, user_id)
+        if not driver:
+            # Driver topilmasa state tozalanadi, shunda passenger oqimi xalaqit qilmaydi
+            await state.clear()
+            return
 
-    await message.answer(
-        "⚠️ <b>Siz hozir safardasiz!</b>\n\n"
-        "Safar tugaguncha boshqa menyular ishlamaydi.\n"
-        "Iltimos, kuting.",
-        reply_markup=get_trip_active_keyboard(order_id), # type: ignore
-        parse_mode="HTML"
-    )
+        # DB bilan tekshirib, aktiv order qolmagan bo'lsa state ni tozalab yuboramiz
+        active_orders_result = await session.execute(
+            select(Order)
+            .where(Order.driver_id == driver.driver_id)
+            .where(Order.status.in_([OrderStatus.ACCEPTED, OrderStatus.IN_PROGRESS]))
+            .order_by(Order.created_at.desc())
+            .limit(1)
+        )
+        active_order = active_orders_result.scalar_one_or_none()
+        
+        if not active_order:
+            await state.clear()
+            await session.execute(
+                update(Driver)
+                .where(Driver.driver_id == driver.driver_id)
+                .values(is_on_trip=False)
+            )
+            await session.commit()
+            # Driver menyusiga qaytish haqida xabar bermaymiz, passenger konteksti bo'lishi mumkin
+            return
+        
+        # Dinamik ruxsat etilgan tugmalar
+        allowed: set[str]
+        if active_order.status == OrderStatus.ACCEPTED:
+            allowed = {
+                "📞 Yo'lovchi bilan bog'lanish",
+                "🚗 Yo'lga chiqdik",
+                "❌ Buyurtmani bekor qilish",
+                "❌ Safarni bekor qilish",
+            }
+        elif active_order.status == OrderStatus.IN_PROGRESS:
+            allowed = {
+                "📞 Yo'lovchi bilan bog'lanish",
+                "✅ Safarni yakunlash",
+            }
+        else:
+            allowed = {
+                "📞 Yo'lovchi bilan bog'lanish",
+            }
+
+        # Agar ruxsat etilgan tugma bo'lsa, boshqa handlerlarga o'tkazamiz
+        if message.text and message.text in allowed:
+            from aiogram.dispatcher.dispatcher import SkipHandler
+            raise SkipHandler()
+
+        # State'da order_id yo'q bo'lsa, saqlab qo'yamiz (blok xabari uchun)
+        if not order_id:
+            order_id = active_order.order_id
+            await state.update_data(current_order_id=order_id)
+        
+        await message.answer(
+            "⚠️ <b>Siz hozir safardasiz!</b>\n\n"
+            "Safar tugaguncha boshqa menyular ishlamaydi.\n"
+            "Iltimos, kuting.",
+            reply_markup=get_trip_active_keyboard(order_id), # type: ignore
+            parse_mode="HTML"
+        )
 
 # ============================================
 # BUYURTMA QABUL QILISH

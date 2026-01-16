@@ -9,6 +9,7 @@ from config.settings import settings
 from app.models.feedback import create_feedback, FeedbackType
 from app.bot.states.passenger import PassengerStates
 from app.bot.keyboards.passenger import get_passenger_main_menu
+from aiogram.filters import StateFilter
 
 
 router = Router()
@@ -37,6 +38,8 @@ async def support_menu(message: Message, session: AsyncSession, passenger: Passe
         reply_markup=keyboard,
         parse_mode="HTML"
     )
+    # Back tugmasi faqat shu state'da ishlashi uchun support holatini belgilaymiz
+    await state.set_state(PassengerStates.support_complaint)
 
 
 # ============================================
@@ -138,8 +141,9 @@ async def complaint_text_entered(message: Message, session: AsyncSession, passen
 # ORQAGA
 # ============================================
 
-@router.message(F.text == "⬅️ Orqaga")
-async def back_to_main_menu(message: Message, state: FSMContext):
+@router.message(StateFilter(PassengerStates.support_complaint), F.text == "⬅️ Orqaga")
+@with_passenger_session
+async def back_to_main_menu(message: Message, session: AsyncSession, passenger: Passenger, state: FSMContext):
     """Asosiy menyuga qaytish"""
     await state.clear()
     await message.answer(

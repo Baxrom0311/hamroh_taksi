@@ -15,6 +15,7 @@ DECORATORS:
 from functools import wraps
 from typing import Callable, Optional
 from aiogram.types import Message, CallbackQuery
+from aiogram.dispatcher.event.bases import SkipHandler
 from loguru import logger
 
 from app.core.database import get_session
@@ -66,31 +67,16 @@ def with_driver_session(func: Callable):
                 driver = await get_driver_by_user_id(session, user_id)
                 
                 if not driver:
-                    # Driver topilmadi
-                    error_msg = (
-                        "❌ <b>Xatolik</b>\n\n"
-                        "Siz haydovchi sifatida ro'yxatdan o'tmagansiz.\n\n"
-                        "Iltimos, /start buyrug'ini yuboring va ro'yxatdan o'ting."
-                    )
-                    
-                    if isinstance(event, Message):
-                        await event.answer(
-                            error_msg,
-                            reply_markup=get_driver_main_menu(),
-                            parse_mode="HTML"
-                        )
-                    else:
-                        await event.answer(
-                            "Haydovchi topilmadi",
-                            show_alert=True
-                        )
-                    
-                    logger.warning(f"Driver not found for user_id={user_id}")
-                    return
+                    # Driver topilmadi — boshqa handlerlarga o'tkazamiz
+                    logger.debug(f"Driver not found for user_id={user_id}, skipping driver handler")
+                    raise SkipHandler()
                 
                 # Handler'ni chaqirish (session va driver bilan)
                 return await func(event, session, driver, *args, **kwargs)
             
+            except SkipHandler:
+                # Shartga to'g'ri kelmadi, boshqa handlerlar ishlashini davom ettiramiz
+                return
             except Exception as e:
                 logger.error(f"Error in handler {func.__name__}: {e}")
                 

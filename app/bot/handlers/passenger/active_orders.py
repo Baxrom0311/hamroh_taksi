@@ -9,6 +9,8 @@ Yo'lovchi o'zining barcha faol buyurtmalarini (PENDING, ACCEPTED, IN_PROGRESS) k
 from ..base import *
 from app.models.order import Order, OrderStatus, get_order_by_id
 from app.bot.keyboards.passenger import get_passenger_main_menu
+from app.bot.states.driver import DriverStates
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from app.services.trip_service import refund_commission_for_order
 from app.tasks.matching import find_driver_for_order_task
 
@@ -42,6 +44,10 @@ async def view_active_orders(message: Message, session: AsyncSession, passenger:
     - ACCEPTED buyurtmalar - Haydovchi topildi
     - IN_PROGRESS buyurtmalar - Safar davom etmoqda
     """
+    # Agar oldindan driver state qolib ketgan bo'lsa, tozalaymiz
+    current_state = await state.get_state()
+    if current_state and current_state.startswith(DriverStates.__name__):
+        await state.clear()
     
     # Barcha faol buyurtmalarni olish
     active_orders_result = await session.execute(
@@ -68,6 +74,7 @@ async def view_active_orders(message: Message, session: AsyncSession, passenger:
     
     # Buyurtmalarni formatlash
     orders_text = "📋 <b>Sizning faol buyurtmalaringiz:</b>\n\n"
+    cancellable_ids: list[int] = []
     
     for order in active_orders:
         status_emoji = STATUS_EMOJI.get(order.status, "❓")
@@ -100,13 +107,18 @@ async def view_active_orders(message: Message, session: AsyncSession, passenger:
             if driver.user:
                 orders_text += f"  📱 <code>{driver.user.phone_number}</code>\n"
         
+        if order.status in [OrderStatus.PENDING, OrderStatus.ACCEPTED]:
+            cancellable_ids.append(order.order_id)
+        
         orders_text += "\n"
     
     orders_text += "ℹ️ <i>Buyurtma yakunlangach bu ro'yxatdan o'chadi va 'Safar tarixi'da ko'rinadi.</i>"
     
+    reply_markup = _build_cancel_keyboard(cancellable_ids) if cancellable_ids else get_passenger_main_menu()
+    
     await message.answer(
         orders_text,
-        reply_markup=get_passenger_main_menu(),
+        reply_markup=reply_markup,
         parse_mode="HTML"
     )
     
@@ -181,6 +193,15 @@ async def change_car_handler(callback: CallbackQuery, session: AsyncSession, pas
     )
     
     await callback.answer("Buyurtma bekor qilindi, yangi haydovchi topilmoqda")
+
+
+def _build_cancel_keyboard(order_ids: list[int]) -> InlineKeyboardMarkup:
+    """Cancellable buyurtmalar uchun inline keyboard."""
+    buttons = [
+        [InlineKeyboardButton(text=f"❌ #{oid} ni bekor qilish", callback_data=f"passenger_cancel:{oid}")]
+        for oid in order_ids
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
 __all__ = ['router']

@@ -9,6 +9,7 @@ from app.models.route import get_route_by_id, get_all_active_routes
 from app.models.order import Order, OrderStatus
 from app.services.order_service import create_new_order
 from app.bot.states.passenger import PassengerStates
+from app.bot.states.driver import DriverStates
 from app.bot.keyboards.passenger import (
     get_route_selection_keyboard,
     get_passenger_location_keyboard,
@@ -203,10 +204,14 @@ async def finalize_order(message, session: AsyncSession, state: FSMContext):
 
 @router.callback_query(F.data.startswith("passenger_started:"))
 @with_passenger_session
-async def passenger_started(callback: CallbackQuery, session: AsyncSession, passenger: Passenger):
+async def passenger_started(callback: CallbackQuery, session: AsyncSession, passenger: Passenger, state: FSMContext):
     """
     Yo'lovchi "Ketdik" tugmasini bosdi - safar boshlandi
     """
+    # Agar tasodifan driver state qolgan bo'lsa, tozalab ketamiz
+    current_state = await state.get_state()
+    if current_state and current_state.startswith(DriverStates.__name__):
+        await state.clear()
     if callback.data is None:
         return
     
@@ -285,14 +290,25 @@ async def passenger_cancel_order(callback: CallbackQuery, session: AsyncSession,
     if not order:
         return
     
-    if order.status != OrderStatus.ACCEPTED:
+    if order.status not in [OrderStatus.ACCEPTED, OrderStatus.PENDING]:
         await callback.answer("⚠️ Bu buyurtmani bekor qilib bo'lmaydi", show_alert=True)
         return
     
     # Order'ni bekor qilish
     async with transaction() as session:
         from app.models.driver import Driver
+        from app.services import payment_service
         
+        # Komissiya haydovchiga qaytariladi (agar bor bo'lsa)
+        if order.driver_id and order.commission_amount:
+            await payment_service.refund_commission(
+                session,
+                driver_id=order.driver_id,
+                order_id=order.order_id,
+                amount=order.commission_amount,
+                reason="cancelled_by_passenger"
+            )
+
         await session.execute(
             update(Order)
             .where(Order.order_id == order_id)

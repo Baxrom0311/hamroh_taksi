@@ -159,15 +159,27 @@ async def accept_order_handler(callback: CallbackQuery, session: AsyncSession, d
         from app.tasks.notifications import notify_passenger_driver_found
         if order and order.passenger and order.passenger.user:
             from app.bot.main import bot
+            from app.utils.location_helpers import get_google_maps_link
+
+            passenger_text = Messages.Passenger.DRIVER_FOUND.format(
+                order_id=order_id,
+                full_name=driver.full_name,
+                phone_number=driver.phone_number or "N/A",
+                car_model=driver.car_model,
+                car_color=driver.car_color,
+                car_number=driver.car_number
+            )
+            if driver.last_location_lat and driver.last_location_lon:
+                driver_loc_link = get_google_maps_link(
+                    float(driver.last_location_lat),
+                    float(driver.last_location_lon),
+                    f"Haydovchi {driver.full_name}"
+                )
+                passenger_text += f"\n📍 <a href=\"{driver_loc_link}\">Haydovchi joriy lokatsiyasi</a>"
+
             await bot.send_message(
                 chat_id=order.passenger.user.user_id,
-                text=Messages.Passenger.DRIVER_FOUND.format(
-                    order_id=order_id,
-                    full_name=driver.full_name,
-                    car_model=driver.car_model,
-                    car_color=driver.car_color,
-                    car_number=driver.car_number
-                ),
+                text=passenger_text,
                 parse_mode="HTML"
             )
         

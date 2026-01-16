@@ -354,6 +354,16 @@ async def view_driver_info(callback: CallbackQuery, session: AsyncSession):
 ⭐ <b>Reyting:</b> {driver.rating:.1f}/5.0
 🚕 <b>Jami safarlar:</b> {driver.total_trips}
     """
+
+    # Lokatsiya linki (agar mavjud bo'lsa)
+    if driver.last_location_lat and driver.last_location_lon:
+        from app.utils.location_helpers import get_google_maps_link
+        driver_loc_link = get_google_maps_link(
+            float(driver.last_location_lat),
+            float(driver.last_location_lon),
+            f"Haydovchi {driver.full_name}"
+        )
+        text += f"\n📍 <a href=\"{driver_loc_link}\">Haydovchi joriy lokatsiyasi</a>\n"
     
     keyboard = get_driver_action_keyboard(driver.user_id, order_id)
     
