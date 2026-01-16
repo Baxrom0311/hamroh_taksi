@@ -27,6 +27,7 @@ from app.models.order import Order
 from app.models.transaction import Transaction, TransactionLog
 from app.models.system_settings import SystemSettings
 from app.models.driver_ban import DriverBanRecord
+from app.models.feedback import Feedback
 # ============================================
 # ALEMBIC CONFIG
 # ============================================

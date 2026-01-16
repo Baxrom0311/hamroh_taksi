@@ -52,6 +52,16 @@ def setup_dispatcher(storage: Optional[RedisStorage] = None) -> Dispatcher:
     
     from app.bot.middlewares.auth import AuthMiddleware
     from app.bot.middlewares.logging import LoggingMiddleware
+    from app.bot.middlewares.rate_limit import RateLimitMiddleware  # ✅ Yangi
+    
+    # Rate limiting (BIRINCHI!) - Spam protection
+    dp.message.middleware(RateLimitMiddleware(
+        rate_limit=10,  # 10 requests per minute
+        time_window=60,
+        ban_threshold=5,
+        ban_duration=300  # 5 min ban
+    ))
+    dp.callback_query.middleware(RateLimitMiddleware())  # ✅
     
     # Message middleware'lar
     dp.message.middleware(LoggingMiddleware())
@@ -73,6 +83,7 @@ def setup_dispatcher(storage: Optional[RedisStorage] = None) -> Dispatcher:
     # Driver handlers
     from app.bot.handlers.driver.main_menu import router as driver_menu_router
     from app.bot.handlers.driver.orders import router as driver_orders_router
+    from app.bot.handlers.driver.trip_handlers import router as driver_trip_router  # ✅ Yangi
     from app.bot.handlers.driver.balance import router as driver_balance_router
     from app.bot.handlers.driver.support import router as driver_support_router
     from app.bot.handlers.driver.location import router as driver_location_router
@@ -81,6 +92,10 @@ def setup_dispatcher(storage: Optional[RedisStorage] = None) -> Dispatcher:
     from app.bot.handlers.passenger.main_menu import router as passenger_menu_router
     from app.bot.handlers.passenger.booking import router as passenger_booking_router
     from app.bot.handlers.passenger.driver_info import router as passenger_driver_info_router
+    from app.bot.handlers.passenger.active_orders import router as passenger_active_orders_router  # ✅ Yangi
+    from app.bot.handlers.passenger.history import router as passenger_history_router  # ✅ Yangi
+    from app.bot.handlers.passenger.rating import router as passenger_rating_router
+    from app.bot.handlers.passenger.support import router as passenger_support_router
     
     # Router'larni qo'shish (TARTIB MUHIM!)
     # Birinchi qo'shilgan router'lar birinchi tekshiriladi
@@ -91,6 +106,7 @@ def setup_dispatcher(storage: Optional[RedisStorage] = None) -> Dispatcher:
     # Driver router'lar
     dp.include_router(driver_menu_router)
     dp.include_router(driver_orders_router)
+    dp.include_router(driver_trip_router)  # ✅ Yangi
     dp.include_router(driver_balance_router)
     dp.include_router(driver_support_router)
     dp.include_router(driver_location_router)
@@ -98,6 +114,10 @@ def setup_dispatcher(storage: Optional[RedisStorage] = None) -> Dispatcher:
     # Passenger router'lar
     dp.include_router(passenger_menu_router)
     dp.include_router(passenger_booking_router)
+    dp.include_router(passenger_active_orders_router)  # ✅ Yangi
+    dp.include_router(passenger_history_router)  # ✅ Yangi
+    dp.include_router(passenger_rating_router)
+    dp.include_router(passenger_support_router)
     dp.include_router(passenger_driver_info_router)
     
     logger.success("✅ All handlers registered")

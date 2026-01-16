@@ -116,6 +116,11 @@ class Route(Base):
         back_populates="route"
     )
     
+    trips: Mapped[List["Trip"]] = relationship(
+        "Trip",
+        back_populates="route"
+    )
+    
     # ============================================
     # INDEXES
     # ============================================

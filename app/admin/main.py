@@ -130,7 +130,7 @@ app.include_router(auth_router)
 # Dashboard routes
 from app.admin.routes import dashboard, drivers, passengers, transactions
 from app.admin.routes import settings as settings_routes
-from app.admin.routes import admins, broadcast
+from app.admin.routes import admins, broadcast, feedback as feedback_api
 
 app.include_router(dashboard.router, prefix="/api")
 app.include_router(drivers.router, prefix="/api")
@@ -139,6 +139,7 @@ app.include_router(transactions.router, prefix="/api")
 app.include_router(settings_routes.router, prefix="/api")
 app.include_router(admins.router, prefix="/api")
 app.include_router(broadcast.router, prefix="/api")
+app.include_router(feedback_api.router, prefix="/api")
 
 
 # ============================================
@@ -267,13 +268,16 @@ async def login_submit(
     data = resp.json()
     token = data["access_token"]
 
+    is_secure = request.url.scheme == "https"
+    
     response = RedirectResponse(url="/dashboard", status_code=302)
     response.set_cookie(
         key="access_token",
         value=token,
         httponly=True,
-        secure=not settings.is_development,
-        samesite="lax"
+        secure=is_secure, # Avtomatik aniqlash
+        samesite="lax",
+        path="/" # MUHIM: Har doim path="/" bo'lishi kerak
     )
     return response
 
@@ -428,6 +432,86 @@ async def transactions_page(
 
 
 # ============================================
+# FEEDBACK PAGE
+# ============================================
+
+@app.get("/feedback", response_class=HTMLResponse)
+async def feedback_page(
+    request: Request,
+    current_user: dict = Depends(get_current_user)
+):
+    from app.models.feedback import Feedback, FeedbackStatus
+    from sqlalchemy.orm import selectinload
+    from sqlalchemy import desc, func
+    
+    async with get_session() as session:
+        # All feedbacks
+        stmt = (
+            select(Feedback)
+            .options(selectinload(Feedback.user))
+            .order_by(desc(Feedback.created_at))
+        )
+        result = await session.execute(stmt)
+        all_feedbacks_db = result.scalars().all()
+        
+        # Format data
+        all_feedbacks = []
+        open_feedbacks = []
+        
+        open_count = 0
+        resolved_count = 0
+        today_start = datetime.now().replace(hour=0, minute=0, second=0)
+        today_count = 0
+        
+        for fb in all_feedbacks_db:
+            
+            fb_dict = {
+                "id": fb.feedback_id,
+                "user_name": fb.user.full_name if fb.user else "Noma'lum",
+                "user_phone": fb.user.phone_number if fb.user else "N/A",
+                "user_role": fb.user.role.value if fb.user else "unknown",
+                "message": fb.message,
+                "type": fb.type.value,
+                "status": fb.status.value,
+                "admin_reply": fb.admin_reply,
+                "resolved_by": fb.resolved_by,
+                "created_at": fb.created_at.strftime("%H:%M / %d.%m.%Y"),
+                "raw_date": fb.created_at.isoformat() if fb.created_at else None
+            }
+            
+            all_feedbacks.append(fb_dict)
+            
+            if fb.status == FeedbackStatus.OPEN:
+                open_feedbacks.append(fb_dict)
+                open_count += 1
+            elif fb.status == FeedbackStatus.RESOLVED:
+                resolved_count += 1
+                
+            # Timezone comparison fix
+            fb_date = fb.created_at
+            if fb_date.tzinfo:
+                fb_date = fb_date.replace(tzinfo=None)
+                
+            if fb_date >= today_start:
+                today_count += 1
+
+    return templates.TemplateResponse(
+        "feedback.html",
+        {
+            "request": request,
+            "user": current_user,
+            "all_feedbacks": all_feedbacks,
+            "open_feedbacks": open_feedbacks,
+            "open_count": open_count,
+            "resolved_count": resolved_count,
+            "today_count": today_count,
+            "page": "feedback",
+            "now": datetime.now()
+        }
+    )
+
+
+# ============================================
 # HEALTH CHECK
 # ============================================
 
@@ -479,6 +563,22 @@ async def health_check():
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):
     """HTTP exception handler"""
+    
+    # Agar 401 bo'lsa va API bo'lmasa -> Loginga redirect
+    if exc.status_code == 401:
+        # API requestmi?
+        if request.url.path.startswith("/api"):
+            return JSONResponse(
+                status_code=exc.status_code,
+                content={"error": exc.detail}
+            )
+        
+        # HTML Page -> Redirect to login
+        return RedirectResponse(
+            url="/login",
+            status_code=302
+        )
+            
     return JSONResponse(
         status_code=exc.status_code,
         content={

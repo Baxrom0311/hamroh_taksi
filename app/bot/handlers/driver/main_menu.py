@@ -22,11 +22,44 @@ from app.bot.states.driver import DriverStates
 from app.bot.keyboards.driver import (
     get_route_selection_keyboard,
     get_seats_keyboard,
-    get_driver_active_keyboard
+    get_route_selection_keyboard,
+    get_seats_keyboard,
+    get_driver_active_keyboard,
+    get_location_request_keyboard,
+    get_driver_main_menu
 )
+from app.bot.messages import Messages
+from app.bot.utils import get_driver_or_error
 
 router = Router()
 
+
+# ============================================
+# TRIP BLOCKER (SAFAR PAYTIDA MENYUNI BLOKLASH)
+# ============================================
+
+@router.message(
+    DriverStates.trip_in_progress,
+    ~F.text.contains("bog'lanish")
+)
+async def trip_in_progress_blocker(message: Message, state: FSMContext):
+    """
+    Agar haydovchi safarda bo'lsa, boshqa menyularga kirishni taqiqlash.
+    """
+    # Order ID ni olish
+    data = await state.get_data()
+    order_id = data.get('current_order_id')
+    
+    # Trip keyboardni qaytarish
+    from app.bot.keyboards.driver import get_trip_active_keyboard
+    
+    await message.answer(
+        "⚠️ <b>Siz hozir safardasiz!</b>\n\n"
+        "Safar tugaguncha boshqa menyular ishlamaydi.\n"
+        "Iltimos, kuting.",
+        reply_markup=get_trip_active_keyboard(order_id), # type: ignore
+        parse_mode="HTML"
+    )
 
 # ============================================
 # BUYURTMA QABUL QILISH
@@ -50,25 +83,21 @@ async def start_accepting_orders(message: Message, state: FSMContext):
     user_id = message.from_user.id
     
     async with get_session() as session:
-        driver = await get_driver_by_user_id(session, user_id)
-        
+        driver = await get_driver_or_error(session, user_id, message)
         if not driver:
-            await message.answer("❌ Haydovchi ma'lumotlari topilmadi")
             return
         
         # Bloklangan?
         if driver.is_blocked:
             await message.answer(
-                f"🚫 <b>Siz bloklangansiz!</b>\n\n"
-                f"Sabab: {driver.block_reason or 'Noma\'lum'}\n\n"
-                f"Murojaat: @support"
+                Messages.Driver.BLOCKED.format(reason=driver.block_reason or 'Noma\'lum')
             )
             return
         # ❗ Allaqachon aktivmi? (FSM yo‘qolgan bo‘lishi mumkin)
         if driver.is_active:
             await state.set_state(DriverStates.waiting_orders)
             await message.answer(
-                "⏳ Siz allaqachon buyurtma kutyapsiz",
+                Messages.Driver.ALREADY_ACTIVE,
                 reply_markup=get_driver_active_keyboard()
             )
             return
@@ -79,48 +108,32 @@ async def start_accepting_orders(message: Message, state: FSMContext):
 
         if driver.balance < commission_amount:
             await message.answer(
-                f"⚠️ <b>Balans yetarli emas!</b>\n\n"
-                f"Kerak: <b>{commission_amount:,} so'm</b>\n"
-                f"Mavjud: <b>{driver.balance:,} so'm</b>\n\n"
-                f"💰 Balansni to'ldirish uchun:\n"
-                f"Menyu → Balans"
+                Messages.Driver.BALANCE_LOW.format(
+                    required=commission_amount,
+                    balance=driver.balance
+                )
             )
             return
         
         # Allaqachon safardaligi?
+        # Allaqachon safardaligi?
         if driver.is_on_trip:
-            await message.answer(
-                "⚠️ Siz hozir safardasiz!\n\n"
-                "Avval safarni yakunlang."
-            )
+            await message.answer(Messages.Driver.ALREADY_ON_TRIP)
             return
         
         # Marshrut tanlash
         routes = await get_all_active_routes(session)
         
+        
         if not routes:
-            await message.answer("❌ Hozirda aktiv marshrutlar yo'q")
+            await message.answer(Messages.Driver.NO_ACTIVE_ROUTES)
             return
         
         # Jonli joylashuv so'rash
-        from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
-        
-        location_keyboard = ReplyKeyboardMarkup(
-            keyboard=[
-                [KeyboardButton(text="📍 Lokatsiyani yuborish", request_location=True)],
-                [KeyboardButton(text="❌ Bekor qilish")]
-            ],
-            resize_keyboard=True,
-            one_time_keyboard=False
-        )
         
         await message.answer(
-            "📍 <b>Jonli joylashuv</b>\n\n"
-            "Buyurtma qabul qilish uchun lokatsiyangizni yuboring.\n\n"
-            "💡 <b>Maslahat:</b> Telegram'da lokatsiya yuborishda \"Jonli joylashuv\" tanlasangiz, "
-            "lokatsiyangiz avtomatik yangilanadi va biz har safar aniq joylashuvni bilamiz.\n\n"
-            "📍 Lokatsiyani yuborish tugmasini bosing:",
-            reply_markup=location_keyboard,
+            Messages.Driver.LOCATION_REQUEST,
+            reply_markup=get_location_request_keyboard(),
             parse_mode="HTML"
         )
         
@@ -168,7 +181,7 @@ async def seats_selected(callback: CallbackQuery, state: FSMContext):
     Haydovchi bo'sh joylar sonini tanladi
     """
     if callback.data is None:
-        await callback.answer("❌ Xatolik: Ma'lumot topilmadi")
+        await callback.answer(Messages.Error.CALLBACK_DATA_MISSING)
         return
     seats = int(callback.data.split(":")[1])
     user_id = callback.from_user.id
@@ -185,12 +198,9 @@ async def seats_selected(callback: CallbackQuery, state: FSMContext):
         return
     # Database'ga saqlash
     async with get_session() as session:
-        driver = await get_driver_by_user_id(session, user_id)
+        driver = await get_driver_or_error(session, user_id, callback)
         if not driver:
-            if callback.message:
-                await callback.message.answer("❌ Haydovchi topilmadi") # type: ignore
             await state.clear()
-            await callback.answer()
             return
 
         # Driver'ni update qilish
@@ -218,11 +228,10 @@ async def seats_selected(callback: CallbackQuery, state: FSMContext):
     add_driver_to_queue_task.delay(driver.driver_id, route_id)
     
     await callback.message.edit_text( # type: ignore
-        f"✅ <b>Buyurtmalar qabul qilinmoqda!</b>\n\n"
-        f"📍 Marshrut: <b>{route.route_name}</b>\n" # type: ignore
-        f"👥 Bo'sh joylar: <b>{seats}</b>\n\n"
-        f"⏳ Buyurtma kelishini kutmoqdasiz...\n\n"
-        f"💡 Buyurtma kelganda sizga xabar beramiz!",
+        Messages.Driver.QUEUE_JOINED.format(
+            route_name=route.route_name, # type: ignore
+            seats=seats
+        ),
         reply_markup=get_driver_active_keyboard()
     )
     
@@ -277,7 +286,7 @@ async def stop_accepting_orders(message: Message, state: FSMContext):
     
     await state.clear() # FSM holatini tozalaymiz
     await message.answer(
-        "✅ Buyurtma qabul qilish to'xtatildi",
+        Messages.Driver.STOPPED,
         reply_markup=get_driver_main_menu()
     )
     logger.info(f"Driver {driver.driver_id} force stopped.")
@@ -300,8 +309,8 @@ async def show_statistics(message: Message):
     async with get_session() as session:
         driver = await get_driver_by_user_id(session, user_id)
         
+        driver = await get_driver_or_error(session, user_id, message)
         if not driver:
-            await message.answer("❌ Ma'lumotlar topilmadi")
             return
         
         # Bugungi safarlar
@@ -332,27 +341,14 @@ async def show_statistics(message: Message):
         )
 
 
-def get_driver_main_menu():
-    """Driver asosiy menyusi"""
-    from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
-    
-    return ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text="🚗 Buyurtma qabul qilish")],
-            [KeyboardButton(text="💰 Balans"), KeyboardButton(text="📊 Statistika")],
-            [KeyboardButton(text="⚙️ Sozlamalar"), KeyboardButton(text="📞 Support")]
-        ],
-        resize_keyboard=True
-    )
+
 
 
 @router.message(F.text == "⚙️ Sozlamalar")
 async def driver_settings(message: Message):
     await message.answer("⚙️ <b>Sozlamalar bo'limi</b>\n\nHozircha ishlab chiqilmoqda...")
 
-@router.message(F.text == "📞 Support")
-async def driver_support(message: Message):
-    await message.answer("👨‍💻 <b>Texnik yordam</b>\n\nMuammo bo'yicha adminga yozing: @Bakhromdev")
+
 
 
 # Diqqat: .message emas, .callback_query ishlatamiz
@@ -361,10 +357,8 @@ async def stop_accepting_orders_callback(callback: CallbackQuery, state: FSMCont
     user_id = callback.from_user.id
     
     async with get_session() as session:
-        driver = await get_driver_by_user_id(session, user_id)
-        
+        driver = await get_driver_or_error(session, user_id, callback) 
         if not driver:
-            await callback.answer("Haydovchi topilmadi")
             return
 
         # Bazada haydovchini o'chirish
@@ -384,7 +378,7 @@ async def stop_accepting_orders_callback(callback: CallbackQuery, state: FSMCont
     await state.clear()
     
     # Inline tugmalarni o'chirib, xabarni yangilaymiz
-    await callback.message.edit_text("✅ Buyurtma qabul qilish to'xtatildi") # type: ignore
+    await callback.message.edit_text(Messages.Driver.STOPPED) # type: ignore
     
     # Yangi menyuni yuboramiz (ReplyKeyboard)
     await callback.message.answer(
@@ -393,7 +387,7 @@ async def stop_accepting_orders_callback(callback: CallbackQuery, state: FSMCont
     )
     
     # Telegramga "Tugma ishladi" degan javob qaytaramiz (loading aylanmasligi uchun)
-    await callback.answer("Siz oflayn holatga o'tdingiz")
+    await callback.answer(Messages.Driver.OFFLINE)
 
 
 
@@ -402,9 +396,8 @@ async def show_statistics_callback(callback: CallbackQuery):
     user_id = callback.from_user.id
     
     async with get_session() as session:
-        driver = await get_driver_by_user_id(session, user_id)
+        driver = await get_driver_or_error(session, user_id, callback)
         if not driver:
-            await callback.answer("Ma'lumot topilmadi")
             return
             
         # ... (statistika hisoblash kodingiz) ...

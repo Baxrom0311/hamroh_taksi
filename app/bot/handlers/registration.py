@@ -18,6 +18,13 @@ from app.models.user import UserRole, create_user
 from app.models.driver import create_driver
 from app.models.passenger import Gender, create_passenger
 from app.bot.states.registration import RegistrationStates
+from app.bot.keyboards.driver import get_driver_main_menu
+from app.bot.keyboards.passenger import get_passenger_main_menu
+from app.core.validation import (  # ✅ Validation qo'shish
+    validate_phone_number,
+    validate_full_name,
+    validate_car_number
+)
 
 router = Router()
 
@@ -110,11 +117,10 @@ async def phone_contact(message: Message, state: FSMContext) -> None:
 async def phone_text(message: Message, state: FSMContext) -> None:
     text = require_text(message).strip()
 
-    if not text.startswith("+998") or len(text) != 13:
-        await message.answer(
-            "❌ Noto'g'ri format\n"
-            "To'g'ri: <code>+998901234567</code>"
-        )
+    # ✅ Validation
+    is_valid, error_msg = validate_phone_number(text)
+    if not is_valid:
+        await message.answer(error_msg, parse_mode="HTML")
         return
 
     await state.update_data(phone_number=text)
@@ -159,7 +165,15 @@ async def sms_code_verify(message: Message, state: FSMContext) -> None:
 
 @router.message(RegistrationStates.driver_full_name, F.text)
 async def driver_full_name(message: Message, state: FSMContext) -> None:
-    await state.update_data(full_name=require_text(message))
+    name = require_text(message)
+    
+    # ✅ Validation
+    is_valid, error_msg = validate_full_name(name)
+    if not is_valid:
+        await message.answer(f"❌ {error_msg}")
+        return
+    
+    await state.update_data(full_name=name)
     await message.answer("🚙 Mashina modeli:")
     await state.set_state(RegistrationStates.driver_car_model)
 
@@ -181,6 +195,13 @@ async def driver_car_color(message: Message, state: FSMContext) -> None:
 @router.message(RegistrationStates.driver_car_number, F.text)
 async def driver_car_number(message: Message, state: FSMContext) -> None:
     car_number = require_text(message).upper().strip()
+    
+    # ✅ Validation
+    is_valid, error_msg = validate_car_number(car_number)
+    if not is_valid:
+        await message.answer(error_msg, parse_mode="HTML")
+        return
+    
     user = require_user(message)
 
     data = await state.get_data()
@@ -213,7 +234,8 @@ async def driver_car_number(message: Message, state: FSMContext) -> None:
                 f"🎉 Ro'yxatdan o'tdingiz!\n\n"
                 f"👤 {driver.full_name}\n"
                 f"🚗 {driver.car_model} ({driver.car_color})\n"
-                f"🔢 {driver.car_number}"
+                f"🔢 {driver.car_number}",
+                reply_markup=get_driver_main_menu()
             )
 
     except Exception as e:
@@ -230,7 +252,15 @@ async def driver_car_number(message: Message, state: FSMContext) -> None:
 
 @router.message(RegistrationStates.passenger_full_name, F.text)
 async def passenger_full_name(message: Message, state: FSMContext) -> None:
-    await state.update_data(full_name=require_text(message))
+    name = require_text(message)
+    
+    # ✅ Validation
+    is_valid, error_msg = validate_full_name(name)
+    if not is_valid:
+        await message.answer(f"❌ {error_msg}")
+        return
+    
+    await state.update_data(full_name=name)
     await message.answer(
         "🚻 Jinsingiz:",
         reply_markup=ReplyKeyboardMarkup(
@@ -295,7 +325,8 @@ async def passenger_age(message: Message, state: FSMContext) -> None:
         await message.answer(
             f"🎉 Ro'yxatdan o'tdingiz!\n\n"
             f"👤 {passenger.full_name}\n"
-            f"🎂 {passenger.age} yosh"
+            f"🎂 {passenger.age} yosh", 
+            reply_markup=get_passenger_main_menu()
         )
 
     await state.clear()

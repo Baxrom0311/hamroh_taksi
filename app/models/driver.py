@@ -299,6 +299,11 @@ class Driver(Base):
         back_populates="driver"
     )
     
+    trips: Mapped[list["Trip"]] = relationship(
+        "Trip",
+        back_populates="driver"
+    )
+    
     # Transactions bilan
     transactions: Mapped[list["Transaction"]] = relationship(
         "Transaction",

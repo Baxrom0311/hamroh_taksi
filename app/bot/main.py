@@ -67,6 +67,7 @@ def register_handlers():
     # Handler router'lari
     from app.bot.handlers.start import router as start_router
     from app.bot.handlers.registration import router as registration_router
+    from app.bot.handlers.admin.feedback import router as admin_feedback_router
     
     # Driver handlers
     from app.bot.handlers.driver.main_menu import router as driver_menu_router
@@ -78,8 +79,11 @@ def register_handlers():
     # Passenger handlers
     from app.bot.handlers.passenger.main_menu import router as passenger_menu_router
     from app.bot.handlers.passenger.booking import router as passenger_booking_router
+    from app.bot.handlers.passenger.support import router as passenger_support_router
+    from app.bot.handlers.passenger.rating import router as passenger_rating_router
     
     # Router'larni qo'shish (TARTIB MUHIM!)
+    dp.include_router(admin_feedback_router)
     dp.include_router(start_router)
     dp.include_router(registration_router)
     dp.include_router(driver_menu_router)
@@ -89,6 +93,8 @@ def register_handlers():
     dp.include_router(driver_support_router)
     dp.include_router(passenger_menu_router)
     dp.include_router(passenger_booking_router)
+    dp.include_router(passenger_support_router)
+    dp.include_router(passenger_rating_router)
     
     logger.success("✅ All handlers registered")
 

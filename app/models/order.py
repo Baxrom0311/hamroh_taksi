@@ -103,6 +103,14 @@ class Order(Base):
         comment="Marshrut ID"
     )
     
+    trip_id: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        ForeignKey("trips.trip_id", ondelete="SET NULL"),
+        nullable=True,  # NULL = hali trip'ga qo'shilmagan
+        index=True,
+        comment="Trip ID (NULL = trip yo'q)"
+    )
+    
     # ============================================
     # PICKUP LOCATION (Qayerdan olish)
     # ============================================
@@ -257,6 +265,12 @@ class Order(Base):
     route: Mapped["Route"] = relationship(
         "Route",
         back_populates="orders"
+    )
+    
+    trip: Mapped[Optional["Trip"]] = relationship(
+        "Trip",
+        back_populates="orders",
+        foreign_keys=[trip_id]
     )
     
     # ============================================

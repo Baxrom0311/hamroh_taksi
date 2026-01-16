@@ -31,4 +31,10 @@ class PassengerStates(StatesGroup):
     # Safar
     trip_in_progress = State()     # Safar davom etmoqda
     trip_rating = State()          # Baholash
+    
+    # Tarix va buyurtmalar
+    viewing_history = State()      # Safar tarixini ko'rish
+    
+    # Support
+    support_complaint = State()    # Shikoyat yozish
 

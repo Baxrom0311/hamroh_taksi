@@ -18,8 +18,6 @@ from sqlalchemy.sql import func
 from datetime import datetime
 from typing import TYPE_CHECKING, List, Optional
 import enum
-from sqlalchemy.orm import selectinload # Buni tepaga qo'shing
-from typing import Optional
 from app.core.database import Base
 # ============================================
 # ENUM
@@ -39,7 +37,6 @@ class Passenger(Base):
     """Yo'lovchi model"""
     
     __tablename__ = "passengers"
-    __table_args__ = {'extend_existing': True}
     
     # PRIMARY KEY
     passenger_id: Mapped[int] = mapped_column(

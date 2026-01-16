@@ -23,6 +23,7 @@ from app.models.driver_ban import create_ban_record, check_driver_should_be_bloc
 from app.models.system_settings import get_setting_int
 from app.services.order_service import find_driver_for_order
 from app.tasks.matching import find_driver_for_order_task
+from app.bot.keyboards.passenger import get_driver_selection_keyboard, get_driver_action_keyboard
 from sqlalchemy import select, func, update
 from sqlalchemy.sql import func as sql_func
 from datetime import timedelta
@@ -111,28 +112,12 @@ async def change_driver_handler(callback: CallbackQuery, state: FSMContext):
             find_driver_for_order_task.delay(order_id)
             return
         
-        # Haydovchilar ro'yxatini ko'rsatish
-        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
         
-        keyboard_buttons = []
-        
-        # Har bir haydovchi uchun tugma
-        for driver in available_drivers[:10]:  # Maksimal 10 ta haydovchi
-            driver_info = f"{driver.car_model} ({driver.car_color}) - {driver.car_number}"
-            keyboard_buttons.append([
-                InlineKeyboardButton(
-                    text=f"🚗 {driver_info}",
-                    callback_data=f"select_new_driver:{order_id}:{driver.driver_id}"
-                )
-            ])
-        
-        keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
+        keyboard = get_driver_selection_keyboard(available_drivers, order_id)
         
         if callback.message:
-            await callback.message.edit_text(
-                f"🔄 <b>Yangi haydovchi tanlang</b>\n\n"
-                f"📦 Buyurtma #{order_id}\n\n"
-                f"Quyidagi haydovchilardan birini tanlang:",
+            await callback.message.edit_text( # type: ignore
+                Messages.Passenger.SELECT_NEW_DRIVER.format(order_id=order_id),
                 reply_markup=keyboard,
                 parse_mode="HTML"
             )
@@ -353,13 +338,11 @@ async def ban_driver_handler(callback: CallbackQuery, state: FSMContext):
                 )
         
         # Xabarni yangilash
-        if callback.message:
-            await callback.message.edit_text(
-                "🚫 <b>Haydovchi ban qilindi</b>\n\n"
-                "Admin ko'rib chiqadi.\n"
-                "Yangi haydovchi topilmoqda..."
-            )
-        
+        # Xabar yuborish
+        await callback.message.edit_text( # type: ignore
+            Messages.Passenger.DRIVER_BANNED,
+            parse_mode="HTML"
+        )
         # Yangi haydovchi topish
         find_driver_for_order_task.delay(order_id)
         
@@ -411,28 +394,8 @@ async def view_driver_info(callback: CallbackQuery):
 🚕 <b>Jami safarlar:</b> {driver.total_trips}
         """
         
-        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
         
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text="💬 Telegram",
-                    url=f"tg://user?id={driver.user_id}"
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text="🔄 Mashinani o'zgartirish",
-                    callback_data=f"change_driver:{order_id}"
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text="🚫 Ban tashlash",
-                    callback_data=f"ban_driver:{order_id}"
-                )
-            ]
-        ])
+        keyboard = get_driver_action_keyboard(driver.user_id, order_id)
         
         if callback.message:
             await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")

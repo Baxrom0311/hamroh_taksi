@@ -368,6 +368,23 @@ async def accept_order_by_driver(
                                   f'Mavjud: {driver.available_seats}'
                     }
                 
+                # 2.4.5. TRIP YARATISH YOKI MAVJUD TRIP'GA QO'SHISH ✅
+                from app.models.trip import get_active_trip_by_driver, create_trip, Trip
+                
+                active_trip = await get_active_trip_by_driver(session, driver_id)
+                
+                if not active_trip:
+                    # Yangi trip yaratish (birinchi order)
+                    active_trip = await create_trip(
+                        session,
+                        driver_id=driver_id,
+                        route_id=order.route_id,
+                        total_seats=driver.available_seats + order.passenger_count
+                    )
+                    logger.info(f"✅ New trip created: trip_id={active_trip.trip_id}")
+                
+                trip_id = active_trip.trip_id
+                
                 # 2.5. Balansdan komissiya yechish va o'rinlarni kamaytirish (ATOMIC)
                 from sqlalchemy import update
                 
@@ -382,7 +399,14 @@ async def accept_order_by_driver(
                     )
                 )
                 
-                # 2.5. Order'ni qabul qilish
+                # Trip available_seats kamaytirish
+                await session.execute(
+                    update(Trip)
+                    .where(Trip.trip_id == trip_id)
+                    .values(available_seats=Trip.available_seats - order.passenger_count)
+                )
+                
+                # 2.6. Order'ni qabul qilish va trip'ga qo'shish ✅
 
 
                 await session.execute(
@@ -390,6 +414,7 @@ async def accept_order_by_driver(
                     .where(Order.order_id == order_id)
                     .values(
                         driver_id=driver_id,
+                        trip_id=trip_id,  # ✅ Trip'ga qo'shish
                         status=OrderStatus.ACCEPTED,
                         commission_amount=commission,
                         accepted_at=func.now()

@@ -11,6 +11,9 @@ from app.core.database import get_session
 from app.models.driver import get_driver_by_user_id
 from app.models.transaction import create_transaction, TransactionType
 from app.bot.states.driver import DriverStates
+from app.bot.keyboards.driver import get_driver_main_menu, get_balance_keyboard
+from app.bot.messages import Messages
+from app.bot.utils import get_driver_or_error
 
 router = Router()
 
@@ -24,10 +27,9 @@ async def show_balance(message: Message):
     user_id = message.from_user.id
     
     async with get_session() as session:
-        driver = await get_driver_by_user_id(session, user_id)
+        driver = await get_driver_or_error(session, user_id, message)
         
         if not driver:
-            await message.answer("❌ Ma'lumotlar topilmadi")
             return
         
         await message.answer(
@@ -127,26 +129,7 @@ async def receipt_uploaded(message: Message, state: FSMContext):
     await state.clear()
 
 
-def get_balance_keyboard():
-    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="💳 To'ldirish", callback_data="topup_balance")],
-        [InlineKeyboardButton(text="📊 Tarix", callback_data="balance_history")]
-    ])
 
-
-def get_driver_main_menu():
-    """Driver asosiy menyusi"""
-    from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
-    
-    return ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text="🚗 Buyurtma qabul qilish")],
-            [KeyboardButton(text="💰 Balans"), KeyboardButton(text="📊 Statistika")],
-            [KeyboardButton(text="⚙️ Sozlamalar"), KeyboardButton(text="📞 Support")]
-        ],
-        resize_keyboard=True
-    )
 
 @router.message(F.text == "❌ Bekor qilish")
 async def cancel_balance_topup(message: Message, state: FSMContext):

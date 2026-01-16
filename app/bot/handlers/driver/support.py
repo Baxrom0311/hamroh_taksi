@@ -17,9 +17,13 @@ from config.settings import settings
 
 from app.core.database import get_session, transaction
 from app.models.driver import get_driver_by_user_id
+from app.models.driver import get_driver_by_user_id
 from app.models.transaction import Transaction, TransactionType, create_transaction
+from app.models.feedback import create_feedback, FeedbackType
 from app.bot.states.driver import DriverStates
-from app.bot.handlers.driver.main_menu import get_driver_main_menu
+from app.bot.keyboards.driver import get_driver_main_menu
+from app.bot.messages import Messages
+from app.bot.utils import get_driver_or_error
 
 router = Router()
 
@@ -28,29 +32,22 @@ router = Router()
 # SUPPORT MENYU
 # ============================================
 
-@router.message(F.text == "📞 Support")
+@router.message(F.text.in_(["📞 Support", "📞 Support xizmati", "SOS"]))
 async def support_menu(message: Message, state: FSMContext):
     """
     Support bo'limi
-    
-    NIMA BO'LADI:
-    1. Chek yuborish (balans to'ldirish)
-    2. Shikoyat yuborish
-    3. Support bot linki
     """
     keyboard = ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text="💰 Chek yuborish")],
-            [KeyboardButton(text="📝 Shikoyat yuborish")],
-            [KeyboardButton(text="🔗 Support bot")],
+            [KeyboardButton(text="📝 Shikoyat yuborish"), KeyboardButton(text="💡 Taklif yuborish")],
             [KeyboardButton(text="⬅️ Orqaga")]
         ],
         resize_keyboard=True
     )
     
     await message.answer(
-        "👨‍💻 <b>Support bo'limi</b>\n\n"
-        "Quyidagilardan birini tanlang:",
+        Messages.Error.SUPPORT_INFO,
         reply_markup=keyboard,
         parse_mode="HTML"
     )
@@ -77,10 +74,8 @@ async def start_receipt_upload(message: Message, state: FSMContext):
         return
     
     async with get_session() as session:
-        driver = await get_driver_by_user_id(session, user_id)
-        
+        driver = await get_driver_or_error(session, user_id, message)
         if not driver:
-            await message.answer("❌ Haydovchi ma'lumotlari topilmadi")
             return
     
     await message.answer(
@@ -139,10 +134,8 @@ async def receipt_photo_uploaded(message: Message, state: FSMContext):
         return
     
     async with get_session() as session:
-        driver = await get_driver_by_user_id(session, user_id)
-        
+        driver = await get_driver_or_error(session, user_id, message)
         if not driver:
-            await message.answer("❌ Haydovchi ma'lumotlari topilmadi")
             await state.clear()
             return
         
@@ -198,24 +191,7 @@ Admin panel: /admin/transactions/{transaction_obj.transaction_id}
 async def start_complaint(message: Message, state: FSMContext):
     """
     Shikoyat yuborishni boshlash
-    
-    FLOW:
-    1. Shikoyat matnini yozish
-    2. Admin'ga yuborish
     """
-    user_id = message.from_user.id if message.from_user else None
-    
-    if not user_id:
-        await message.answer("Xatolik: user topilmadi")
-        return
-    
-    async with get_session() as session:
-        driver = await get_driver_by_user_id(session, user_id)
-        
-        if not driver:
-            await message.answer("❌ Haydovchi ma'lumotlari topilmadi")
-            return
-    
     await message.answer(
         "📝 <b>Shikoyat yuborish</b>\n\n"
         "Shikoyatingizni yozing:\n\n"
@@ -223,6 +199,23 @@ async def start_complaint(message: Message, state: FSMContext):
         parse_mode="HTML"
     )
     
+    await state.update_data(feedback_type=FeedbackType.COMPLAINT.value)
+    await state.set_state(DriverStates.support_complaint)
+
+
+@router.message(F.text == "💡 Taklif yuborish")
+async def start_suggestion(message: Message, state: FSMContext):
+    """
+    Taklif yuborishni boshlash
+    """
+    await message.answer(
+        "💡 <b>Taklif yuborish</b>\n\n"
+        "Taklifingizni yozing:\n\n"
+        "Biz xizmat sifatini yaxshilash uchun harakat qilamiz!",
+        parse_mode="HTML"
+    )
+    
+    await state.update_data(feedback_type=FeedbackType.SUGGESTION.value)
     await state.set_state(DriverStates.support_complaint)
 
 
@@ -241,35 +234,37 @@ async def complaint_text_entered(message: Message, state: FSMContext):
         await message.answer("❌ Shikoyat juda qisqa (minimal 10 belgi)")
         return
     
+    data = await state.get_data()
+    feedback_type = data.get('feedback_type', FeedbackType.COMPLAINT.value)
+    
     async with get_session() as session:
-        driver = await get_driver_by_user_id(session, user_id)
-        
+        driver = await get_driver_or_error(session, user_id, message)
         if not driver:
-            await message.answer("❌ Haydovchi ma'lumotlari topilmadi")
             await state.clear()
             return
+
+        # Feedback yaratish
+        feedback = await create_feedback(
+            session,
+            user_id=user_id, # User model ID si kerak (driver.user_id)
+            message=complaint_text,
+            type=FeedbackType(feedback_type)
+        )
         
         # Admin'ga xabar
         from app.tasks.notifications import notify_admins
         notify_admins.delay(
-            f"""
-📝 <b>Yangi shikoyat</b>
-
-👤 Haydovchi: {driver.full_name}
-📱 Telefon: {driver.phone_number}
-🚗 Mashina: {driver.car_model} ({driver.car_number})
-🆔 Driver ID: {driver.driver_id}
-
-📄 Shikoyat:
-{complaint_text}
-
----
-Admin javob berishi mumkin.
-            """
+            f"📝 <b>Yangi {feedback.type.value}</b> #{feedback.feedback_id}\n\n"
+            f"👤 Haydovchi: {driver.full_name}\n"
+            f"📱 Telefon: {driver.phone_number}\n\n"
+            f"📄 Matn:\n"
+            f"{complaint_text}\n\n"
+            f"---\n"
+            f"Javob berish: /reply {feedback.feedback_id}"
         )
         
         await message.answer(
-            "✅ <b>Shikoyat yuborildi!</b>\n\n"
+            f"✅ <b>{feedback.type.value.capitalize()} yuborildi!</b>\n\n"
             "Admin ko'rib chiqadi va sizga javob beradi.\n\n"
             "⏳ Javobni kuting...",
             reply_markup=get_driver_main_menu(),
@@ -277,40 +272,14 @@ Admin javob berishi mumkin.
         )
         
         logger.info(
-            f"Complaint submitted: driver={driver.driver_id}, "
-            f"text_length={len(complaint_text)}"
+            f"Feedback submitted: driver={driver.driver_id}, "
+            f"id={feedback.feedback_id}"
         )
     
     await state.clear()
 
 
-# ============================================
-# SUPPORT BOT LINKI
-# ============================================
 
-@router.message(F.text == "🔗 Support bot")
-async def support_bot_link(message: Message):
-    """
-    Support bot linkini ko'rsatish
-    
-    NOTE: Support bot username'ni settings'dan olish kerak
-    """
-    support_bot_username = getattr(settings, 'SUPPORT_BOT_USERNAME', '@support_bot')
-    
-    await message.answer(
-        f"🔗 <b>Support bot</b>\n\n"
-        f"Muammo bo'yicha yozing:\n"
-        f"{support_bot_username}\n\n"
-        f"Yoki quyidagi tugmani bosing:",
-        reply_markup=ReplyKeyboardMarkup(
-            keyboard=[
-                [KeyboardButton(text="🔗 Support botga o'tish", url=f"https://t.me/{support_bot_username.replace('@', '')}")],
-                [KeyboardButton(text="⬅️ Orqaga")]
-            ],
-            resize_keyboard=True
-        ),
-        parse_mode="HTML"
-    )
 
 
 # ============================================

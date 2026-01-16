@@ -3,6 +3,7 @@ from .driver import Driver
 from .passenger import Passenger
 from .route import Route
 from .order import Order, OrderStatus
+from .trip import Trip, TripStatus  # ✅ Yangi
 from .transaction import Transaction, TransactionLog
 from .system_settings import SystemSettings
 
@@ -12,7 +13,8 @@ __all__ = [
     "Driver", 
     "Passenger", 
     "Route", 
-    "Order", "OrderStatus", 
+    "Order", "OrderStatus",
+    "Trip", "TripStatus",  # ✅ Yangi
     "Transaction", "TransactionLog",
     "SystemSettings"
 ]

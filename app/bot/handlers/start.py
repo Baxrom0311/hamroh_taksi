@@ -15,7 +15,7 @@ ISHLATISH:
 
 from aiogram import Router, F
 from aiogram.filters import CommandStart
-from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton
+from aiogram.types import Message
 from aiogram.fsm.context import FSMContext
 from loguru import logger
 from app.admin.routes import settings
@@ -23,6 +23,9 @@ from app.core.database import get_session
 from app.models.user import get_user_by_id
 from app.models.driver import get_driver_by_user_id
 from app.models.passenger import get_passenger_by_user_id
+from app.bot.keyboards.driver import get_driver_main_menu
+from app.bot.keyboards.passenger import get_passenger_main_menu
+from app.bot.keyboards.common import get_registration_choice_keyboard, get_support_keyboard
 
 # Router yaratish
 router = Router()
@@ -61,15 +64,7 @@ async def cmd_start(message: Message, state: FSMContext):
                 f"• Yo'lovchi sifatida taksi chaqirishingiz\n"
                 f"• Haydovchi sifatida buyurtma qabul qilishingiz mumkin\n\n"
                 f"🔐 Davom etish uchun <b>ro'yxatdan o'ting</b>",
-                reply_markup=ReplyKeyboardMarkup(
-                    keyboard=[
-                        [
-                            KeyboardButton(text="🚗 Haydovchi sifatida"),
-                            KeyboardButton(text="👤 Yo'lovchi sifatida")
-                        ]
-                    ],
-                    resize_keyboard=True
-                )
+                reply_markup=get_registration_choice_keyboard()
             )
             
             # FSM state o'rnatish
@@ -87,10 +82,7 @@ async def cmd_start(message: Message, state: FSMContext):
             await message.answer(
                 "🚫 <b>Hisobingiz bloklangan!</b>\n\n"
                 "Murojaat uchun: @support",
-                reply_markup=ReplyKeyboardMarkup(
-                    keyboard=[[KeyboardButton(text="📞 Support")]],
-                    resize_keyboard=True
-                )
+                reply_markup=get_support_keyboard()
             )
             return
         
@@ -141,61 +133,11 @@ async def cmd_start(message: Message, state: FSMContext):
                 f"👨‍💼 Admin panel\n\n"
                 f"Rol: <b>{user.role.value}</b>\n\n"
                 f"Web admin: {getattr(settings, 'ADMIN_PANEL_URL', 'N/A')}",
-                reply_markup=ReplyKeyboardMarkup(
-                    keyboard=[
-                        [KeyboardButton(text="📊 Statistika")],
-                        [KeyboardButton(text="💳 To'lovlar"), KeyboardButton(text="🚫 Banlar")]
-                    ],
-                    resize_keyboard=True
-                )
+                reply_markup=get_support_keyboard()
             )
         
         else:
             await message.answer("❌ Noma'lum rol. Support bilan bog'laning.")
-
-
-# ============================================
-# KEYBOARD HELPERS
-# ============================================
-
-def get_driver_main_menu() -> ReplyKeyboardMarkup:
-    """Haydovchi asosiy menyusi"""
-    return ReplyKeyboardMarkup(
-        keyboard=[
-            [
-                KeyboardButton(text="🚗 Buyurtma qabul qilish"),
-            ],
-            [
-                KeyboardButton(text="💰 Balans"),
-                KeyboardButton(text="📊 Statistika")
-            ],
-            [
-                KeyboardButton(text="⚙️ Sozlamalar"),
-                KeyboardButton(text="📞 Support")
-            ]
-        ],
-        resize_keyboard=True
-    )
-
-
-def get_passenger_main_menu() -> ReplyKeyboardMarkup:
-    """Yo'lovchi asosiy menyusi"""
-    return ReplyKeyboardMarkup(
-        keyboard=[
-            [
-                KeyboardButton(text="🚖 Taksi chaqirish"),
-            ],
-            [
-                KeyboardButton(text="📍 Mening buyurtmalarim"),
-                KeyboardButton(text="⭐ Tarix")
-            ],
-            [
-                KeyboardButton(text="⚙️ Sozlamalar"),
-                KeyboardButton(text="📞 Support")
-            ]
-        ],
-        resize_keyboard=True
-    )
 
 
 # ============================================

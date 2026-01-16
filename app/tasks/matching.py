@@ -384,22 +384,38 @@ async def auto_complete_trip_task(order_id: int):
                         except Exception as e:
                             logger.error(f"Failed to notify driver: {e}")
                     
-                    # Yo'lovchiga xabar
+                    logger.info(f"Order {order_id} auto-completed after 10 minutes")
+                    
+                    # Yo'lovchiga xabar va REYTING
                     if order.passenger and order.passenger.user:
                         from app.bot.main import bot
+                        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+                        
+                        # Reyting klaviaturasi
+                        rating_kb = InlineKeyboardMarkup(inline_keyboard=[
+                            [
+                                InlineKeyboardButton(text="⭐️ 1", callback_data=f"rate_driver:{order_id}:1"),
+                                InlineKeyboardButton(text="⭐️ 2", callback_data=f"rate_driver:{order_id}:2"),
+                                InlineKeyboardButton(text="⭐️ 3", callback_data=f"rate_driver:{order_id}:3"),
+                            ],
+                            [
+                                InlineKeyboardButton(text="⭐️ 4", callback_data=f"rate_driver:{order_id}:4"),
+                                InlineKeyboardButton(text="⭐️ 5", callback_data=f"rate_driver:{order_id}:5"),
+                            ]
+                        ])
+                        
                         try:
                             await bot.send_message(
                                 chat_id=order.passenger.user.user_id,
-                                text=f"✅ <b>Safar avtomatik yakunlandi</b>\n\n"
+                                text=f"✅ <b>Safar yakunlandi (Avtomatik 10 daqiqa)</b>\n\n"
                                      f"📦 Buyurtma #{order_id}\n"
                                      f"⏱ Davomiyligi: {result.get('duration_minutes', 10)} daqiqa\n\n"
-                                     f"Xavfsiz yetib borgansizdan xursandmiz!",
-                                parse_mode="HTML"
+                                     f"✨ <b>Haydovchiga baho bering:</b>",
+                                parse_mode="HTML",
+                                reply_markup=rating_kb
                             )
                         except Exception as e:
                             logger.error(f"Failed to notify passenger: {e}")
-                    
-                    logger.info(f"Order {order_id} auto-completed after 10 minutes")
                 else:
                     logger.error(f"Failed to auto-complete trip: {result.get('message')}")
 

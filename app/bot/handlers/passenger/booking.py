@@ -6,15 +6,24 @@ from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
 from aiogram.fsm.context import FSMContext
 from loguru import logger
-from sqlalchemy import func
+from sqlalchemy import func, select
 from sqlalchemy.sql import func as sql_func
-
+from app.models.route import get_route_by_id
+from app.models.order import Order, OrderStatus  # ✅ Order va OrderStatus qo'shildi
 from app.core.database import get_session, transaction
 from app.models.passenger import get_passenger_by_user_id
 from app.models.route import get_all_active_routes
 from app.services.order_service import create_new_order
 from app.bot.states.passenger import PassengerStates
-from app.bot.keyboards.passenger import get_route_selection_keyboard
+from app.bot.keyboards.passenger import (
+    get_route_selection_keyboard,
+    get_passenger_location_keyboard,
+    get_passenger_count_keyboard,
+    get_passenger_main_menu
+)
+from app.bot.messages import Messages
+from app.bot.utils import get_passenger_or_error, get_order_or_error
+from app.tasks.matching import find_driver_for_order_task  # ✅ Task import qo'shildi
 
 router = Router()
 
@@ -25,23 +34,20 @@ async def start_booking(message: Message, state: FSMContext):
     user_id = message.from_user.id # type: ignore
     
     async with get_session() as session:
-        passenger = await get_passenger_by_user_id(session, user_id)
+        passenger = await get_passenger_or_error(session, user_id, message)
         
         if not passenger:
-            await message.answer("❌ Ma'lumotlar topilmadi")
             return
         
-        # Marshrut tanlash
-        routes = await get_all_active_routes(session)
-        
-        if not routes:
-            await message.answer("❌ Hozirda aktiv marshrutlar yo'q")
+        # Aktiv marshrutlarni tekshirish
+        active_routes = await get_all_active_routes(session)
+        if not active_routes:
+            await message.answer(Messages.Passenger.NO_ROUTES)
             return
         
         await message.answer(
-            "📍 <b>Qayerga borasiz?</b>\n\n"
-            "Marshrutni tanlang:",
-            reply_markup=get_route_selection_keyboard(routes)
+            Messages.Passenger.WHERE_TO,
+            reply_markup=get_route_selection_keyboard(active_routes)
         )
         
         await state.set_state(PassengerStates.choose_route)
@@ -55,25 +61,22 @@ async def route_selected(callback: CallbackQuery, state: FSMContext):
     """Marshrut tanlandi"""
     route_id = int(callback.data.split(":")[1]) # type: ignore
     
-    await state.update_data(route_id=route_id)
+    async with get_session() as session:
+        route = await get_route_by_id(session, route_id)
+        if not route:
+            await callback.answer("❌ Marshrut topilmadi", show_alert=True)
+            return
+        route_name = route.route_name
     
-    await callback.message.edit_text( # type: ignore
-        "📍 <b>Qayerdan olishni xohlaysiz?</b>\n\n"
-        "Lokatsiyangizni yuboring yoki manzilni yozing:"
-    )
+    await state.update_data(route_id=route_id, route_name=route_name)
     
-    # Lokatsiya yuborish tugmasi
-    keyboard = ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text="📍 Lokatsiyani yuborish", request_location=True)],
-            [KeyboardButton(text="❌ Bekor qilish")]
-        ],
-        resize_keyboard=True
+    await callback.message.answer( # type: ignore
+        Messages.Passenger.WHERE_FROM
     )
     
     await callback.message.answer( # type: ignore
-        "📍 Lokatsiyangizni yuboring:",
-        reply_markup=keyboard
+        Messages.Passenger.SEND_LOCATION,
+        reply_markup=get_passenger_location_keyboard()
     )
     
     await state.set_state(PassengerStates.send_location)
@@ -92,11 +95,10 @@ async def location_received(message: Message, state: FSMContext):
     )
     
     await message.answer(
-        "✅ Lokatsiya qabul qilindi\n\n"
-        "📍 Lokatsiya haqida qo'shimcha ma'lumot yozing:\n"
-        "(Masalan: \"Uy oldida\", \"Kafe yonida\", \"Ko'cha 5\")",
-        reply_markup=ReplyKeyboardRemove() # <--- MATN YOZILGANDA HAM TUGMALARNI OLIB TASHLAYMIZ
-    )
+        Messages.Passenger.LOCATION_RECEIVED,
+        reply_markup=ReplyKeyboardRemove(),
+        parse_mode="HTML"
+    ) # <--- MATN YOZILGANDA HAM TUGMALARNI OLIB TASHLAYMIZ
     
     await state.set_state(PassengerStates.location_description)
 
@@ -131,9 +133,7 @@ async def location_description_received(message: Message, state: FSMContext):
     await state.update_data(location_description=description)
     
     await message.answer(
-        "✅ Izoh qabul qilindi\n\n"
-        "👥 Necha kishi borasiz yoki pochtami?\n\n"
-        "Tanlang:",
+        Messages.Passenger.LOCATION_DESC_RECEIVED,
         reply_markup=get_passenger_count_keyboard()
     )
     
@@ -196,14 +196,11 @@ async def finalize_order(message, state: FSMContext):
         )
         
         if result['success']:
-            await message.answer(
-                f"✅ <b>Buyurtma qabul qilindi!</b>\n\n"
-                f"📦 Buyurtma #{result['order_id']}\n\n"
-                f"⏳ Haydovchi topilmoqda...\n\n"
-                f"📱 Haydovchi topilgach xabar beramiz!",
-                reply_markup=get_passenger_main_menu()
-            )
-            
+            await message.edit_text( # type: ignore
+                Messages.Passenger.ORDER_CREATED.format(order_id=result['order_id']),
+                reply_markup=get_passenger_main_menu(),
+                parse_mode="HTML"
+            )    
             logger.success(f"Order created: {result['order_id']}")
         else:
             # HTML escape qilish - xatolik xabarlarida HTML taglar bo'lmasligi uchun
@@ -216,45 +213,6 @@ async def finalize_order(message, state: FSMContext):
     await state.clear()
 
 
-def get_passenger_count_keyboard():
-    """Yo'lovchilar soni (1-4) va Pochta"""
-    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="1️⃣", callback_data="passenger_count:1"),
-            InlineKeyboardButton(text="2️⃣", callback_data="passenger_count:2"),
-        ],
-        [
-            InlineKeyboardButton(text="3️⃣", callback_data="passenger_count:3"),
-            InlineKeyboardButton(text="4️⃣", callback_data="passenger_count:4"),
-        ],
-        [
-            InlineKeyboardButton(text="📦 Pochta", callback_data="passenger_count:0")
-        ]
-    ])
-
-
-
-
-def get_luggage_keyboard():
-    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="✅ Ha", callback_data="has_luggage:yes"),
-            InlineKeyboardButton(text="❌ Yo'q", callback_data="has_luggage:no"),
-        ]
-    ])
-
-
-def get_passenger_main_menu():
-    from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
-    return ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text="🚖 Taksi chaqirish")],
-            [KeyboardButton(text="📍 Mening buyurtmalarim"), KeyboardButton(text="⭐ Tarix")],
-        ],
-        resize_keyboard=True
-    )
 @router.callback_query(F.data.startswith("passenger_started:"))
 async def passenger_started(callback: CallbackQuery):
     """
@@ -273,18 +231,14 @@ async def passenger_started(callback: CallbackQuery):
     user_id = callback.from_user.id
     
     async with get_session() as session:
-        passenger = await get_passenger_by_user_id(session, user_id)
-        
+        passenger = await get_passenger_or_error(session, user_id, callback)
         if not passenger:
-            await callback.answer("❌ Yo'lovchi topilmadi", show_alert=True)
             return
         
         # Order'ni olish
         from app.models.order import get_order_by_id, OrderStatus
-        order = await get_order_by_id(session, order_id)
-        
-        if not order or order.passenger_id != passenger.passenger_id:
-            await callback.answer("❌ Buyurtma topilmadi", show_alert=True)
+        order = await get_order_or_error(session, order_id, callback)
+        if not order:
             return
         
         if order.status != OrderStatus.ACCEPTED:
@@ -346,18 +300,14 @@ async def passenger_cancel_order(callback: CallbackQuery):
     user_id = callback.from_user.id
     
     async with get_session() as session:
-        passenger = await get_passenger_by_user_id(session, user_id)
-        
+        passenger = await get_passenger_or_error(session, user_id, callback)
         if not passenger:
-            await callback.answer("❌ Yo'lovchi topilmadi", show_alert=True)
             return
         
         # Order'ni olish
         from app.models.order import get_order_by_id, OrderStatus
-        order = await get_order_by_id(session, order_id)
-        
-        if not order or order.passenger_id != passenger.passenger_id:
-            await callback.answer("❌ Buyurtma topilmadi", show_alert=True)
+        order = await get_order_or_error(session, order_id, callback)
+        if not order:
             return
         
         if order.status not in [OrderStatus.ACCEPTED]:
@@ -433,22 +383,16 @@ async def reject_trip(callback: CallbackQuery):
     user_id = callback.from_user.id
     
     async with get_session() as session:
-        passenger = await get_passenger_by_user_id(session, user_id)
-        
+        passenger = await get_passenger_or_error(session, user_id, callback)
         if not passenger:
-            await callback.answer("❌ Yo'lovchi topilmadi", show_alert=True)
             return
         
-        # Order'ni olish
-        from app.models.order import get_order_by_id, OrderStatus
-        order = await get_order_by_id(session, order_id)
-        
-        if not order or order.passenger_id != passenger.passenger_id:
-            await callback.answer("❌ Buyurtma topilmadi", show_alert=True)
+        order = await get_order_or_error(session, order_id, callback)
+        if not order:
             return
-        
+            
         if not order.driver_id:
-            await callback.answer("❌ Haydovchi topilmadi", show_alert=True)
+            await callback.answer(Messages.Error.DRIVER_NOT_FOUND, show_alert=True)
             return
         
         # Safarni bekor qilish va warning
@@ -476,7 +420,6 @@ async def reject_trip(callback: CallbackQuery):
                     total_ban_count=Driver.total_ban_count + 1
                 )
             )
-            
             # Warning count tekshirish
             driver_result = await session.execute(
                 select(Driver).where(Driver.driver_id == order.driver_id)

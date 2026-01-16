@@ -117,8 +117,6 @@ async def passenger_settings(message: Message):
         
         await message.answer(settings_text, parse_mode="HTML")
 
-@router.message(F.text == "📞 Support")
-async def driver_support(message: Message):
-    await message.answer("👨‍💻 <b>Texnik yordam</b>\n\nMuammo bo'yicha adminga yozing: @Bakhromdev")
+
 
 __all__ = ['router']
