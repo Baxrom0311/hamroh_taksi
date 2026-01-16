@@ -21,6 +21,8 @@ from app.bot.utils import get_passenger_or_error
 from app.bot.keyboards.passenger import get_passenger_main_menu
 from app.services.trip_service import refund_commission_for_order
 from app.tasks.matching import find_driver_for_order_task
+from app.bot.decorators import with_passenger_session  # ✅ NEW
+from sqlalchemy.ext.asyncio import AsyncSession
 
 router = Router()
 
@@ -39,24 +41,21 @@ STATUS_TEXT = {
 
 
 @router.message(F.text == "📋 Faol buyurtmalar")
-async def view_active_orders(message: Message, state: FSMContext):
+@with_passenger_session  # ✅ Decorator
+async def view_active_orders(message: Message, session: AsyncSession, passenger: Passenger, state: FSMContext):
     """
     Yo'lovchining barcha faol buyurtmalarini ko'rsatish
+    
+    ✅ REFACTORED: Session va passenger avtomatik
     
     NIMA KO'RSATILADI:
     - PENDING buyurtmalar - Haydovchi kutilmoqda
     - ACCEPTED buyurtmalar - Haydovchi topildi
     - IN_PROGRESS buyurtmalar - Safar davom etmoqda
     """
-    user_id = message.from_user.id  # type: ignore
     
-    async with get_session() as session:
-        passenger = await get_passenger_or_error(session, user_id, message)
-        if not passenger:
-            return
-        
-        # Barcha faol buyurtmalarni olish
-        active_orders_result = await session.execute(
+    # Barcha faol buyurtmalarni olish
+    active_orders_result = await session.execute(
             select(Order)
             .options(
                 selectinload(Order.route),
@@ -66,63 +65,63 @@ async def view_active_orders(message: Message, state: FSMContext):
             .where(Order.status.in_([OrderStatus.PENDING, OrderStatus.ACCEPTED, OrderStatus.IN_PROGRESS]))
             .order_by(Order.created_at.desc())
         )
-        active_orders = active_orders_result.scalars().all()
-        
-        if not active_orders:
-            await message.answer(
-                "📋 <b>Faol buyurtmalar yo'q</b>\n\n"
-                "Hozirda sizda aktiv buyurtmalar mavjud emas.\n\n"
-                "Taksi chaqirish uchun 'Taksi chaqirish' tugmasini bosing.",
-                reply_markup=get_passenger_main_menu(),
-                parse_mode="HTML"
-            )
-            return
-        
-        # Buyurtmalarni formatlash
-        orders_text = "📋 <b>Sizning faol buyurtmalaringiz:</b>\n\n"
-        
-        for order in active_orders:
-            status_emoji = STATUS_EMOJI.get(order.status, "❓")
-            status_text = STATUS_TEXT.get(order.status, "Noma'lum")
-            
-            # Marshrut nomi
-            route_name = order.route.route_name if order.route else "Noma'lum"
-            
-            # Vaqt
-            from datetime import datetime
-            import pytz
-            
-            created_time = order.created_at.astimezone(pytz.timezone('Asia/Tashkent'))
-            time_str = created_time.strftime("%H:%M, %d.%m.%Y")
-            
-            orders_text += f"{status_emoji} <b>Buyurtma #{order.order_id}</b>\n"
-            orders_text += f"├ 🛣 Marshrut: {route_name}\n"
-            orders_text += f"├ 📍 Joylashuv: {order.pickup_location}\n"
-            orders_text += f"├ 📅 Vaqt: {time_str}\n"
-            orders_text += f"└ 📊 Holat: {status_text}\n"
-            
-            # Haydovchi ma'lumotlari (agar ACCEPTED yoki IN_PROGRESS bo'lsa)
-            if order.status in [OrderStatus.ACCEPTED, OrderStatus.IN_PROGRESS] and order.driver:
-                driver = order.driver
-                orders_text += f"\n🚗 <b>Haydovchi:</b>\n"
-                orders_text += f"  👤 {driver.full_name}\n"
-                orders_text += f"  🚙 {driver.car_model}, {driver.car_color}\n"
-                orders_text += f"  📋 {driver.car_number}\n"
-                
-                if driver.user:
-                    orders_text += f"  📱 <code>{driver.user.phone_number}</code>\n"
-            
-            orders_text += "\n"
-        
-        orders_text += "ℹ️ <i>Buyurtma yakunlangach bu ro'yxatdan o'chadi va 'Safar tarixi'da ko'rinadi.</i>"
-        
+    active_orders = active_orders_result.scalars().all()
+    
+    if not active_orders:
         await message.answer(
-            orders_text,
+            "📋 <b>Faol buyurtmalar yo'q</b>\n\n"
+            "Hozirda sizda aktiv buyurtmalar mavjud emas.\n\n"
+            "Taksi chaqirish uchun 'Taksi chaqirish' tugmasini bosing.",
             reply_markup=get_passenger_main_menu(),
             parse_mode="HTML"
         )
+        return
+    
+    # Buyurtmalarni formatlash
+    orders_text = "📋 <b>Sizning faol buyurtmalaringiz:</b>\n\n"
+    
+    for order in active_orders:
+        status_emoji = STATUS_EMOJI.get(order.status, "❓")
+        status_text = STATUS_TEXT.get(order.status, "Noma'lum")
         
-        logger.info(f"Passenger {passenger.passenger_id} viewed {len(active_orders)} active orders")
+        # Marshrut nomi
+        route_name = order.route.route_name if order.route else "Noma'lum"
+        
+        # Vaqt
+        from datetime import datetime
+        import pytz
+        
+        created_time = order.created_at.astimezone(pytz.timezone('Asia/Tashkent'))
+        time_str = created_time.strftime("%H:%M, %d.%m.%Y")
+        
+        orders_text += f"{status_emoji} <b>Buyurtma #{order.order_id}</b>\n"
+        orders_text += f"├ 🛣 Marshrut: {route_name}\n"
+        orders_text += f"├ 📍 Joylashuv: {order.pickup_location}\n"
+        orders_text += f"├ 📅 Vaqt: {time_str}\n"
+        orders_text += f"└ 📊 Holat: {status_text}\n"
+        
+        # Haydovchi ma'lumotlari (agar ACCEPTED yoki IN_PROGRESS bo'lsa)
+        if order.status in [OrderStatus.ACCEPTED, OrderStatus.IN_PROGRESS] and order.driver:
+            driver = order.driver
+            orders_text += f"\n🚗 <b>Haydovchi:</b>\n"
+            orders_text += f"  👤 {driver.full_name}\n"
+            orders_text += f"  🚙 {driver.car_model}, {driver.car_color}\n"
+            orders_text += f"  📋 {driver.car_number}\n"
+            
+            if driver.user:
+                orders_text += f"  📱 <code>{driver.user.phone_number}</code>\n"
+        
+        orders_text += "\n"
+    
+    orders_text += "ℹ️ <i>Buyurtma yakunlangach bu ro'yxatdan o'chadi va 'Safar tarixi'da ko'rinadi.</i>"
+    
+    await message.answer(
+        orders_text,
+        reply_markup=get_passenger_main_menu(),
+        parse_mode="HTML"
+    )
+    
+    logger.info(f"Passenger {passenger.passenger_id} viewed {len(active_orders)} active orders")
 
 
 # ============================================
@@ -130,9 +129,12 @@ async def view_active_orders(message: Message, state: FSMContext):
 # ============================================
 
 @router.callback_query(F.data.startswith("change_car:"))
-async def change_car_handler(callback: CallbackQuery):
+@with_passenger_session  # ✅ Decorator
+async def change_car_handler(callback: CallbackQuery, session: AsyncSession, passenger: Passenger):
     """
     Yo'lovchi mashinani almashtirishni xohlasa
+    
+    ✅ REFACTORED: Session va passenger avtomatik
     
     QACHON:
     - Order ACCEPTED holatida (haydovchi topilgan, lekin hali yetib kelmagan)
@@ -145,56 +147,49 @@ async def change_car_handler(callback: CallbackQuery):
         return
     
     order_id = int(callback.data.split(":")[1])
-    user_id = callback.from_user.id
     
-    async with get_session() as session:
-        passenger = await get_passenger_or_error(session, user_id, callback)
-        if not passenger:
-            return
-        
-        # Order'ni tekshirish
-        order = await get_order_by_id(session, order_id)
-        
-        if not order or order.passenger_id != passenger.passenger_id:
-            await callback.answer("Buyurtma topilmadi yoki sizga tegishli emas")
-            return
-        
-        if order.status not in [OrderStatus.ACCEPTED, OrderStatus.PENDING]:
-            await callback.answer(
-                "Bu buyurtmani bekor qilib bo'lmaydi (allaqachon boshlangan yoki yakunlangan)",
-                show_alert=True
-            )
-            return
-        
-        # ✅ Komissiya qaytarish (trip_service orqali)
-        
-        result = await refund_commission_for_order(
-            order_id,
-            reason="passenger_changed_car"
+    # Order'ni tekshirish
+    order = await get_order_by_id(session, order_id)
+    
+    if not order or order.passenger_id != passenger.passenger_id:
+        await callback.answer("Buyurtma topilmadi yoki sizga tegishli emas")
+        return
+    
+    if order.status not in [OrderStatus.ACCEPTED, OrderStatus.PENDING]:
+        await callback.answer(
+            "Bu buyurtmani bekor qilib bo'lmaydi (allaqachon boshlangan yoki yakunlangan)",
+            show_alert=True
         )
-        
-        if not result['success']:
-            await callback.answer(result['message'], show_alert=True)
-            return
-        
-        # Order yangilash (cancel)
-        await session.commit()
-        
-        if callback.message:
-            await callback.message.edit_text(
-                f"✅ <b>Buyurtma bekor qilindi</b>\n\n"
-                f"💰 Haydovchiga {result.get('refunded_amount', 0):,.0f} so'm qaytarildi\n\n"
-                f"🔄 Yangi haydovchi topilmoqda...",
-                parse_mode="HTML"
-            )
-        
-        # Yangi haydovchi topish task
-        find_driver_for_order_task.delay(order_id)
-        
-        logger.info(
-            f"Passenger {passenger.passenger_id} changed car for order {order_id}, "
-            f"refunded {result.get('refunded_amount', 0)}"
+        return
+    
+    # ✅ Komissiya qaytarish (trip_service orqali)
+    result = await refund_commission_for_order(
+        order_id,
+        reason="passenger_changed_car"
+    )
+    
+    if not result['success']:
+        await callback.answer(result['message'], show_alert=True)
+        return
+    
+    # Order yangilash (cancel)
+    await session.commit()
+    
+    if callback.message:
+        await callback.message.edit_text(
+            f"✅ <b>Buyurtma bekor qilindi</b>\n\n"
+            f"💰 Haydovchiga {result.get('refunded_amount', 0):,.0f} so'm qaytarildi\n\n"
+            f"🔄 Yangi haydovchi topilmoqda...",
+            parse_mode="HTML"
         )
+    
+    # Yangi haydovchi topish task
+    find_driver_for_order_task.delay(order_id)
+    
+    logger.info(
+        f"Passenger {passenger.passenger_id} changed car for order {order_id}, "
+        f"refunded {result.get('refunded_amount', 0)}"
+    )
     
     await callback.answer("Buyurtma bekor qilindi, yangi haydovchi topilmoqda")
 
