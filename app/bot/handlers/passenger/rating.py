@@ -78,7 +78,7 @@ async def rate_driver_handler(callback: CallbackQuery, session: AsyncSession):
     # Passengerga javob: xabarni o'chirib, alohida rahmat xabarini yuboramiz
     from app.bot.main import bot
     sent_thanks = False
-    if callback.message:
+    if callback.message and isinstance(callback.message, Message):
         try:
             await callback.message.delete()
             await bot.send_message(

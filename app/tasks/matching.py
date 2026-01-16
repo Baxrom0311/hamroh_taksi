@@ -11,7 +11,7 @@ BU TASK'LAR NIMA QILADI:
 """
 
 import asyncio
-from typing import Optional
+from typing import Optional, Any, cast
 from loguru import logger
 from sqlalchemy import select, update
 from app.core.celery_app import async_to_sync # <--- import
@@ -90,7 +90,7 @@ async def find_driver_for_order_task(self, order_id: int):
                 )
                 
                 # Passenger'ga xabar yuborish va order'ni cancel qilish
-                notify_passenger_no_driver_task.delay(order_id)
+                cast(Any, notify_passenger_no_driver_task).delay(order_id)
                 
                 return {
                     'success': False,
@@ -176,8 +176,8 @@ async def notify_driver_new_order_task(self, driver_id: int, order_id: int):
     # Lokatsiya linklari
     from app.utils.location_helpers import get_google_maps_link, get_telegram_location_link
     
-    pickup_lat = order.pickup_lat
-    pickup_lon = order.pickup_lon
+    pickup_lat = float(order.pickup_lat)
+    pickup_lon = float(order.pickup_lon)
     
     google_maps_link = get_google_maps_link(pickup_lat, pickup_lon, order_data['pickup'])
     telegram_location_link = get_telegram_location_link(pickup_lat, pickup_lon)
@@ -208,7 +208,7 @@ async def notify_driver_new_order_task(self, driver_id: int, order_id: int):
         
         # 3. Taymerni rejalashtirish
         from app.tasks.matching import auto_reject_order_task
-        auto_reject_order_task.apply_async(args=[driver_id, order_id], countdown=120)
+        cast(Any, auto_reject_order_task).apply_async(args=[driver_id, order_id], countdown=120)
         
         return {'success': True}
         
@@ -240,7 +240,7 @@ async def auto_reject_order_task(driver_id: int, order_id: int):
             await driver_queue.remove_driver(driver_id, order.route_id)
             
             # 2. Keyingi haydovchini qidirishni boshlaymiz
-            find_driver_for_order_task.delay(order_id)
+            cast(Any, find_driver_for_order_task).delay(order_id)
     
 
 @celery_app.task(name="app.tasks.matching.auto_confirm_trip_task")

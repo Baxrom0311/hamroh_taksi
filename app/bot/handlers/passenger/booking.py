@@ -3,6 +3,7 @@ app/bot/handlers/passenger/booking.py
 """
 
 from ..base import *
+from typing import Any, cast
 from app.core.database import transaction
 from app.models.route import get_route_by_id, get_all_active_routes
 from app.models.order import Order, OrderStatus
@@ -222,10 +223,13 @@ async def passenger_started(callback: CallbackQuery, session: AsyncSession, pass
     
     # Safarni boshlash
     from app.services.order_service import start_trip
+    if order.driver_id is None:
+        await callback.answer(Messages.Error.DRIVER_NOT_FOUND, show_alert=True)
+        return
     result = await start_trip(order_id, order.driver_id)
     
     if result['success']:
-        if callback.message:
+        if callback.message and isinstance(callback.message, Message):
             await callback.message.edit_text(
                 "✅ <b>Safar boshlandi!</b>\n\n"
                 "🚗 Xavfsiz yo'l!\n\n"
@@ -238,7 +242,7 @@ async def passenger_started(callback: CallbackQuery, session: AsyncSession, pass
         from app.models.driver import get_driver_by_id
         driver = await get_driver_by_id(session, order.driver_id)
         if driver:
-            from app.core.bot import bot
+            from app.bot.main import bot
             try:
                 await bot.send_message(
                     chat_id=driver.user_id,
@@ -253,7 +257,8 @@ async def passenger_started(callback: CallbackQuery, session: AsyncSession, pass
         
         # 10 daqiqadan keyin avtomatik safar yakunlanish task
         from app.tasks.matching import auto_complete_trip_task
-        auto_complete_trip_task.apply_async(args=[order_id], countdown=600)
+        from typing import Any, cast
+        cast(Any, auto_complete_trip_task).apply_async(args=[order_id], countdown=600)
         
         logger.info(f"Trip started by passenger: order={order_id}")
         await callback.answer("✅ Safar boshlandi!")
@@ -264,18 +269,6 @@ async def passenger_started(callback: CallbackQuery, session: AsyncSession, pass
 
 
 
-@router.callback_query(F.data.startswith("passenger_cancel:"))
-async def passenger_cancel_order(callback: CallbackQuery):
-    """
-    Yo'lovchi buyurtmani bekor qildi
-    """
-    if callback.data is None:
-        await callback.answer("Xatolik: data mavjud emas")
-        return
-    
-    order_id = int(callback.data.split(":")[1])
-    user_id = callback.from_user.id
-    
 @router.callback_query(F.data.startswith("passenger_cancel:"))
 @with_passenger_session
 async def passenger_cancel_order(callback: CallbackQuery, session: AsyncSession, passenger: Passenger):
@@ -326,7 +319,7 @@ async def passenger_cancel_order(callback: CallbackQuery, session: AsyncSession,
         from app.models.driver import get_driver_by_id
         driver = await get_driver_by_id(session, order.driver_id)
         if driver:
-            from app.core.bot import bot
+            from app.bot.main import bot
             try:
                 await bot.send_message(
                     chat_id=driver.user_id,
@@ -338,7 +331,7 @@ async def passenger_cancel_order(callback: CallbackQuery, session: AsyncSession,
             except Exception as e:
                 logger.error(f"Failed to notify driver: {e}")
     
-    if callback.message:
+    if callback.message and isinstance(callback.message, Message):
         await callback.message.edit_text(
             "❌ <b>Buyurtma bekor qilindi</b>\n\n"
             "Yangi buyurtma berish uchun menyudan 'Taksi chaqirish'ni tanlang.",
@@ -351,7 +344,8 @@ async def passenger_cancel_order(callback: CallbackQuery, session: AsyncSession,
 
 
 @router.callback_query(F.data.startswith("reject_trip:"))
-async def reject_trip(callback: CallbackQuery):
+@with_passenger_session
+async def reject_trip(callback: CallbackQuery, session: AsyncSession, passenger: Passenger):
     """
     Yo'lovchi: "Yo'q, hali olishgani yo'q"
     
@@ -412,7 +406,8 @@ async def reject_trip(callback: CallbackQuery):
     
     # Haydovchiga xabar
     from app.tasks.notifications import send_telegram_message
-    send_telegram_message.delay(
+    from typing import Any, cast
+    cast(Any, send_telegram_message).delay(
         order.driver_id,
         f"""
 ⚠️ OGOHLANTIRISH
@@ -426,9 +421,9 @@ Safar bekor qilindi. Iltimos, faqat olmoqchi bo'lgan buyurtmalarni qabul qiling.
         )
         
     # Yangi haydovchi topish
-    find_driver_for_order_task.delay(order_id)
+    cast(Any, find_driver_for_order_task).delay(order_id)
     
-    if callback.message:
+    if callback.message and isinstance(callback.message, Message):
         await callback.message.edit_text(
             "✅ <b>Safar bekor qilindi</b>\n\n"
             "Admin ko'rib chiqadi.\n"

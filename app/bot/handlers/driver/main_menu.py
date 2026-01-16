@@ -10,6 +10,7 @@ BU HANDLER NIMA QILADI:
 """
 
 from ..base import *
+from typing import Any, cast
 from app.models.route import get_all_active_routes
 from app.models.system_settings import get_pricing_settings
 from app.bot.states.driver import DriverStates
@@ -20,7 +21,7 @@ from app.bot.keyboards.driver import (
     get_location_request_keyboard,
     get_driver_main_menu
 )
-
+from app.models.order import Order, OrderStatus
 
 router = Router()
 
@@ -224,10 +225,10 @@ async def seats_selected(callback: CallbackQuery, session: AsyncSession, driver:
     
     # Priority queue'ga qo'shish (Celery task orqali)
     from app.tasks.matching import add_driver_to_queue_task
-    add_driver_to_queue_task.delay(driver.driver_id, route_id)
+    cast(Any, add_driver_to_queue_task).delay(driver.driver_id, route_id)
     
-    if callback.message:
-        await callback.message.edit_text( # type: ignore
+    if callback.message and isinstance(callback.message, Message):
+        await callback.message.edit_text(
             Messages.Driver.QUEUE_JOINED.format(
                 route_name=route.route_name if route else "Noma'lum",
                 seats=seats
@@ -276,7 +277,7 @@ async def stop_accepting_orders(message: Message, session: AsyncSession, driver:
     
     # Celery task - Queue'dan o'chirish
     from app.tasks.matching import remove_driver_from_queue_task
-    remove_driver_from_queue_task.delay(driver.driver_id)
+    cast(Any, remove_driver_from_queue_task).delay(driver.driver_id)
     
     await state.clear() # FSM holatini tozalaymiz
     await message.answer(
@@ -357,13 +358,13 @@ async def stop_accepting_orders_callback(callback: CallbackQuery, session: Async
     
     # Celery task - Queue'dan o'chirish
     from app.tasks.matching import remove_driver_from_queue_task
-    remove_driver_from_queue_task.delay(driver.driver_id)
+    cast(Any, remove_driver_from_queue_task).delay(driver.driver_id)
     
     await state.clear()
     
-    if callback.message:
+    if callback.message and isinstance(callback.message, Message):
         # Inline tugmalarni o'chirib, xabarni yangilaymiz
-        await callback.message.edit_text(Messages.Driver.STOPPED) # type: ignore
+        await callback.message.edit_text(Messages.Driver.STOPPED)
         
         # Yangi menyuni yuboramiz (ReplyKeyboard)
         await callback.message.answer(
@@ -386,7 +387,7 @@ async def show_statistics_callback(callback: CallbackQuery, session: AsyncSessio
     """
     text = f"📊 <b>Sizning statistikangiz</b>\n\n💰 Balans: {driver.balance} so'm\n⭐ Reyting: {driver.rating}"
     
-    if callback.message:
+    if callback.message and isinstance(callback.message, Message):
         await callback.message.answer(text)
     await callback.answer()
 __all__ = ['router']

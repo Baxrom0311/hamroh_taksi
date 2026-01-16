@@ -45,7 +45,10 @@ def get_driver_active_keyboard():
     )
 
 
-def get_trip_confirmation_keyboard(order_id: int = None):
+from typing import Optional
+
+
+def get_trip_confirmation_keyboard(order_id: Optional[int] = None):
     """
     Safar qabul qilingandan keyin chiqadigan panel.
     Haydovchida: Yo'lovchi bilan bog'lanish, Yo'lga chiqdik va bekor qilish tugmalari.
@@ -62,7 +65,7 @@ def get_trip_confirmation_keyboard(order_id: int = None):
 
 
 
-def get_trip_active_keyboard(order_id: int = None):
+def get_trip_active_keyboard(order_id: Optional[int] = None):
     """Aktiv safar (10 daqiqalik taymer paytida)"""
     return ReplyKeyboardMarkup(
         keyboard=[

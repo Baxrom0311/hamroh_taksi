@@ -58,7 +58,7 @@ async def view_trip_history(message: Message, session: AsyncSession, passenger: 
     await state.set_state(PassengerStates.viewing_history)
     
     # Buyurtmalarni formatlash
-    history_text = await _format_history_page(orders_to_show, page=0, total_trips=passenger.total_trips)
+    history_text = await _format_history_page(list(orders_to_show), page=0, total_trips=passenger.total_trips)
     
     # Keyboard yaratish
     keyboard = _build_pagination_keyboard(page=0, has_more=has_more)
@@ -111,7 +111,7 @@ async def navigate_history(callback: CallbackQuery, session: AsyncSession, passe
     orders_to_show = completed_orders[:ITEMS_PER_PAGE]
     
     # Formatlash
-    history_text = await _format_history_page(orders_to_show, page=page, total_trips=passenger.total_trips)
+    history_text = await _format_history_page(list(orders_to_show), page=page, total_trips=passenger.total_trips)
     
     # Keyboard
     keyboard = _build_pagination_keyboard(page=page, has_more=has_more)
@@ -120,7 +120,7 @@ async def navigate_history(callback: CallbackQuery, session: AsyncSession, passe
     await state.update_data(history_page=page)
     
     # Edit message
-    if callback.message:
+    if callback.message and isinstance(callback.message, Message):
         await callback.message.edit_text(
             history_text,
             reply_markup=keyboard,
@@ -139,7 +139,7 @@ async def close_history(callback: CallbackQuery, state: FSMContext):
     """
     await state.clear()
     
-    if callback.message:
+    if callback.message and isinstance(callback.message, Message):
         await callback.message.delete()
     
     await callback.answer("Safar tarixi yopildi")

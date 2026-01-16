@@ -241,10 +241,11 @@ class TripService:
 
             # Xabarlarni yuborish (Sessiyadan tashqarida)
             from app.tasks.notifications import send_telegram_message
+            from typing import Any, cast
             from app.bot.keyboards.driver import get_trip_active_keyboard
 
-            send_telegram_message.delay(p_tg_id, "✅ Safar boshlandi!")
-            send_telegram_message.delay(
+            cast(Any, send_telegram_message).delay(p_tg_id, "✅ Safar boshlandi!")
+            cast(Any, send_telegram_message).delay(
                 d_tg_id, 
                 "✅ Safar boshlandi!",
                 reply_markup=get_trip_active_keyboard() # Aiogram 3 uslubi

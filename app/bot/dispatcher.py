@@ -79,7 +79,6 @@ def setup_dispatcher(storage: Optional[RedisStorage] = None) -> Dispatcher:
     # Start va Registration
     from app.bot.handlers.start import router as start_router
     from app.bot.handlers.registration import router as registration_router
-    from app.bot.handlers.admin.feedback import router as admin_feedback_router
     
     # Driver handlers
     from app.bot.handlers.driver.main_menu import router as driver_menu_router
@@ -103,7 +102,6 @@ def setup_dispatcher(storage: Optional[RedisStorage] = None) -> Dispatcher:
     
     dp.include_router(start_router)
     dp.include_router(registration_router)
-    dp.include_router(admin_feedback_router)
     
     # Driver router'lar
     dp.include_router(driver_menu_router)
