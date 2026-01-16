@@ -8,37 +8,33 @@ from aiogram.fsm.context import FSMContext
 from loguru import logger
 
 from app.core.database import get_session
-from app.models.driver import get_driver_by_user_id
+from app.models.driver import get_driver_by_user_id, Driver
 from app.models.transaction import create_transaction, TransactionType
 from app.bot.states.driver import DriverStates
 from app.bot.keyboards.driver import get_driver_main_menu, get_balance_keyboard
 from app.bot.messages import Messages
-from app.bot.utils import get_driver_or_error
+from app.bot.decorators import with_driver_session  # ✅ NEW
+from sqlalchemy.ext.asyncio import AsyncSession
 
 router = Router()
 
 
 @router.message(F.text == "💰 Balans")
-async def show_balance(message: Message):
-    """Balans ko'rsatish"""
-    if message.from_user is None:
-        await message.answer("Xatolik: user topilmadi")
-        return
-    user_id = message.from_user.id
+@with_driver_session  # ✅ Decorator qo'shildi
+async def show_balance(message: Message, session: AsyncSession, driver: Driver):
+    """
+    Balans ko'rsatish
     
-    async with get_session() as session:
-        driver = await get_driver_or_error(session, user_id, message)
-        
-        if not driver:
-            return
-        
-        await message.answer(
-            f"💰 <b>Balans</b>\n\n"
-            f"Joriy balans: <b>{driver.balance:,} so'm</b>\n\n"
-            f"💳 Balansni to'ldirish uchun:\n"
-            f"'To'ldirish' tugmasini bosing",
-            reply_markup=get_balance_keyboard()
-        )
+    ✅ REFACTORED: Decorator ishlatadi, session va driver avtomatik
+    """
+    await message.answer(
+        f"💰 <b>Balans</b>\n\n"
+        f"Joriy balans: <b>{driver.balance:,} so'm</b>\n\n"
+        f"💳 Balansni to'ldirish uchun:\n"
+        f"'To'ldirish' tugmasini bosing",
+        reply_markup=get_balance_keyboard(),
+        parse_mode="HTML"
+    )
 
 
 @router.callback_query(F.data == "topup_balance")
@@ -85,46 +81,47 @@ async def topup_amount_entered(message: Message, state: FSMContext):
 
 
 @router.message(DriverStates.balance_receipt, F.photo)
-async def receipt_uploaded(message: Message, state: FSMContext):
-    """Chek yuklandi"""
-    if message.from_user is None or message.photo is None:
-        await message.answer("Xatolik: ma'lumotlar topilmadi")
+@with_driver_session  # ✅ Decorator
+async def receipt_uploaded(message: Message, session: AsyncSession, driver: Driver, state: FSMContext):
+    """
+    Chek yuklandi
+    
+    ✅ REFACTORED: 15 qator → 5 qator
+    """
+    if message.photo is None:
+        await message.answer("Xatolik: rasm topilmadi")
         return
-    user_id = message.from_user.id
+    
     photo = message.photo[-1]
     data = await state.get_data()
     amount = data['topup_amount']
     
-    async with get_session() as session:
-        driver = await get_driver_by_user_id(session, user_id)
-        if not driver:
-            await message.answer("❌ Ma'lumotlar topilmadi")
-            return
-        # Transaction yaratish
-        transaction = await create_transaction(
-            session,
-            driver_id=driver.driver_id,
-            amount=amount,
-            type=TransactionType.DEPOSIT,
-            receipt_file_id=photo.file_id,
-            description=f"Balans to'ldirish: {amount:,} so'm"
-        )
-        
-        await session.commit()
-        
-        await message.answer(
-            f"✅ <b>So'rov yuborildi!</b>\n\n"
-            f"Summa: <b>{amount:,} so'm</b>\n"
-            f"So'rov ID: #{transaction.transaction_id}\n\n"
-            f"⏳ Admin ko'rib chiqadi (odatda 1 soat ichida)\n\n"
-            f"Holat haqida xabar beramiz!",
-            reply_markup=get_driver_main_menu()
-        )
-        
-        logger.info(
-            f"Balance topup request: driver={driver.driver_id}, "
-            f"amount={amount}, transaction={transaction.transaction_id}"
-        )
+    # Transaction yaratish
+    transaction = await create_transaction(
+        session,
+        driver_id=driver.driver_id,
+        amount=amount,
+        type=TransactionType.DEPOSIT,
+        receipt_file_id=photo.file_id,
+        description=f"Balans to'ldirish: {amount:,} so'm"
+    )
+    
+    await session.commit()
+    
+    await message.answer(
+        f"✅ <b>So'rov yuborildi!</b>\n\n"
+        f"Summa: <b>{amount:,} so'm</b>\n"
+        f"So'rov ID: #{transaction.transaction_id}\n\n"
+        f"⏳ Admin ko'rib chiqadi (odatda 1 soat ichida)\n\n"
+        f"Holat haqida xabar beramiz!",
+        reply_markup=get_driver_main_menu(),
+        parse_mode="HTML"
+    )
+    
+    logger.info(
+        f"Balance topup request: driver={driver.driver_id}, "
+        f"amount={amount}, transaction={transaction.transaction_id}"
+    )
     
     await state.clear()
 
