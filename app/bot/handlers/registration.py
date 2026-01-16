@@ -3,20 +3,11 @@ app/bot/handlers/registration.py
 RO'YXATDAN O'TISH HANDLER (PYLANCE-CLEAN)
 """
 
-from aiogram import Router, F
-from aiogram.types import (
-    Message,
-    ReplyKeyboardMarkup,
-    KeyboardButton,
-    ReplyKeyboardRemove,
-)
-from aiogram.fsm.context import FSMContext
-from loguru import logger
-
-from app.core.database import get_session
-from app.models.user import UserRole, create_user
+from .base import *
+from app.models.user import create_user
 from app.models.driver import create_driver
 from app.models.passenger import Gender, create_passenger
+
 from app.bot.states.registration import RegistrationStates
 from app.bot.keyboards.driver import get_driver_main_menu
 from app.bot.keyboards.passenger import get_passenger_main_menu
@@ -193,7 +184,13 @@ async def driver_car_color(message: Message, state: FSMContext) -> None:
 
 
 @router.message(RegistrationStates.driver_car_number, F.text)
-async def driver_car_number(message: Message, state: FSMContext) -> None:
+@with_session  # ✅ Decorator
+async def driver_car_number(message: Message, session: AsyncSession, state: FSMContext) -> None:
+    """
+    Haydovchi ro'yxatdan o'tishni yakunlash
+    
+    ✅ REFACTORED: Session auto
+    """
     car_number = require_text(message).upper().strip()
     
     # ✅ Validation
@@ -203,43 +200,41 @@ async def driver_car_number(message: Message, state: FSMContext) -> None:
         return
     
     user = require_user(message)
-
     data = await state.get_data()
 
     try:
-        async with get_session() as session:
-            await create_user(
-                session,
-                user_id=user.id,
-                phone_number=data["phone_number"],
-                first_name=user.first_name,
-                last_name=user.last_name,
-                username=user.username,
-                role=UserRole.DRIVER,
-            )
+        await create_user(
+            session,
+            user_id=user.id,
+            phone_number=data["phone_number"],
+            first_name=user.first_name,
+            last_name=user.last_name,
+            username=user.username,
+            role=UserRole.DRIVER,
+        )
 
-            driver = await create_driver(
-                session,
-                user_id=user.id,
-                full_name=data["full_name"],
-                phone_number=data["phone_number"],
-                car_model=data["car_model"],
-                car_color=data["car_color"],
-                car_number=car_number,
-            )
+        driver = await create_driver(
+            session,
+            user_id=user.id,
+            full_name=data["full_name"],
+            phone_number=data["phone_number"],
+            car_model=data["car_model"],
+            car_color=data["car_color"],
+            car_number=car_number,
+        )
 
-            await session.commit()
+        await session.commit()
 
-            await message.answer(
-                f"🎉 Ro'yxatdan o'tdingiz!\n\n"
-                f"👤 {driver.full_name}\n"
-                f"🚗 {driver.car_model} ({driver.car_color})\n"
-                f"🔢 {driver.car_number}",
-                reply_markup=get_driver_main_menu()
-            )
+        await message.answer(
+            f"🎉 Ro'yxatdan o'tdingiz!\n\n"
+            f"👤 {driver.full_name}\n"
+            f"🚗 {driver.car_model} ({driver.car_color})\n"
+            f"🔢 {driver.car_number}",
+            reply_markup=get_driver_main_menu()
+        )
 
     except Exception as e:
-        logger.error(e)
+        logger.error(f"Registration error: {e}")
         await message.answer("❌ Xatolik yuz berdi")
 
     finally:
@@ -285,7 +280,13 @@ async def passenger_gender(message: Message, state: FSMContext) -> None:
 
 
 @router.message(RegistrationStates.passenger_age, F.text)
-async def passenger_age(message: Message, state: FSMContext) -> None:
+@with_session  # ✅ Decorator
+async def passenger_age(message: Message, session: AsyncSession, state: FSMContext) -> None:
+    """
+    Yo'lovchi ro'yxatdan o'tishni yakunlash
+    
+    ✅ REFACTORED: Session auto
+    """
     text = require_text(message)
 
     if not text.isdigit():
@@ -300,34 +301,33 @@ async def passenger_age(message: Message, state: FSMContext) -> None:
     user = require_user(message)
     data = await state.get_data()
 
-    async with get_session() as session:
-        await create_user(
-            session,
-            user_id=user.id,
-            phone_number=data["phone_number"],
-            first_name=user.first_name,
-            last_name=user.last_name,
-            username=user.username,
-            role=UserRole.PASSENGER,
-        )
+    await create_user(
+        session,
+        user_id=user.id,
+        phone_number=data["phone_number"],
+        first_name=user.first_name,
+        last_name=user.last_name,
+        username=user.username,
+        role=UserRole.PASSENGER,
+    )
 
-        passenger = await create_passenger(
-            session,
-            user_id=user.id,
-            full_name=data["full_name"],
-            gender=data["gender"],
-            age=age,
-            phone_number=data["phone_number"],
-        )
+    passenger = await create_passenger(
+        session,
+        user_id=user.id,
+        full_name=data["full_name"],
+        gender=data["gender"],
+        age=age,
+        phone_number=data["phone_number"],
+    )
 
-        await session.commit()
+    await session.commit()
 
-        await message.answer(
-            f"🎉 Ro'yxatdan o'tdingiz!\n\n"
-            f"👤 {passenger.full_name}\n"
-            f"🎂 {passenger.age} yosh", 
-            reply_markup=get_passenger_main_menu()
-        )
+    await message.answer(
+        f"🎉 Ro'yxatdan o'tdingiz!\n\n"
+        f"👤 {passenger.full_name}\n"
+        f"🎂 {passenger.age} yosh", 
+        reply_markup=get_passenger_main_menu()
+    )
 
     await state.clear()
 

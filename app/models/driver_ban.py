@@ -6,21 +6,8 @@ DRIVER BAN RECORDS MODEL
 Yo'lovchilar haydovchini ban qilganda yoziladi
 """
 
-from sqlalchemy import (
-    Integer,
-    BigInteger,
-    String,
-    Text,
-    DateTime,
-    ForeignKey,
-    Index
-)
-from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy.sql import func
-from datetime import datetime
-from typing import Optional
+from .dependencies import *
 
-from app.core.database import Base
 
 
 class DriverBanRecord(Base):

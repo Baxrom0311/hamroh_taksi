@@ -2,23 +2,8 @@
 app/models/feedback.py
 """
 
-from sqlalchemy import (
-    BigInteger,
-    Integer,
-    String,
-    Text,
-    Enum as SQLEnum,
-    DateTime,
-    ForeignKey,
-    Boolean
-)
-from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy.sql import func
-from datetime import datetime
-import enum
-from typing import Optional
+from .dependencies import *
 
-from app.core.database import Base
 
 
 # ============================================

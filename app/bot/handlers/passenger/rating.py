@@ -2,16 +2,9 @@
 app/bot/handlers/passenger/rating.py
 """
 
-from aiogram import Router, F
-from aiogram.types import CallbackQuery
-from loguru import logger
-from sqlalchemy import select, update
-
-from app.core.database import get_session
-from app.models.driver import Driver
+from ..base import *
 from app.models.order import Order
-from app.bot.decorators import with_session  # ✅ NEW
-from sqlalchemy.ext.asyncio import AsyncSession
+
 
 router = Router()
 

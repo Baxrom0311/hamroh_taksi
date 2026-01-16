@@ -2,19 +2,11 @@
 app/bot/handlers/driver/balance.py
 """
 
-from aiogram import Router, F
-from aiogram.types import Message, CallbackQuery
-from aiogram.fsm.context import FSMContext
-from loguru import logger
-
-from app.core.database import get_session
-from app.models.driver import get_driver_by_user_id, Driver
+from ..base import *
 from app.models.transaction import create_transaction, TransactionType
 from app.bot.states.driver import DriverStates
 from app.bot.keyboards.driver import get_driver_main_menu, get_balance_keyboard
-from app.bot.messages import Messages
-from app.bot.decorators import with_driver_session  # ✅ NEW
-from sqlalchemy.ext.asyncio import AsyncSession
+
 
 router = Router()
 

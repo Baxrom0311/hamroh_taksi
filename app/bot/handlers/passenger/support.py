@@ -4,18 +4,12 @@ app/bot/handlers/passenger/support.py
 PASSENGER SUPPORT HANDLERS
 """
 
-from aiogram import Router, F
-from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton
-from aiogram.fsm.context import FSMContext
-from loguru import logger
+from ..base import *
 from config.settings import settings
-
-from app.core.database import get_session
 from app.models.feedback import create_feedback, FeedbackType
-from app.bot.messages import Messages
 from app.bot.states.passenger import PassengerStates
 from app.bot.keyboards.passenger import get_passenger_main_menu
-from app.bot.utils import get_passenger_or_error
+
 
 router = Router()
 
@@ -81,14 +75,14 @@ async def start_suggestion(message: Message, state: FSMContext):
 
 
 @router.message(PassengerStates.support_complaint, F.text)
-async def complaint_text_entered(message: Message, state: FSMContext):
-    """Shikoyat matni kiritildi"""
-    if message.from_user is None or not message.text:
+@with_passenger_session  # ✅ Decorator
+async def complaint_text_entered(message: Message, session: AsyncSession, passenger: Passenger, state: FSMContext):
+    """Shikoyat matni kiritildi - ✅ REFACTORED"""
+    if not message.text:
         await message.answer("Xatolik: matn topilmadi")
         await state.clear()
         return
     
-    user_id = message.from_user.id
     complaint_text = message.text
     
     if len(complaint_text) < 10:
@@ -98,44 +92,38 @@ async def complaint_text_entered(message: Message, state: FSMContext):
     data = await state.get_data()
     feedback_type = data.get('feedback_type', FeedbackType.COMPLAINT.value)
     
-    async with get_session() as session:
-        passenger = await get_passenger_or_error(session, user_id, message)
-        if not passenger:
-            await state.clear()
-            return
-        
-        # Feedback yaratish
-        feedback = await create_feedback(
-            session,
-            user_id=user_id, # User ID (passenger.user_id)
-            message=complaint_text,
-            type=FeedbackType(feedback_type)
-        )
-        
-        # Admin'ga xabar
-        from app.tasks.notifications import notify_admins
-        notify_admins.delay(
-            f"📝 <b>Yangi {feedback.type.value} (Yo'lovchi)</b> #{feedback.feedback_id}\n\n"
-            f"👤 Yo'lovchi: {passenger.full_name}\n"
-            f"📱 Telefon: {passenger.phone_number}\n\n"
-            f"📄 Matn:\n"
-            f"{complaint_text}\n\n"
-            f"---\n"
-            f"Javob berish: /reply {feedback.feedback_id}"
-        )
-        
-        await message.answer(
-            f"✅ <b>{feedback.type.value.capitalize()} yuborildi!</b>\n\n"
-            "Admin ko'rib chiqadi va sizga javob beradi.\n\n"
-            "⏳ Javobni kuting...",
-            reply_markup=get_passenger_main_menu(),
-            parse_mode="HTML"
-        )
-        
-        logger.info(
-            f"Feedback submitted: passenger={passenger.passenger_id}, "
-            f"id={feedback.feedback_id}"
-        )
+    # Feedback yaratish
+    feedback = await create_feedback(
+        session,
+        user_id=passenger.user_id, # User ID (passenger.user_id)
+        message=complaint_text,
+        type=FeedbackType(feedback_type)
+    )
+    
+    # Admin'ga xabar
+    from app.tasks.notifications import notify_admins
+    notify_admins.delay(
+        f"📝 <b>Yangi {feedback.type.value} (Yo'lovchi)</b> #{feedback.feedback_id}\n\n"
+        f"👤 Yo'lovchi: {passenger.full_name}\n"
+        f"📱 Telefon: {passenger.phone_number if hasattr(passenger, 'phone_number') else 'N/A'}\n\n"
+        f"📄 Matn:\n"
+        f"{complaint_text}\n\n"
+        f"---\n"
+        f"Javob berish: /reply {feedback.feedback_id}"
+    )
+    
+    await message.answer(
+        f"✅ <b>{feedback.type.value.capitalize()} yuborildi!</b>\n\n"
+        "Admin ko'rib chiqadi va sizga javob beradi.\n\n"
+        "⏳ Javobni kuting...",
+        reply_markup=get_passenger_main_menu(),
+        parse_mode="HTML"
+    )
+    
+    logger.info(
+        f"Feedback submitted: passenger={passenger.passenger_id}, "
+        f"id={feedback.feedback_id}"
+    )
     
     await state.clear()
 

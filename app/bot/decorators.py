@@ -223,8 +223,50 @@ def with_session(func: Callable):
     return wrapper
 
 
+# ============================================
+# ADMIN SESSION DECORATOR
+# ============================================
+
+def with_admin_session(func: Callable):
+    """
+    Admin handler'lar uchun session va admin-user'ni avtomatik olish
+    
+    Args:
+        func: Handler function (message/callback, session, user)
+    
+    Returns:
+        Wrapped function
+    """
+    
+    @wraps(func)
+    async def wrapper(event: Message | CallbackQuery, *args, **kwargs):
+        user_id = event.from_user.id if event.from_user else None
+        
+        if not user_id:
+            return
+        
+        async with get_session() as session:
+            try:
+                from app.models.user import get_user_by_id
+                user = await get_user_by_id(session, user_id)
+                
+                if not user or not user.is_admin:
+                    # Shunchaki ignore (admin bo'lmaganlar uchun handler ishlamaydi)
+                    return
+                
+                # Handler'ni chaqirish
+                return await func(event, session, user, *args, **kwargs)
+            
+            except Exception as e:
+                logger.error(f"Error in admin handler {func.__name__}: {e}")
+                raise
+    
+    return wrapper
+
+
 __all__ = [
     'with_driver_session',
     'with_passenger_session',
+    'with_admin_session',
     'with_session'
 ]

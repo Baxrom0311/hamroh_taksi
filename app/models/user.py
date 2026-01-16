@@ -25,23 +25,8 @@ ISHLATISH:
     async with get_session() as session:
         user = await session.get(User, user_id)
 """
-from __future__ import annotations
+from .dependencies import *
 
-from sqlalchemy import (
-    BigInteger,
-    String,
-    Boolean,
-    Enum as SQLEnum,
-    DateTime,
-    Index
-)
-from typing import TYPE_CHECKING, Optional
-from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy.sql import func
-from datetime import datetime
-from typing import Optional
-import enum
-from app.core.database import Base
 # ============================================
 # ENUM (Rol turlari)
 # ============================================

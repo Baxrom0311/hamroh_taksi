@@ -155,10 +155,12 @@ async def notify_driver_new_order_task(self, driver_id: int, order_id: int):
             "pickup": order.pickup_location,
             "passengers": order.passenger_count,
             "luggage": f"Ha ({order.luggage_count})" if order.has_luggage else "Yo'q",
+            "type_text": order.type_text,
             "passenger_name": passenger_name,
             "passenger_phone": passenger_phone,
             "passenger_gender": passenger_gender
         }
+
 
     # 2. Telegramga xabar yuborish (Sessiyadan TASHQARIDA)
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
@@ -167,10 +169,8 @@ async def notify_driver_new_order_task(self, driver_id: int, order_id: int):
     ])
     
     # Buyurtma turi
-    if order_data['passengers'] == 0:
-        order_type_text = "📦 Pochta"
-    else:
-        order_type_text = f"👥 {order_data['passengers']} kishi"
+    order_type_text = order_data['type_text']
+
     
     # Lokatsiya linklari
     from app.utils.location_helpers import get_google_maps_link, get_telegram_location_link

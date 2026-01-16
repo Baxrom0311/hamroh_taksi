@@ -6,21 +6,8 @@ SYSTEM SETTINGS MODEL
 Bu model tizim sozlamalarini saqlaydi (admin o'zgartira oladi)
 """
 
-from sqlalchemy import (
-    String,
-    Integer,
-    Boolean,
-    Text,
-    DateTime,
-    Index,
-    select
-)
-from sqlalchemy.orm import Mapped, mapped_column
-from sqlalchemy.sql import func
-from datetime import datetime
-from typing import Optional
+from .dependencies import *
 
-from app.core.database import Base
 
 
 class SystemSettings(Base):

@@ -9,21 +9,15 @@ BU HANDLER NIMA QILADI:
 - Support bot linki
 """
 
-from aiogram import Router, F
-from aiogram.types import Message, CallbackQuery, ReplyKeyboardMarkup, KeyboardButton
-from aiogram.fsm.context import FSMContext
-from loguru import logger
+from ..base import *
 from config.settings import settings
-
-from app.core.database import get_session, transaction
-from app.models.driver import get_driver_by_user_id
-from app.models.driver import get_driver_by_user_id
+from app.core.database import transaction
 from app.models.transaction import Transaction, TransactionType, create_transaction
 from app.models.feedback import create_feedback, FeedbackType
 from app.bot.states.driver import DriverStates
 from app.bot.keyboards.driver import get_driver_main_menu
-from app.bot.messages import Messages
-from app.bot.utils import get_driver_or_error
+
+from sqlalchemy.ext.asyncio import AsyncSession
 
 router = Router()
 
@@ -58,26 +52,13 @@ async def support_menu(message: Message, state: FSMContext):
 # ============================================
 
 @router.message(F.text == "💰 Chek yuborish")
-async def start_receipt_upload(message: Message, state: FSMContext):
+@with_driver_session  # ✅ Decorator
+async def start_receipt_upload(message: Message, session: AsyncSession, driver: Driver, state: FSMContext):
     """
     Chek yuborishni boshlash
     
-    FLOW:
-    1. Summa kiritish
-    2. Chek rasm yuborish
-    3. Admin'ga yuborish
+    ✅ REFACTORED: Session va driver avtomatik
     """
-    user_id = message.from_user.id if message.from_user else None
-    
-    if not user_id:
-        await message.answer("Xatolik: user topilmadi")
-        return
-    
-    async with get_session() as session:
-        driver = await get_driver_or_error(session, user_id, message)
-        if not driver:
-            return
-    
     await message.answer(
         "💰 <b>Balans to'ldirish</b>\n\n"
         "Summani kiriting (so'm):\n\n"
@@ -117,13 +98,13 @@ async def receipt_amount_entered(message: Message, state: FSMContext):
 
 
 @router.message(DriverStates.support_receipt_photo, F.photo)
-async def receipt_photo_uploaded(message: Message, state: FSMContext):
-    """Chek rasmi yuklandi"""
-    if message.from_user is None or message.photo is None:
-        await message.answer("Xatolik: ma'lumotlar topilmadi")
+@with_driver_session  # ✅ Decorator
+async def receipt_photo_uploaded(message: Message, session: AsyncSession, driver: Driver, state: FSMContext):
+    """Chek rasmi yuklandi - ✅ REFACTORED"""
+    if message.photo is None:
+        await message.answer("Xatolik: rasm topilmadi")
         return
     
-    user_id = message.from_user.id
     photo = message.photo[-1]  # Eng katta rasm
     data = await state.get_data()
     amount = data.get('receipt_amount', 0)
@@ -133,27 +114,20 @@ async def receipt_photo_uploaded(message: Message, state: FSMContext):
         await state.clear()
         return
     
-    async with get_session() as session:
-        driver = await get_driver_or_error(session, user_id, message)
-        if not driver:
-            await state.clear()
-            return
-        
-        # Transaction yaratish
-        async with transaction() as session:
-            transaction_obj = await create_transaction(
-                session,
-                driver_id=driver.driver_id,
-                amount=amount,
-                type=TransactionType.DEPOSIT,
-                receipt_file_id=photo.file_id,
-                description=f"Balans to'ldirish: {amount:,} so'm"
-            )
-            
-            # Admin'ga xabar
-            from app.tasks.notifications import notify_admins
-            notify_admins.delay(
-                f"""
+    # Transaction yaratish
+    transaction_obj = await create_transaction(
+        session,
+        driver_id=driver.driver_id,
+        amount=amount,
+        type=TransactionType.DEPOSIT,
+        receipt_file_id=photo.file_id,
+        description=f"Balans to'ldirish: {amount:,} so'm"
+    )
+    
+    # Admin'ga xabar
+    from app.tasks.notifications import notify_admins
+    notify_admins.delay(
+        f"""
 💰 <b>Yangi balans to'ldirish so'rovi</b>
 
 👤 Haydovchi: {driver.full_name}
@@ -162,23 +136,23 @@ async def receipt_photo_uploaded(message: Message, state: FSMContext):
 🆔 Transaction ID: #{transaction_obj.transaction_id}
 
 Admin panel: /admin/transactions/{transaction_obj.transaction_id}
-                """
-            )
-        
-        await message.answer(
-            f"✅ <b>So'rov yuborildi!</b>\n\n"
-            f"💵 Summa: <b>{amount:,} so'm</b>\n"
-            f"🆔 So'rov ID: <code>#{transaction_obj.transaction_id}</code>\n\n"
-            f"⏳ Admin ko'rib chiqadi (odatda 1 soat ichida)\n\n"
-            f"Holat haqida xabar beramiz!",
-            reply_markup=get_driver_main_menu(),
-            parse_mode="HTML"
-        )
-        
-        logger.info(
-            f"Balance topup request: driver={driver.driver_id}, "
-            f"amount={amount}, transaction={transaction_obj.transaction_id}"
-        )
+        """
+    )
+    
+    await message.answer(
+        f"✅ <b>So'rov yuborildi!</b>\n\n"
+        f"💵 Summa: <b>{amount:,} so'm</b>\n"
+        f"🆔 So'rov ID: <code>#{transaction_obj.transaction_id}</code>\n\n"
+        f"⏳ Admin ko'rib chiqadi (odatda 1 soat ichida)\n\n"
+        f"Holat haqida xabar beramiz!",
+        reply_markup=get_driver_main_menu(),
+        parse_mode="HTML"
+    )
+    
+    logger.info(
+        f"Balance topup request: driver={driver.driver_id}, "
+        f"amount={amount}, transaction={transaction_obj.transaction_id}"
+    )
     
     await state.clear()
 
@@ -220,61 +194,50 @@ async def start_suggestion(message: Message, state: FSMContext):
 
 
 @router.message(DriverStates.support_complaint, F.text)
-async def complaint_text_entered(message: Message, state: FSMContext):
-    """Shikoyat matni kiritildi"""
-    if message.from_user is None or not message.text:
+@with_driver_session  # ✅ Decorator
+async def complaint_text_entered(message: Message, session: AsyncSession, driver: Driver, state: FSMContext):
+    """Shikoyat matni kiritildi - ✅ REFACTORED"""
+    if not message.text:
         await message.answer("Xatolik: matn topilmadi")
         await state.clear()
         return
     
-    user_id = message.from_user.id
     complaint_text = message.text
-    
-    if len(complaint_text) < 10:
-        await message.answer("❌ Shikoyat juda qisqa (minimal 10 belgi)")
-        return
-    
     data = await state.get_data()
     feedback_type = data.get('feedback_type', FeedbackType.COMPLAINT.value)
-    
-    async with get_session() as session:
-        driver = await get_driver_or_error(session, user_id, message)
-        if not driver:
-            await state.clear()
-            return
 
-        # Feedback yaratish
-        feedback = await create_feedback(
-            session,
-            user_id=user_id, # User model ID si kerak (driver.user_id)
-            message=complaint_text,
-            type=FeedbackType(feedback_type)
-        )
-        
-        # Admin'ga xabar
-        from app.tasks.notifications import notify_admins
-        notify_admins.delay(
-            f"📝 <b>Yangi {feedback.type.value}</b> #{feedback.feedback_id}\n\n"
-            f"👤 Haydovchi: {driver.full_name}\n"
-            f"📱 Telefon: {driver.phone_number}\n\n"
-            f"📄 Matn:\n"
-            f"{complaint_text}\n\n"
-            f"---\n"
-            f"Javob berish: /reply {feedback.feedback_id}"
-        )
-        
-        await message.answer(
-            f"✅ <b>{feedback.type.value.capitalize()} yuborildi!</b>\n\n"
-            "Admin ko'rib chiqadi va sizga javob beradi.\n\n"
-            "⏳ Javobni kuting...",
-            reply_markup=get_driver_main_menu(),
-            parse_mode="HTML"
-        )
-        
-        logger.info(
-            f"Feedback submitted: driver={driver.driver_id}, "
-            f"id={feedback.feedback_id}"
-        )
+    # Feedback yaratish
+    feedback = await create_feedback(
+        session,
+        user_id=driver.user_id, # User model ID si kerak (driver.user_id)
+        message=complaint_text,
+        type=FeedbackType(feedback_type)
+    )
+    
+    # Admin'ga xabar
+    from app.tasks.notifications import notify_admins
+    notify_admins.delay(
+        f"📝 <b>Yangi {feedback.type.value}</b> #{feedback.feedback_id}\n\n"
+        f"👤 Haydovchi: {driver.full_name}\n"
+        f"📱 Telefon: {driver.phone_number}\n\n"
+        f"📄 Matn:\n"
+        f"{complaint_text}\n\n"
+        f"---\n"
+        f"Javob berish: /reply {feedback.feedback_id}"
+    )
+    
+    await message.answer(
+        f"✅ <b>{feedback.type.value.capitalize()} yuborildi!</b>\n\n"
+        "Admin ko'rib chiqadi va sizga javob beradi.\n\n"
+        "⏳ Javobni kuting...",
+        reply_markup=get_driver_main_menu(),
+        parse_mode="HTML"
+    )
+    
+    logger.info(
+        f"Feedback submitted: driver={driver.driver_id}, "
+        f"id={feedback.feedback_id}"
+    )
     
     await state.clear()
 

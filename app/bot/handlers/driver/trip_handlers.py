@@ -10,22 +10,11 @@ Yangi trip-based flow:
 4. "Bekor qilish" → Tripdagi hamma orderlar CANCELLED
 """
 
-from aiogram import Router, F
-from aiogram.types import Message, CallbackQuery
-from aiogram.fsm.context import FSMContext
-from loguru import logger
-from sqlalchemy import select, update
-from sqlalchemy.orm import selectinload
-from sqlalchemy.sql import func as sql_func
-
-from app.core.database import get_session
-from app.models.driver import Driver, get_driver_by_user_id
+from ..base import *
 from app.models.order import Order, OrderStatus
-from app.models.passenger import Passenger
-from app.models.trip import Trip, TripStatus, get_active_trip_by_driver, start_trip,complete_trip
-from app.bot.utils import get_driver_or_error
+from app.models.trip import Trip, TripStatus, get_active_trip_by_driver, start_trip, complete_trip
 from app.bot.keyboards.driver import get_driver_main_menu, get_passenger_contact_keyboard
-from app.bot.messages import Messages
+
 
 router = Router()
 
@@ -35,69 +24,63 @@ router = Router()
 # ============================================
 
 @router.message(F.text == "📞 Yo'lovchi bilan bog'lanish")
-async def contact_passenger_handler(message: Message):
+@with_driver_session  # ✅ Decorator
+async def contact_passenger_handler(message: Message, session: AsyncSession, driver: Driver):
     """
     Yo'lovchi bilan bog'lanish - Faqat aktiv trip'dagi yo'lovchilar
     
-    ✅ YANGI LOGIKA: Faqat joriy trip'dagi orderlar ko'rsatiladi
+    ✅ REFACTORED: Session va driver avtomatik
     """
-    user_id = message.from_user.id
+    # Aktiv trip'ni olish
+    active_trip = await get_active_trip_by_driver(session, driver.driver_id)
     
-    async with get_session() as session:
-        driver = await get_driver_or_error(session, user_id, message)
-        if not driver:
-            return
-        
-        # Aktiv trip'ni olish
-        active_trip = await get_active_trip_by_driver(session, driver.driver_id)
-        
-        if not active_trip:
-            await message.answer(
-                "📋 <b>Hozirda aktiv trip yo'q</b>\n\n"
-                "Buyurtma qabul qiling va trip boshlang.",
-                reply_markup=get_driver_main_menu(),
-                parse_mode="HTML"
-            )
-            return
-        
-        # Trip'dagi orderlarni olish
-        result = await session.execute(
-            select(Order)
-            .options(
-                selectinload(Order.passenger).selectinload(Passenger.user)
-            )
-            .where(Order.trip_id == active_trip.trip_id)
-            .where(Order.status.in_([OrderStatus.ACCEPTED, OrderStatus.IN_PROGRESS]))
-            .order_by(Order.created_at)
+    if not active_trip:
+        await message.answer(
+            "📋 <b>Hozirda aktiv trip yo'q</b>\n\n"
+            "Buyurtma qabul qiling va trip boshlang.",
+            reply_markup=get_driver_main_menu(),
+            parse_mode="HTML"
         )
-        
-        trip_orders = result.scalars().all()
-        
-        if not trip_orders:
-            await message.answer("Bu trip'da hali order yo'q", parse_mode="HTML")
-            return
-        
-        # Yo'lovchilar ro'yxati
-        text = f"🚗 <b>Trip #{active_trip.trip_id}</b>\n\n"
-        text += f"👥 Yo'lovchilar: {active_trip.passenger_count}/{active_trip.total_seats}\n\n"
-        
-        for idx, order in enumerate(trip_orders, 1):
-            passenger = order.passenger
-            if passenger and passenger.user:
-                text += f"{idx}. <b>{passenger.full_name}</b>\n"
-                text += f"   📞 {passenger.phone_number}\n"
-                text += f"   👤 {order.passenger_count} kishi\n"
-                text += f"   📍 {order.pickup_location[:50]}...\n\n"
-        
-        # Keyboard
-        keyboard = get_passenger_contact_keyboard(trip_orders)
-        
-        if keyboard:
-            await message.answer(text, reply_markup=keyboard, parse_mode="HTML")
-        else:
-            await message.answer(text, parse_mode="HTML")
-        
-        logger.info(f"Driver {driver.driver_id} viewed trip #{active_trip.trip_id} passengers")
+        return
+    
+    # Trip'dagi orderlarni olish
+    result = await session.execute(
+        select(Order)
+        .options(
+            selectinload(Order.passenger).selectinload(Passenger.user)
+        )
+        .where(Order.trip_id == active_trip.trip_id)
+        .where(Order.status.in_([OrderStatus.ACCEPTED, OrderStatus.IN_PROGRESS]))
+        .order_by(Order.created_at)
+    )
+    
+    trip_orders = result.scalars().all()
+    
+    if not trip_orders:
+        await message.answer("Bu trip'da hali order yo'q", parse_mode="HTML")
+        return
+    
+    # Yo'lovchilar ro'yxati
+    text = f"🚗 <b>Trip #{active_trip.trip_id}</b>\n\n"
+    text += f"👥 Yo'lovchilar: {active_trip.passenger_count}/{active_trip.total_seats}\n\n"
+    
+    for idx, order in enumerate(trip_orders, 1):
+        passenger = order.passenger
+        if passenger and passenger.user:
+            text += f"{idx}. <b>{passenger.full_name}</b>\n"
+            text += f"   📞 {passenger.phone_number}\n"
+            text += f"   👤 {order.passenger_count} kishi\n"
+            text += f"   📍 {order.pickup_location[:50]}...\n\n"
+    
+    # Keyboard
+    keyboard = get_passenger_contact_keyboard(trip_orders)
+    
+    if keyboard:
+        await message.answer(text, reply_markup=keyboard, parse_mode="HTML")
+    else:
+        await message.answer(text, parse_mode="HTML")
+    
+    logger.info(f"Driver {driver.driver_id} viewed trip #{active_trip.trip_id} passengers")
 
 
 # ============================================
@@ -105,76 +88,66 @@ async def contact_passenger_handler(message: Message):
 # ============================================
 
 @router.message(F.text == "🚗 Ketish")
-async def start_trip_handler(message: Message):
+@with_driver_session  # ✅ Decorator
+async def start_trip_handler(message: Message, session: AsyncSession, driver: Driver):
     """
     Trip boshlash - Barcha qabul qilingan orderlar IN_PROGRESS bo'ladi
     
-    YANGI FLOW:
-    1. Haydovchi bir necha buyurtma qabul qiladi
-    2. "Ketish" bosadi
-    3. Trip va barcha orderlar IN_PROGRESS
-    4. 10 daqiqadan keyin avtomatik COMPLETED
+    ✅ REFACTORED: Session va driver avtomatik
     """
-    user_id = message.from_user.id
+    # Aktiv trip olish
+    active_trip = await get_active_trip_by_driver(session, driver.driver_id)
     
-    async with get_session() as session:
-        driver = await get_driver_or_error(session, user_id, message)
-        if not driver:
-            return
-        
-        # Aktiv trip olish
-        active_trip = await get_active_trip_by_driver(session, driver.driver_id)
-        
-        if not active_trip:
-            await message.answer(
-                "❌ Aktiv trip topilmadi\n\nAvval buyurtma qabul qiling.",
-                reply_markup=get_driver_main_menu()
-            )
-            return
-        
-        # Trip boshlash
-        await start_trip(session, active_trip.trip_id)
-        
-        # Trip'dagi barcha ACCEPTED orderlarni IN_PROGRESS qilish
-        result = await session.execute(
-            update(Order)
-            .where(Order.trip_id == active_trip.trip_id)
-            .where(Order.status == OrderStatus.ACCEPTED)
-            .values(
-                status=OrderStatus.IN_PROGRESS,
-                started_at=sql_func.now()
-            )
-            .returning(Order.order_id)
-        )
-        
-        updated_orders = result.scalars().all()
-        
-        # Driver is_on_trip = True
-        await session.execute(
-            update(Driver)
-            .where(Driver.driver_id == driver.driver_id)
-            .values(is_on_trip=True)
-        )
-        
-        await session.commit()
-        
-        # Avtomatik yakunlash task (10 daqiqa)
-        from app.tasks.matching import auto_complete_trip_task
-        auto_complete_trip_task.apply_async(
-            args=[active_trip.trip_id],
-            countdown=600  # 10 daqiqa
-        )
-        
+    if not active_trip:
         await message.answer(
-            f"✅ <b>Trip boshlandi!</b>\n\n"
-            f"🚗 Trip #{active_trip.trip_id}\n"
-            f"👥 Yo'lovchilar: {len(updated_orders)} ta buyurtma\n\n"
-            f"⏱ <b>10 daqiqadan keyin avtomatik yakunlanadi</b>\n\n"
-            f"Xavfsiz yo'l!",
-            parse_mode="HTML"
+            "❌ Aktiv trip topilmadi\n\nAvval buyurtma qabul qiling.",
+            reply_markup=get_driver_main_menu()
         )
-        
-        logger.success(f"Trip #{active_trip.trip_id} started with {len(updated_orders)} orders")
+        return
+    
+    # Trip boshlash
+    await start_trip(session, active_trip.trip_id)
+    
+    # Trip'dagi barcha ACCEPTED orderlarni IN_PROGRESS qilish
+    result = await session.execute(
+        update(Order)
+        .where(Order.trip_id == active_trip.trip_id)
+        .where(Order.status == OrderStatus.ACCEPTED)
+        .values(
+            status=OrderStatus.IN_PROGRESS,
+            started_at=sql_func.now()
+        )
+        .returning(Order.order_id)
+    )
+    
+    updated_orders = result.scalars().all()
+    
+    # Driver is_on_trip = True
+    await session.execute(
+        update(Driver)
+        .where(Driver.driver_id == driver.driver_id)
+        .values(is_on_trip=True)
+    )
+    
+    await session.commit()
+    
+    # Avtomatik yakunlash task (10 daqiqa)
+    from app.tasks.matching import auto_complete_trip_task
+    auto_complete_trip_task.apply_async(
+        args=[active_trip.trip_id],
+        countdown=600  # 10 daqiqa
+    )
+    
+    await message.answer(
+        f"✅ <b>Trip boshlandi!</b>\n\n"
+        f"🚗 Trip #{active_trip.trip_id}\n"
+        f"👥 Yo'lovchilar: {len(updated_orders)} ta buyurtma\n\n"
+        f"⏱ <b>10 daqiqadan keyin avtomatik yakunlanadi</b>\n\n"
+        f"Xavfsiz yo'l!",
+        parse_mode="HTML"
+    )
+    
+    logger.success(f"Trip #{active_trip.trip_id} started with {len(updated_orders)} orders")
 
 
 # ============================================
@@ -182,65 +155,60 @@ async def start_trip_handler(message: Message):
 # ============================================
 
 @router.callback_query(F.data.startswith("cancel_trip:"))
-async def cancel_trip_handler(callback: CallbackQuery):
+@with_driver_session  # ✅ Decorator
+async def cancel_trip_handler(callback: CallbackQuery, session: AsyncSession, driver: Driver):
     """
     Trip'ni bekor qilish - Tripdagi barcha orderlar CANCELLED
     
-    ✅ YANGI LOGIC: Faqat PENDING orderlarni bekor qilish mumkin
+    ✅ REFACTORED: Session va driver avtomatik
     """
     if not callback.data:
         await callback.answer("Xatolik")
         return
     
     trip_id = int(callback.data.split(":")[1])
-    user_id = callback.from_user.id
     
-    async with get_session() as session:
-        driver = await get_driver_or_error(session, user_id, callback)
-        if not driver:
-            return
-        
-        # ✅ Permission check
-        from app.services.trip_service import can_cancel_trip, cancel_pending_orders_in_trip
-        
-        check_result = await can_cancel_trip(trip_id, driver.driver_id)
-        
-        if not check_result['can_cancel']:
-            await callback.answer(check_result['reason'], show_alert=True)
-            return
-        
-        # ✅ Faqat PENDING orderlarni bekor qilish va komissiya qaytarish
-        result = await cancel_pending_orders_in_trip(trip_id, driver.driver_id)
-        
-        if not result['success']:
-            await callback.answer(result['message'], show_alert=True)
-            return
-        
-        # Trip bekor qilish
-        from app.models.trip import get_trip_by_id, cancel_trip
-        await cancel_trip(session, trip_id)
-        
-        # Driver'ni yangilash
-        await session.execute(
-            update(Driver)
-            .where(Driver.driver_id == driver.driver_id)
-            .values(
-                is_on_trip=False,
-                is_active=False,
-                available_seats=0
-            )
+    # ✅ Permission check
+    from app.services.trip_service import can_cancel_trip, cancel_pending_orders_in_trip
+    
+    check_result = await can_cancel_trip(trip_id, driver.driver_id)
+    
+    if not check_result['can_cancel']:
+        await callback.answer(check_result['reason'], show_alert=True)
+        return
+    
+    # ✅ Faqat PENDING orderlarni bekor qilish va komissiya qaytarish
+    result = await cancel_pending_orders_in_trip(trip_id, driver.driver_id)
+    
+    if not result['success']:
+        await callback.answer(result['message'], show_alert=True)
+        return
+    
+    # Trip bekor qilish
+    from app.models.trip import get_trip_by_id, cancel_trip
+    await cancel_trip(session, trip_id)
+    
+    # Driver'ni yangilash
+    await session.execute(
+        update(Driver)
+        .where(Driver.driver_id == driver.driver_id)
+        .values(
+            is_on_trip=False,
+            is_active=False,
+            available_seats=0
         )
-        
-        await session.commit()
-        
-        if callback.message:
-            await callback.message.edit_text(
-                f"✅ {result['message']}\\n\\n"
-                f"🚗 Trip #{trip_id} bekor qilindi.",
-                parse_mode="HTML"
-            )
-        
-        logger.warning(f"Trip #{trip_id} cancelled by driver {driver.driver_id}: {result}")
+    )
+    
+    await session.commit()
+    
+    if callback.message:
+        await callback.message.edit_text(
+            f"✅ {result['message']}\n\n"
+            f"🚗 Trip #{trip_id} bekor qilindi.",
+            parse_mode="HTML"
+        )
+    
+    logger.warning(f"Trip #{trip_id} cancelled by driver {driver.driver_id}: {result}")
     
     await callback.answer("Trip bekor qilindi")
 

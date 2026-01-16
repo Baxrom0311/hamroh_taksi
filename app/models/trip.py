@@ -16,24 +16,8 @@ Driver Gurlan → Vazir yo'nalishida:
 - Trip yakunlandi (jami 3 kishi)
 """
 
-from sqlalchemy import (
-    Integer,
-    BigInteger,
-    String,
-    Enum as SQLEnum,
-    DateTime,
-    ForeignKey,
-    Numeric,
-    Index
-)
-from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy.sql import func
-from datetime import datetime
-from typing import TYPE_CHECKING, Optional, List
-from decimal import Decimal
-import enum
+from .dependencies import *
 
-from app.core.database import Base
 
 if TYPE_CHECKING:
     from app.models.driver import Driver

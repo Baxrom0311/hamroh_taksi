@@ -4,21 +4,8 @@ app/models/passenger.py
 PASSENGER (YO'LOVCHI) MODEL
 """
 
-from sqlalchemy import (
-    BigInteger,
-    Integer,
-    String,
-    Enum as SQLEnum,
-    DateTime,
-    ForeignKey,
-    Index
-)
-from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy.sql import func
-from datetime import datetime
-from typing import TYPE_CHECKING, List, Optional
-import enum
-from app.core.database import Base
+from .dependencies import *
+
 # ============================================
 # ENUM
 # ============================================

@@ -6,27 +6,8 @@ ORDER (BUYURTMA) MODEL - ENG MUHIM!
 Bu model yo'lovchi va haydovchini bog'laydi
 """
 
-from sqlalchemy import (
-    Integer,
-    BigInteger,
-    String,
-    Text,
-    Numeric,
-    Boolean,
-    Enum as SQLEnum,
-    DateTime,
-    ForeignKey,
-    Index,
-    CheckConstraint
-)
-from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy.sql import func
-from datetime import datetime
-from typing import TYPE_CHECKING, Optional
-from decimal import Decimal
-import enum
+from .dependencies import *
 
-from app.core.database import Base
 
 # ============================================
 # ENUM
@@ -245,6 +226,32 @@ class Order(Base):
         nullable=False,
         comment="Haydovchi yetib keldi"
     )
+    
+    # ============================================
+    # PROPERTIES & HELPERS
+    # ============================================
+
+    @property
+    def type_text(self) -> str:
+        """Buyurtma turi matni (👥 3 kishi yoki 📦 Pochta)"""
+        if self.passenger_count == 0 and self.has_luggage:
+            text = "📦 Pochta"
+            if (self.luggage_count or 0) > 1:
+                text += f" ({self.luggage_count} dona)"
+            if getattr(self, 'luggage_description', None):
+                text += f"\n 📝 {self.luggage_description}"
+            return text
+        
+        elif self.has_luggage and self.passenger_count > 0:
+            text = f"👥 {self.passenger_count} kishi"
+            if (self.luggage_count or 0) > 0:
+                text += f" + 📦 Pochta ({self.luggage_count} dona)"
+                if getattr(self, 'luggage_description', None):
+                    text += f"\n 📝 {self.luggage_description}"
+            return text
+        
+        return f"👥 {self.passenger_count} kishi"
+
     
     # ============================================
     # RELATIONSHIPS

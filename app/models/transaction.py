@@ -6,25 +6,8 @@ TRANSACTION (TRANZAKSIYA) MODEL
 To'lov va balans tarixi
 """
 
-from sqlalchemy import (
-    Integer,
-    BigInteger,
-    String,
-    Text,
-    Numeric,
-    Enum as SQLEnum,
-    DateTime,
-    ForeignKey,
-    Index
-)
-from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy.sql import func
-from datetime import datetime
-from typing import TYPE_CHECKING, Optional
-from decimal import Decimal
-import enum
+from .dependencies import *
 
-from app.core.database import Base
 
 # ============================================
 # ENUMS

@@ -28,29 +28,8 @@ ISHLATISH:
     
     driver = await get_driver_by_id(session, driver_id)
 """
-from __future__ import annotations
+from .dependencies import *
 
-from sqlalchemy import (
-    BigInteger,
-    Integer,
-    String,
-    Numeric,
-    Boolean,
-    DateTime,
-    ForeignKey,
-    Index,
-    CheckConstraint,
-    Transaction
-)
-from typing import TYPE_CHECKING
-from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy.sql import func
-from geoalchemy2 import Geometry
-from datetime import datetime
-from typing import Optional
-from decimal import Decimal
-
-from app.core.database import Base
 
 # ============================================
 # DRIVER MODEL
