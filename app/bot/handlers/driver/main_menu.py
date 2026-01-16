@@ -15,7 +15,9 @@ from aiogram.fsm.context import FSMContext
 from loguru import logger
 
 from app.core.database import get_session
-from app.models.driver import get_driver_by_user_id
+from app.models.driver import get_driver_by_user_id, Driver
+from app.bot.decorators import with_driver_session  # ✅ NEW
+from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.route import get_all_active_routes
 from app.models.system_settings import get_pricing_settings
 from app.bot.states.driver import DriverStates
@@ -66,9 +68,12 @@ async def trip_in_progress_blocker(message: Message, state: FSMContext):
 # ============================================
 
 @router.message(F.text == "🚗 Buyurtma qabul qilish")
-async def start_accepting_orders(message: Message, state: FSMContext):
+@with_driver_session  # ✅ Decorator
+async def start_accepting_orders(message: Message, session: AsyncSession, driver: Driver, state: FSMContext):
     """
     Haydovchi buyurtma qabul qilishni boshlaydi
+    
+    ✅ REFACTORED: Session va driver avtomatik
     
     FLOW:
     1. Marshrut tanlash
