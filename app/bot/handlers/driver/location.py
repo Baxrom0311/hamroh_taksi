@@ -16,6 +16,8 @@ from loguru import logger
 
 from app.core.database import get_session
 from app.models.driver import get_driver_by_user_id, Driver
+from app.bot.decorators import with_driver_session  # ✅ NEW
+from sqlalchemy.ext.asyncio import AsyncSession
 from app.bot.states.driver import DriverStates
 from app.bot.keyboards.driver import get_route_selection_keyboard
 from app.models.route import get_all_active_routes
@@ -34,9 +36,12 @@ router = Router()
     DriverStates.send_location,
     F.location
 )
-async def location_received(message: Message, state: FSMContext):
+@with_driver_session  # ✅ Decorator
+async def location_received(message: Message, session: AsyncSession, driver: Driver, state: FSMContext):
     """
     Haydovchi lokatsiyasini yubordi (Oddiy yoki Live Location)
+    
+    ✅ REFACTORED: Session va driver avtomatik
     
     NIMA BO'LADI:
     1. Lokatsiyani database'ga saqlash
@@ -45,12 +50,11 @@ async def location_received(message: Message, state: FSMContext):
     4. Marshrut tanlashga o'tish
     """
     try:
-        if message.from_user is None or message.location is None:
-            await message.answer("Xatolik: ma'lumotlar topilmadi")
-            logger.error("Location handler: message.from_user or message.location is None")
+        if message.location is None:
+            await message.answer("Xatolik: lokatsiya topilmadi")
+            logger.error("Location handler: message.location is None")
             return
         
-        user_id = message.from_user.id
         location = message.location
         
         lat = location.latitude
@@ -152,19 +156,21 @@ async def location_received(message: Message, state: FSMContext):
     DriverStates.waiting_orders,
     F.location
 )
-async def update_location_while_waiting(message: Message, state: FSMContext):
+@with_driver_session  # ✅ Decorator
+async def update_location_while_waiting(message: Message, session: AsyncSession, driver: Driver, state: FSMContext):
     """
     Haydovchi aktiv bo'lganda lokatsiyasini yangilaydi (Real-time)
+    
+    ✅ REFACTORED: Session va driver avtomatik
     
     NIMA BO'LADI:
     1. Lokatsiyani yangilash
     2. Database'ga saqlash
     3. Silent update (xabar yuborilmaydi)
     """
-    if message.from_user is None or message.location is None:
+    if message.location is None:
         return
     
-    user_id = message.from_user.id
     location = message.location
     
     lat = location.latitude

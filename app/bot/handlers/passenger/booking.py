@@ -11,8 +11,10 @@ from sqlalchemy.sql import func as sql_func
 from app.models.route import get_route_by_id
 from app.models.order import Order, OrderStatus  # ✅ Order va OrderStatus qo'shildi
 from app.core.database import get_session, transaction
-from app.models.passenger import get_passenger_by_user_id
+from app.models.passenger import get_passenger_by_user_id, Passenger
 from app.models.route import get_all_active_routes
+from app.bot.decorators import with_passenger_session  # ✅ NEW
+from sqlalchemy.ext.asyncio import AsyncSession
 from app.services.order_service import create_new_order
 from app.bot.states.passenger import PassengerStates
 from app.bot.keyboards.passenger import (
@@ -29,18 +31,12 @@ router = Router()
 
 
 @router.message(F.text == "🚖 Taksi chaqirish")
-async def start_booking(message: Message, state: FSMContext):
-    """Taksi chaqirishni boshlash"""
-    user_id = message.from_user.id # type: ignore
-    
-    async with get_session() as session:
-        passenger = await get_passenger_or_error(session, user_id, message)
+@with_passenger_session  # ✅ Decorator
+async def start_booking(message: Message, session: AsyncSession, passenger: Passenger, state: FSMContext):
+    """Taksi chaqirishni boshlash - ✅ REFACTORED"""
         
-        if not passenger:
-            return
-        
-        # Aktiv marshrutlarni tekshirish
-        active_routes = await get_all_active_routes(session)
+    # Aktiv marshrutlarni tekshirish
+    active_routes = await get_all_active_routes(session)
         if not active_routes:
             await message.answer(Messages.Passenger.NO_ROUTES)
             return
