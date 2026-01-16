@@ -10,14 +10,19 @@ from sqlalchemy import select, update
 from app.core.database import get_session
 from app.models.driver import Driver
 from app.models.order import Order
+from app.bot.decorators import with_session  # ✅ NEW
+from sqlalchemy.ext.asyncio import AsyncSession
 
 router = Router()
 
 @router.callback_query(F.data.startswith("rate_driver:"))
-async def rate_driver_handler(callback: CallbackQuery):
+@with_session  # ✅ Decorator
+async def rate_driver_handler(callback: CallbackQuery, session: AsyncSession):
     """
     Haydovchiga baho berish
     Format: rate_driver:{order_id}:{stars}
+    
+    ✅ REFACTORED: Session avtomatik
     """
     if callback.data is None:
         await callback.answer("Xatolik: data yo'q")
@@ -31,20 +36,19 @@ async def rate_driver_handler(callback: CallbackQuery):
         await callback.answer("Xatolik: noto'g'ri format")
         return
 
-    async with get_session() as session:
-        # Order va Driverni topish
-        stmt = select(Order).where(Order.order_id == order_id)
-        result = await session.execute(stmt)
-        order = result.scalar_one_or_none()
+    # Order va Driverni topish
+    stmt = select(Order).where(Order.order_id == order_id)
+    result = await session.execute(stmt)
+    order = result.scalar_one_or_none()
 
-        if not order:
-            await callback.answer("Buyurtma topilmadi", show_alert=True)
-            return
+    if not order:
+        await callback.answer("Buyurtma topilmadi", show_alert=True)
+        return
 
-        driver_id = order.driver_id
-        if not driver_id:
-            await callback.answer("Haydovchi topilmadi", show_alert=True)
-            return
+    driver_id = order.driver_id
+    if not driver_id:
+        await callback.answer("Haydovchi topilmadi", show_alert=True)
+        return
 
         # Haydovchini olish
         driver_stmt = select(Driver).where(Driver.driver_id == driver_id)
