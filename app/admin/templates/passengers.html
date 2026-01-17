@@ -27,8 +27,18 @@
                     <td class="px-6 py-4">
                         <div class="text-sm text-gray-700">
                             {% if p.gender %}
-                                {% set g = p.gender|lower %}
-                                {{ 'Erkak' if g in ['male','erkak','m','man'] else 'Ayol' }}
+                                {# Enum/string aralash bo'lishi mumkin #}
+                                {% set raw = p.gender.value if p.gender is not string and p.gender is not none else p.gender %}
+                                {% set g = (raw or '')|trim|lower %}
+                                {% set male_vals = ['male', 'erkak', 'm', 'man'] %}
+                                {% set female_vals = ['female', 'ayol', 'f', 'woman'] %}
+                                {% if g in male_vals %}
+                                    Erkak
+                                {% elif g in female_vals %}
+                                    Ayol
+                                {% else %}
+                                    -
+                                {% endif %}
                             {% else %}
                                 -
                             {% endif %}

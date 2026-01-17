@@ -3,7 +3,18 @@ global:
   evaluation_interval: 15s
 
 scrape_configs:
+  # Prometheus o'zi
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["prometheus:9090"]
+
+  # Admin panel /metrics
   - job_name: "admin_panel"
     metrics_path: /metrics
     static_configs:
       - targets: ["admin_panel:8000"]
+
+  # Server resurslari (node_exporter)
+  - job_name: "node"
+    static_configs:
+      - targets: ["localhost:9100"]
