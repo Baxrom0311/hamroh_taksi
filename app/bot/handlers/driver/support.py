@@ -29,12 +29,7 @@ router = Router()
 # ============================================
 
 @router.message(
-    StateFilter(
-        DriverStates.waiting_orders,
-        DriverStates.choose_route,
-        DriverStates.enter_seats,
-        DriverStates.trip_in_progress
-    ),
+    StateFilter("*"),  # Har qanday holatda support tutib olamiz
     F.text.in_(["📞 Support", "📞 Support xizmati", "SOS"])
 )
 @with_driver_session

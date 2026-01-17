@@ -4,7 +4,8 @@ RO'YXATDAN O'TISH HANDLER (PYLANCE-CLEAN)
 """
 
 from .base import *
-from app.models.user import create_user, UserRole
+from sqlalchemy.exc import IntegrityError
+from app.models.user import create_user, UserRole, get_user_by_phone
 from app.models.driver import create_driver
 from app.models.passenger import Gender, create_passenger
 from app.core.database import get_session
@@ -204,11 +205,36 @@ async def driver_car_number(message: Message, session: AsyncSession, state: FSMC
     data = await state.get_data()
 
     try:
+        # Phone raqam allaqachon bormi?
+        existing = await get_user_by_phone(session, data["phone_number"])
+        if existing and existing.user_id != user.id:
+            await message.answer(
+                "❌ Bu telefon raqami bilan allaqachon ro'yxatdan o'tilgan.\n"
+                "Iltimos, boshqa raqam kiriting yoki oldingi akkauntni ishlating."
+            )
+            await session.rollback()
+            await state.clear()
+            return
+
+        # Mashina raqami allaqachon bormi?
+        from app.models.driver import Driver
+        car_exists = await session.execute(
+            select(Driver).where(Driver.car_number == car_number)
+        )
+        if car_exists.scalar_one_or_none():
+            await message.answer(
+                "❌ Bu mashina raqami bilan haydovchi allaqachon ro'yxatdan o'tgan.\n"
+                "Iltimos, boshqa raqam kiriting."
+            )
+            await session.rollback()
+            await state.clear()
+            return
+
         await create_user(
             session,
             user_id=user.id,
             phone_number=data["phone_number"],
-            first_name=user.first_name,
+            first_name=user.first_name or "",
             last_name=user.last_name,
             username=user.username,
             role=UserRole.DRIVER,
@@ -237,7 +263,14 @@ async def driver_car_number(message: Message, session: AsyncSession, state: FSMC
             reply_markup=get_driver_main_menu()
         )
 
+    except IntegrityError:
+        await session.rollback()
+        await message.answer(
+            "❌ Bu telefon raqami bilan allaqachon ro'yxatdan o'tilgan.\n"
+            "Iltimos, boshqa raqam kiriting yoki oldingi akkauntni ishlating."
+        )
     except Exception as e:
+        await session.rollback()
         logger.error(f"Registration error: {e}")
         await message.answer("❌ Xatolik yuz berdi")
 

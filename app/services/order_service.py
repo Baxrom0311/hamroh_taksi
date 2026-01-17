@@ -386,7 +386,7 @@ async def accept_order_by_driver(
                         session,
                         driver_id=driver_id,
                         route_id=order.route_id,
-                        total_seats=driver.available_seats  # Case: available_seats IS the capacity
+                        total_seats=driver.available_seats 
                     )
                     logger.info(f"✅ New trip created: trip_id={active_trip.trip_id}")
                 

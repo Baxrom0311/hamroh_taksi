@@ -199,7 +199,7 @@ async def accept_order_handler(callback: CallbackQuery, session: AsyncSession, d
 # ============================================
 
 @router.message(
-    DriverStates.trip_in_progress,
+    StateFilter("*"),  # Agar state yo'qolsa ham tutib qolamiz
     F.text == "🚗 Yo'lga chiqdik"
 )
 @with_driver_session  # ✅ Decorator
@@ -555,10 +555,7 @@ async def contact_passenger_handler(message: Message, session: AsyncSession, dri
 
 
 @router.message(
-    StateFilter(
-        DriverStates.trip_in_progress, 
-        DriverStates.trip_confirmation
-    ),
+    StateFilter("*"),  # Har qanday state'da tutib, keyin o'zimiz tekshiramiz
     F.text == "❌ Buyurtmani bekor qilish"
 )
 @with_driver_session  # ✅ Decorator
@@ -659,7 +656,11 @@ async def confirm_cancellation(message: Message, session: AsyncSession, driver: 
     
     # Order'ni cancel qilish
     order_result = await session.execute(
-        select(Order).where(Order.order_id == order_id)
+        select(Order)
+        .options(
+            selectinload(Order.passenger).selectinload(Passenger.user)
+        )
+        .where(Order.order_id == order_id)
     )
     order = order_result.scalar_one_or_none()
     
@@ -697,11 +698,11 @@ async def confirm_cancellation(message: Message, session: AsyncSession, driver: 
     )
     
     # Yo'lovchiga xabar
-    if order.passenger:
+    if order.passenger and order.passenger.user:
         from app.bot.main import bot
         try:
             await bot.send_message(
-                chat_id=order.passenger.user_id,
+                chat_id=order.passenger.user.user_id,
                 text=f"❌ <b>Buyurtma bekor qilindi</b>\n\n"
                      f"📦 Buyurtma #{order_id}\n\n"
                      f"Haydovchi buyurtmani bekor qildi.\n"

@@ -1,5 +1,5 @@
 """
-app/bot/decorators.py
+app/bot/decorators.py - FIXED VERSION
 
 BOT HANDLER DECORATORS
 
@@ -10,6 +10,8 @@ DECORATORS:
 - @with_driver_session - Driver handler'lar uchun (session + driver auto-fetch)
 - @with_passenger_session - Passenger handler'lar uchun (session + passenger auto-fetch)
 - @with_user_session - Umumiy handler'lar uchun (faqat session)
+
+CRITICAL: SkipHandler raise qilish kerak, return qilmaslik kerak!
 """
 
 from functools import wraps
@@ -42,7 +44,7 @@ def with_driver_session(func: Callable):
     NIMA QILADI:
     1. Session ochadi
     2. Driver'ni user_id bo'yicha topadi
-    3. Agar driver yo'q bo'lsa - xato qaytaradi
+    3. Agar driver yo'q bo'lsa - SkipHandler raise qiladi (SILENT skip)
     4. Session va driver'ni handler'ga beradi
     5. Xato bo'lsa - session'ni yopadi
     
@@ -59,7 +61,7 @@ def with_driver_session(func: Callable):
         
         if not user_id:
             logger.error("User ID not found in event")
-            return
+            raise SkipHandler()
         
         async with get_session() as session:
             try:
@@ -67,8 +69,8 @@ def with_driver_session(func: Callable):
                 driver = await get_driver_by_user_id(session, user_id)
                 
                 if not driver:
-                    # Driver topilmadi — boshqa handlerlarga o'tkazamiz
-                    logger.debug(f"Driver not found for user_id={user_id}, skipping driver handler")
+                    # Driver topilmadi — boshqa handlerlarga o'tkazamiz (SILENT)
+                    logger.debug(f"Driver not found for user_id={user_id}, skipping to next handler")
                     raise SkipHandler()
                 
                 # Handler'ni chaqirish (session va driver bilan)
@@ -76,9 +78,9 @@ def with_driver_session(func: Callable):
             
             except SkipHandler:
                 # Shartga to'g'ri kelmadi, boshqa handlerlar ishlashini davom ettiramiz
-                return
+                raise  # ✅ CRITICAL: raise qilish kerak, return emas!
             except Exception as e:
-                logger.error(f"Error in handler {func.__name__}: {e}")
+                logger.error(f"Error in driver handler {func.__name__}: {e}")
                 
                 error_msg = "⚠️ Xatolik yuz berdi. Iltimos, qayta urinib ko'ring."
                 
@@ -119,7 +121,7 @@ def with_passenger_session(func: Callable):
         
         if not user_id:
             logger.error("User ID not found in event")
-            return
+            raise SkipHandler()
         
         async with get_session() as session:
             try:
@@ -127,33 +129,18 @@ def with_passenger_session(func: Callable):
                 passenger = await get_passenger_by_user_id(session, user_id)
                 
                 if not passenger:
-                    # Passenger topilmadi
-                    error_msg = (
-                        "❌ <b>Xatolik</b>\n\n"
-                        "Siz yo'lovchi sifatida ro'yxatdan o'tmagansiz.\n\n"
-                        "Iltimos, /start buyrug'ini yuboring va ro'yxatdan o'ting."
-                    )
-                    
-                    if isinstance(event, Message):
-                        await event.answer(
-                            error_msg,
-                            reply_markup=get_passenger_main_menu(),
-                            parse_mode="HTML"
-                        )
-                    else:
-                        await event.answer(
-                            "Yo'lovchi topilmadi",
-                            show_alert=True
-                        )
-                    
-                    logger.warning(f"Passenger not found for user_id={user_id}")
-                    return
+                    # Passenger topilmadi — boshqa handlerlarga o'tkazamiz (SILENT)
+                    logger.debug(f"Passenger not found for user_id={user_id}, skipping to next handler")
+                    raise SkipHandler()
                 
                 # Handler'ni chaqirish (session va passenger bilan)
                 return await func(event, session, passenger, *args, **kwargs)
             
+            except SkipHandler:
+                # Shartga to'g'ri kelmadi, boshqa handlerlar ishlashini davom ettiramiz
+                raise  # ✅ CRITICAL: raise qilish kerak!
             except Exception as e:
-                logger.error(f"Error in handler {func.__name__}: {e}")
+                logger.error(f"Error in passenger handler {func.__name__}: {e}")
                 
                 error_msg = "⚠️ Xatolik yuz berdi. Iltimos, qayta urinib ko'ring."
                 
@@ -229,7 +216,7 @@ def with_admin_session(func: Callable):
         user_id = event.from_user.id if event.from_user else None
         
         if not user_id:
-            return
+            raise SkipHandler()
         
         async with get_session() as session:
             try:
@@ -238,11 +225,13 @@ def with_admin_session(func: Callable):
                 
                 if not user or not user.is_admin:
                     # Shunchaki ignore (admin bo'lmaganlar uchun handler ishlamaydi)
-                    return
+                    raise SkipHandler()
                 
                 # Handler'ni chaqirish
                 return await func(event, session, user, *args, **kwargs)
             
+            except SkipHandler:
+                raise
             except Exception as e:
                 logger.error(f"Error in admin handler {func.__name__}: {e}")
                 raise

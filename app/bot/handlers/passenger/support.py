@@ -1,5 +1,5 @@
 """
-app/bot/handlers/passenger/support.py
+app/bot/handlers/passenger/support.py - FIXED VERSION
 
 PASSENGER SUPPORT HANDLERS
 """
@@ -19,11 +19,17 @@ router = Router()
 # SUPPORT MENYU
 # ============================================
 
-@router.message(F.text.in_(["📞 Support", "📞 Support xizmati", "SOS"]))
+@router.message(
+    StateFilter("*"),  # State tushib qolgan hollarda ham ishlaydi
+    F.text.in_(["📞 Support", "📞 Support xizmati", "SOS"])
+)
 @with_passenger_session
 async def support_menu(message: Message, session: AsyncSession, passenger: Passenger, state: FSMContext):
     """
     Support bo'limi
+    
+    StateFilter orqali faqat passenger state'laridagina ishlaydi.
+    Driver DriverStates'da bo'lgani uchun bu handler skip qilinadi.
     """
     keyboard = ReplyKeyboardMarkup(
         keyboard=[
