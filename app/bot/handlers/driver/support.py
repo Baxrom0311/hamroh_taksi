@@ -303,7 +303,7 @@ async def back_from_support(message: Message, session: AsyncSession, driver: Dri
     F.text == "⬅️ Orqaga"
 )
 @with_driver_session
-async def back_to_main_menu(message: Message, session: AsyncSession, driver: Driver, state: FSMContext):
+async def back_to_main_menu(message: Message, session: AsyncSession, driver: Driver, state: FSMContext, *args, **kwargs):
     """Asosiy menyuga qaytish"""
     await state.clear()
     await message.answer(
