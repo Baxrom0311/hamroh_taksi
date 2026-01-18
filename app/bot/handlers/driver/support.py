@@ -207,6 +207,11 @@ async def start_suggestion(message: Message, session: AsyncSession, driver: Driv
 @with_driver_session  # ✅ Decorator
 async def complaint_text_entered(message: Message, session: AsyncSession, driver: Driver, state: FSMContext):
     """Shikoyat matni kiritildi - ✅ REFACTORED"""
+    # Orqaga tugmasi kelganda complaint sifatida qabul qilmasdan menyuga qaytamiz
+    if message.text == "⬅️ Orqaga":
+        await back_to_main_menu(message, session, driver, state)
+        return
+
     if message.text in ("💡 Taklif yuborish", "📝 Shikoyat yuborish"):
         # agar foydalanuvchi tugmani qayta bossa, promptni ko'rsatamiz
         if message.text == "💡 Taklif yuborish":
