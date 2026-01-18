@@ -127,15 +127,15 @@ services:
     depends_on:
       - prometheus
 
-    node_exporter:
-      image: prom/node-exporter:v1.8.1
-      container_name: hamroh_node_exporter
-      command: ["--path.rootfs=/host"]
-      volumes:
-        - /:/host:ro,rslave
-      ports:
-        - "9100:9100"
-      restart: unless-stopped
+  node_exporter:
+    image: prom/node-exporter:v1.8.1
+    container_name: hamroh_node_exporter
+    command: ["--path.rootfs=/host"]
+    volumes:
+      - /:/host:ro,rslave
+    ports:
+      - "9100:9100"
+    restart: unless-stopped
 
 
 
