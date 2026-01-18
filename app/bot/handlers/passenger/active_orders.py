@@ -185,8 +185,10 @@ async def change_car_handler(callback: CallbackQuery, session: AsyncSession, pas
         )
     
     # Yangi haydovchi topish task
-    find_driver_for_order_task.delay(order_id)
-    
+    from typing import Any, cast
+
+    cast(Any, find_driver_for_order_task).delay(order_id)
+
     logger.info(
         f"Passenger {passenger.passenger_id} changed car for order {order_id}, "
         f"refunded {result.get('refunded_amount', 0)}"

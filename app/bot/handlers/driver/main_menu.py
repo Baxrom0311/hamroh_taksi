@@ -362,8 +362,13 @@ async def show_statistics(message: Message, session: AsyncSession, driver: Drive
 
 
 @router.message(F.text == "⚙️ Sozlamalar")
-async def driver_settings(message: Message):
-    await message.answer("⚙️ <b>Sozlamalar bo'limi</b>\n\nHozircha ishlab chiqilmoqda...")
+@with_driver_session  # ✅ Decorator
+async def driver_settings(message: Message, session: AsyncSession, driver: Driver):
+    await message.answer(
+        "⚙️ <b>Sozlamalar bo'limi</b>\n\n"
+        "Hozircha ishlab chiqilmoqda...",
+        parse_mode="HTML"
+    )
 
 
 

@@ -297,7 +297,7 @@ async def passenger_cancel_order(callback: CallbackQuery, session: AsyncSession,
     # Order'ni bekor qilish
     async with transaction() as session:
         from app.models.driver import Driver
-        from app.services import payment_service
+        from app.services.payment_service import payment_service
         
         # Komissiya haydovchiga qaytariladi (agar bor bo'lsa)
         if order.driver_id and order.commission_amount:

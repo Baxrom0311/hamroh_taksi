@@ -91,7 +91,9 @@ async def change_driver_handler(callback: CallbackQuery, session: AsyncSession, 
             show_alert=True
         )
         # Avtomatik yangi haydovchi topish
-        find_driver_for_order_task.delay(order_id)
+        from typing import Any, cast
+
+        cast(Any, find_driver_for_order_task).delay(order_id)
         return
     
     keyboard = get_driver_selection_keyboard(available_drivers, order_id)
@@ -209,7 +211,9 @@ async def select_new_driver_handler(callback: CallbackQuery, session: AsyncSessi
     
     # Yangi haydovchiga xabar
     from app.tasks.notifications import notify_passenger_driver_found
-    notify_passenger_driver_found.delay(
+    from typing import Any, cast
+
+    cast(Any, notify_passenger_driver_found).delay(
         passenger.user_id,
         new_driver_id,
         order_id
@@ -290,7 +294,8 @@ async def ban_driver_handler(callback: CallbackQuery, session: AsyncSession, pas
         
         # Admin'ga bildirishnoma
         from app.tasks.notifications import notify_admins
-        notify_admins.delay(
+        from typing import Any, cast
+        cast(Any, notify_admins).delay(
             f"🚫 <b>Haydovchi bloklandi!</b>\n\n"
             f"Driver ID: {order.driver_id}\n"
             f"Sabab: {block_check['reason']}\n"
@@ -305,8 +310,10 @@ async def ban_driver_handler(callback: CallbackQuery, session: AsyncSession, pas
         parse_mode="HTML"
     )
     # Yangi haydovchi topish
-    find_driver_for_order_task.delay(order_id)
-    
+    from typing import Any, cast
+
+    cast(Any, find_driver_for_order_task).delay(order_id)
+
     logger.info(
         f"Passenger {passenger.passenger_id} banned driver {order.driver_id} "
         f"for order {order_id}"

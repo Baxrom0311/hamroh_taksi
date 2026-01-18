@@ -136,7 +136,9 @@ async def get_passenger_by_user_id(session, user_id: int) -> Optional[Passenger]
     """Passenger'ni User ID bo'yicha olish"""
     from sqlalchemy import select
     result = await session.execute(
-        select(Passenger).where(Passenger.user_id == user_id)
+        select(Passenger)
+        .options(selectinload(Passenger.user))
+        .where(Passenger.user_id == user_id)
     )
     return result.scalar_one_or_none()
 

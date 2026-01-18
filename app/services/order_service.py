@@ -122,7 +122,9 @@ async def create_new_order(
 
             # Haydovchi topishni boshlash (async)
             try:
-                find_driver_for_order_task.delay(order.order_id)
+                from typing import Any, cast
+
+                cast(Any, find_driver_for_order_task).delay(order.order_id)
             except Exception as task_err:
                 logger.warning(f"Could not enqueue driver search for order {order.order_id}: {task_err}")
             

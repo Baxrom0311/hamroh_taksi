@@ -53,6 +53,10 @@ async def find_driver_for_order_task(self, order_id: int):
             logger.info(f"Order {order_id} already accepted (status: {order.status})")
             return {'success': True, 'reason': 'already_accepted'}
         
+        # Lokatsiya aniq berilganmi? (Inline location "Lat:" bilan boshlanadi)
+        pickup_location_text = (order.pickup_location or "").strip().lower()
+        enforce_distance = pickup_location_text.startswith("lat:")
+
         # Eng yaxshi haydovchini topish
         driver_id = await driver_queue.get_next_driver(
             route_id=order.route_id,
@@ -62,7 +66,8 @@ async def find_driver_for_order_task(self, order_id: int):
             },
             passenger_count=order.passenger_count,
             max_distance_km=50,
-            order_id=order_id  # ✅ Skip logic uchun
+            order_id=order_id,  # ✅ Skip logic uchun
+            enforce_distance=enforce_distance
         )
         
         if driver_id:

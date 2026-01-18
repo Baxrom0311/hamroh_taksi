@@ -90,6 +90,21 @@ async def start_suggestion(message: Message, session: AsyncSession, passenger: P
 @with_passenger_session  # ✅ Decorator
 async def complaint_text_entered(message: Message, session: AsyncSession, passenger: Passenger, state: FSMContext):
     """Shikoyat matni kiritildi - ✅ REFACTORED"""
+    # Tugmalarni qayta bosish yoki orqaga bosish holati
+    if message.text == "⬅️ Orqaga":
+        await state.clear()
+        await message.answer(
+            "⬅️ Asosiy menyu",
+            reply_markup=get_passenger_main_menu()
+        )
+        return
+    if message.text in ("💡 Taklif yuborish", "📝 Shikoyat yuborish"):
+        if message.text == "💡 Taklif yuborish":
+            await start_suggestion(message, session, passenger, state)
+        else:
+            await start_complaint(message, session, passenger, state)
+        return
+
     if not message.text:
         await message.answer("Xatolik: matn topilmadi")
         await state.clear()
@@ -113,8 +128,9 @@ async def complaint_text_entered(message: Message, session: AsyncSession, passen
     )
     
     # Admin'ga xabar
+    from typing import Any, cast
     from app.tasks.notifications import notify_admins
-    notify_admins.delay(
+    cast(Any, notify_admins).delay(
         f"📝 <b>Yangi {feedback.type.value} (Yo'lovchi)</b> #{feedback.feedback_id}\n\n"
         f"👤 Yo'lovchi: {passenger.full_name}\n"
         f"📱 Telefon: {passenger.phone_number if hasattr(passenger, 'phone_number') else 'N/A'}\n\n"

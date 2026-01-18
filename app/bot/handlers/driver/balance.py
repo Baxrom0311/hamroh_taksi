@@ -6,8 +6,7 @@ from ..base import *
 from app.models.transaction import create_transaction, TransactionType
 from app.bot.states.driver import DriverStates
 from app.bot.keyboards.driver import get_driver_main_menu, get_balance_keyboard
-
-
+from aiogram.filters import StateFilter
 router = Router()
 
 
@@ -120,12 +119,33 @@ async def receipt_uploaded(message: Message, session: AsyncSession, driver: Driv
 
 
 
-@router.message(F.text == "❌ Bekor qilish")
+@router.message(
+    StateFilter(
+        DriverStates.balance_topup,
+        DriverStates.balance_receipt
+    ),
+    F.text == "❌ Bekor qilish"
+)
 async def cancel_balance_topup(message: Message, state: FSMContext):
     await state.clear()
     await message.answer(
         "❌ Balans to‘ldirish bekor qilindi",
         reply_markup=get_driver_main_menu()
     )
+
+
+# Fallback cancel — balansdan tashqari hollarda faqat holatni tozalaymiz
+@router.message(StateFilter("*"), F.text == "❌ Bekor qilish")
+@with_driver_session
+async def cancel_fallback(message: Message, session: AsyncSession, driver: Driver, state: FSMContext):
+    state_name = await state.get_state()
+    if state_name in (
+        DriverStates.balance_topup.state,
+        DriverStates.balance_receipt.state
+    ):
+        # Balans cancel maxsus handlerga tegishli
+        return
+    await state.clear()
+    await message.answer("❌ Bekor qilindi", reply_markup=get_driver_main_menu())
 
 __all__ = ['router']

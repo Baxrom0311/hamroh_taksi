@@ -51,6 +51,7 @@ async def support_menu(message: Message, session: AsyncSession, driver: Driver, 
         reply_markup=keyboard,
         parse_mode="HTML"
     )
+    await state.set_state(DriverStates.support_complaint)
 
 
 # ============================================
@@ -131,8 +132,9 @@ async def receipt_photo_uploaded(message: Message, session: AsyncSession, driver
     )
     
     # Admin'ga xabar
+    from typing import Any, cast
     from app.tasks.notifications import notify_admins
-    notify_admins.delay(
+    cast(Any, notify_admins).delay(
         f"""
 💰 <b>Yangi balans to'ldirish so'rovi</b>
 
@@ -167,7 +169,7 @@ Admin panel: /admin/transactions/{transaction_obj.transaction_id}
 # SHIKOYAT YUBORISH
 # ============================================
 
-@router.message(F.text == "📝 Shikoyat yuborish")
+@router.message(StateFilter("*"), F.text == "📝 Shikoyat yuborish")
 @with_driver_session
 async def start_complaint(message: Message, session: AsyncSession, driver: Driver, state: FSMContext):
     """
@@ -184,7 +186,7 @@ async def start_complaint(message: Message, session: AsyncSession, driver: Drive
     await state.set_state(DriverStates.support_complaint)
 
 
-@router.message(F.text == "💡 Taklif yuborish")
+@router.message(StateFilter("*"), F.text == "💡 Taklif yuborish")
 @with_driver_session
 async def start_suggestion(message: Message, session: AsyncSession, driver: Driver, state: FSMContext):
     """
@@ -205,6 +207,14 @@ async def start_suggestion(message: Message, session: AsyncSession, driver: Driv
 @with_driver_session  # ✅ Decorator
 async def complaint_text_entered(message: Message, session: AsyncSession, driver: Driver, state: FSMContext):
     """Shikoyat matni kiritildi - ✅ REFACTORED"""
+    if message.text in ("💡 Taklif yuborish", "📝 Shikoyat yuborish"):
+        # agar foydalanuvchi tugmani qayta bossa, promptni ko'rsatamiz
+        if message.text == "💡 Taklif yuborish":
+            await start_suggestion(message, session, driver, state)
+        else:
+            await start_complaint(message, session, driver, state)
+        return
+
     if not message.text:
         await message.answer("Xatolik: matn topilmadi")
         await state.clear()
@@ -223,8 +233,9 @@ async def complaint_text_entered(message: Message, session: AsyncSession, driver
     )
     
     # Admin'ga xabar
+    from typing import Any, cast
     from app.tasks.notifications import notify_admins
-    notify_admins.delay(
+    cast(Any, notify_admins).delay(
         f"📝 <b>Yangi {feedback.type.value}</b> #{feedback.feedback_id}\n\n"
         f"👤 Haydovchi: {driver.full_name}\n"
         f"📱 Telefon: {driver.phone_number}\n\n"
@@ -248,6 +259,21 @@ async def complaint_text_entered(message: Message, session: AsyncSession, driver
     )
     
     await state.clear()
+
+
+# ============================================
+# ORQAGA
+# ============================================
+
+@router.message(StateFilter(DriverStates.support_complaint), F.text == "⬅️ Orqaga")
+@with_driver_session
+async def back_from_support(message: Message, session: AsyncSession, driver: Driver, state: FSMContext):
+    """Supportdan asosiy menyuga qaytish"""
+    await state.clear()
+    await message.answer(
+        "⬅️ Asosiy menyu",
+        reply_markup=get_driver_main_menu()
+    )
 
 
 

@@ -113,7 +113,7 @@ async def phone_text(message: Message, state: FSMContext) -> None:
     # ✅ Validation
     is_valid, error_msg = validate_phone_number(text)
     if not is_valid:
-        await message.answer(error_msg, parse_mode="HTML")
+        await message.answer(error_msg or "❌ Noto'g'ri format", parse_mode="HTML")
         return
 
     await state.update_data(phone_number=text)
@@ -163,7 +163,7 @@ async def driver_full_name(message: Message, state: FSMContext) -> None:
     # ✅ Validation
     is_valid, error_msg = validate_full_name(name)
     if not is_valid:
-        await message.answer(f"❌ {error_msg}")
+        await message.answer(f"❌ {error_msg or 'Noto\'g\'ri format'}")
         return
     
     await state.update_data(full_name=name)
@@ -198,7 +198,7 @@ async def driver_car_number(message: Message, session: AsyncSession, state: FSMC
     # ✅ Validation
     is_valid, error_msg = validate_car_number(car_number)
     if not is_valid:
-        await message.answer(error_msg, parse_mode="HTML")
+        await message.answer(error_msg or "❌ Noto'g'ri format", parse_mode="HTML")
         return
     
     user = require_user(message)
@@ -289,7 +289,7 @@ async def passenger_full_name(message: Message, state: FSMContext) -> None:
     # ✅ Validation
     is_valid, error_msg = validate_full_name(name)
     if not is_valid:
-        await message.answer(f"❌ {error_msg}")
+        await message.answer(f"❌ {error_msg or 'Noto\'g\'ri format'}")
         return
     
     await state.update_data(full_name=name)

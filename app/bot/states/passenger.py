@@ -38,3 +38,5 @@ class PassengerStates(StatesGroup):
     # Support
     support_complaint = State()    # Shikoyat yozish
 
+    # Profil tahriri
+    edit_name = State()            # Ismni o'zgartirish

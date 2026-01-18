@@ -267,7 +267,8 @@ class DriverQueueManager:
         passenger_location: Dict[str, float],
         passenger_count: int = 1,
         max_distance_km: float = 50,
-        order_id: Optional[int] = None
+        order_id: Optional[int] = None,
+        enforce_distance: bool = True
     ) -> Optional[int]:
         """
         Keyingi eng yaxshi haydovchini topish
@@ -286,7 +287,7 @@ class DriverQueueManager:
         2. Har birini tekshirish:
            - Aktiv va bo'sh
            - Balans yetarli
-           - Masofa yaqin
+           - Masofa yaqin (agar enforce_distance=True)
            - Bo'sh joylar yetarli
         3. Birinchi mos kelganini qaytarish
         """
@@ -350,25 +351,28 @@ class DriverQueueManager:
                         logger.debug(f"Driver {driver_id}: location missing")
                         continue
                     
-                    # 6. Geo-masofa tekshiruvi
-                    distance_km = calculate_distance(
-                        float(driver.last_location_lat),
-                        float(driver.last_location_lon),
-                        passenger_location['lat'],
-                        passenger_location['lon']
-                    )
-                    
-                    if distance_km > max_distance_km:
-                        logger.debug(
-                            f"Driver {driver_id}: too far "
-                            f"({distance_km:.1f} km > {max_distance_km} km)"
+                    # 6. Geo-masofa tekshiruvi (ixtiyoriy)
+                    distance_km = None
+                    if enforce_distance:
+                        distance_km = calculate_distance(
+                            float(driver.last_location_lat),
+                            float(driver.last_location_lon),
+                            passenger_location['lat'],
+                            passenger_location['lon']
                         )
-                        continue
+                        
+                        if distance_km > max_distance_km:
+                            logger.debug(
+                                f"Driver {driver_id}: too far "
+                                f"({distance_km:.1f} km > {max_distance_km} km)"
+                            )
+                            continue
                     
                     # ✅ TOPILDI!
                     logger.success(
                         f"✅ Driver {driver_id} matched! "
-                        f"score={score:.2f}, distance={distance_km:.1f}km, "
+                        f"score={score:.2f}, "
+                        f"distance={(distance_km if distance_km is not None else 'skip')}km, "
                         f"seats={driver.available_seats}"
                     )
                     

@@ -200,7 +200,8 @@ async def accept_order_handler(callback: CallbackQuery, session: AsyncSession, d
 
 @router.message(
     StateFilter("*"),  # Agar state yo'qolsa ham tutib qolamiz
-    F.text == "🚗 Yo'lga chiqdik"
+    F.text.in_(["🚗 Yo'lga chiqdik", "Yo'lga chiqdik", "🚗 Yo’lga chiqdik", "🚗 Yoʻlga chiqdik"])
+    | F.text.regexp(r"(?i)yo.?lga\\s+chiqdik")
 )
 @with_driver_session  # ✅ Decorator
 async def driver_started_trip(message: Message, session: AsyncSession, driver: Driver, state: FSMContext):
@@ -556,7 +557,7 @@ async def contact_passenger_handler(message: Message, session: AsyncSession, dri
 
 @router.message(
     StateFilter("*"),  # Har qanday state'da tutib, keyin o'zimiz tekshiramiz
-    F.text == "❌ Buyurtmani bekor qilish"
+    F.text.in_(["❌ Buyurtmani bekor qilish", "Buyurtmani bekor qilish"])
 )
 @with_driver_session  # ✅ Decorator
 async def cancel_order_handler(message: Message, session: AsyncSession, driver: Driver, state: FSMContext):
