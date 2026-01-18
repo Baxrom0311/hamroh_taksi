@@ -539,7 +539,7 @@ async def contact_passenger_handler(message: Message, session: AsyncSession, dri
 <b>{idx}-mijoz</b>
 👤 <b>Ism:</b> {passenger_name}
 📍 <b>Manzil:</b> <a href="{google_maps_link}">{order.pickup_location}</a>
-📱 <b>Telefon:</b> <code>{passenger_phone}</code>
+📱 <b>Telefon:</b> {passenger_phone}
 {order_type}
         """.strip()
         

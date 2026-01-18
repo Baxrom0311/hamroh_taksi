@@ -54,7 +54,7 @@ async def choose_role(message: Message, state: FSMContext) -> None:
 
     await message.answer(
         "📱 <b>Telefon raqamingizni yuboring</b>\n\n"
-        "Format: <code>+998901234567</code> yoki tugmani bosing:",
+        "Format: +998901234567 yoki tugmani bosing:",
         reply_markup=ReplyKeyboardMarkup(
             keyboard=[
                 [
@@ -93,7 +93,7 @@ async def phone_contact(message: Message, state: FSMContext) -> None:
 
     await message.answer(
         f"📨 SMS kod yuborildi\n\n"
-        f"Telefon: <code>{phone}</code>\n"
+        f"Telefon:{phone}\n"
         f"<b>Demo kod: {sms_code}</b>\n\n"
         "Kodni kiriting:",
         reply_markup=ReplyKeyboardRemove(),

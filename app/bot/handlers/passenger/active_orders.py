@@ -105,7 +105,7 @@ async def view_active_orders(message: Message, session: AsyncSession, passenger:
             orders_text += f"  📋 {driver.car_number}\n"
             
             if driver.user:
-                orders_text += f"  📱 <code>{driver.user.phone_number}</code>\n"
+                orders_text += f"  📱 {driver.user.phone_number}\n"
         
         if order.status in [OrderStatus.PENDING, OrderStatus.ACCEPTED]:
             cancellable_ids.append(order.order_id)

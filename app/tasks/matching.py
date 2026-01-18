@@ -194,7 +194,7 @@ async def notify_driver_new_order_task(self, driver_id: int, order_id: int):
 📍 <b>Olish joyi:</b> {order_data['pickup']}
 <a href="{google_maps_link}">🗺️ Google Maps</a> | <a href="{telegram_location_link}">📍 Telegram xarita</a>
 {order_type_text}
-📱 <b>Telefon:</b> <code>{order_data['passenger_phone']}</code>
+📱 <b>Telefon:</b> {order_data['passenger_phone']}
 
 💰 <b>Komissiya:</b> {settings.COMMISSION_AMOUNT:,} so'm
 

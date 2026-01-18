@@ -64,7 +64,7 @@ class Messages:
             "📍 <b>Olish joyi:</b> {pickup_location}\n"
             "<a href=\"{google_maps_link}\">🗺️ Google Maps</a> | <a href=\"{telegram_location_link}\">📍 Telegram xarita</a>\n"
             "{order_type}\n"
-            "📱 <b>Telefon:</b> <code>{phone}</code>"
+            "📱 <b>Telefon:</b> {phone}"
         )
         TRIP_STARTED = (
             "✅ <b>Yo'lga chiqdingiz!</b>\n\n"
@@ -112,7 +112,7 @@ class Messages:
             "✅ <b>Haydovchi topildi!</b>\n\n"
             "📦 Buyurtma: #{order_id}\n\n"
             "👤 Haydovchi: {full_name}\n"
-            "📱 <b>Telefon:</b> <code>{phone_number}</code>\n"
+            "📱 <b>Telefon:</b> {phone_number}\n"
             "🎨 <b>Rang:</b> {car_color}\n"
             "🚗 Mashina: {car_model} ({car_color})\n"
             "🔢 Raqam: {car_number}\n\n"

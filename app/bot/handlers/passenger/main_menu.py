@@ -80,7 +80,7 @@ async def passenger_settings(message: Message, session: AsyncSession, passenger:
 ⚙️ <b>Sozlamalar</b>
 
 👤 <b>Ism:</b> {passenger.full_name}
-📱 <b>Telefon:</b> <code>{passenger.user.phone_number if passenger.user else 'N/A'}</code>
+📱 <b>Telefon:</b> {passenger.user.phone_number if passenger.user else 'N/A'}
 🚕 <b>Jami safarlar:</b> {passenger.total_trips}
 📅 <b>Ro'yxatdan o'tgan:</b> {passenger.created_at.strftime('%d.%m.%Y')}
 

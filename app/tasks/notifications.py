@@ -207,7 +207,7 @@ async def notify_passenger_driver_found(passenger_user_id: int, driver_id: int, 
 🚗 <b>Mashina:</b> {driver.car_model}
 🎨 <b>Rang:</b> {driver.car_color}
 🔢 <b>Raqam:</b> <code>{driver.car_number}</code>
-📱 <b>Telefon:</b> <code>{phone_number}</code>
+📱 <b>Telefon:</b> {phone_number}
 
 Haydovchi siz tomonga yo'lga chiqdi!
         """
@@ -327,7 +327,7 @@ async def request_passenger_confirmation(order_id: int, driver_id: int):
 👤 <b>Haydovchi:</b> {driver_name}
 🚗 <b>Mashina:</b> {driver_car}
 🔢 <b>Raqam:</b> <code>{driver_number}</code>
-📱 <b>Telefon:</b> <code>{driver_phone}</code>
+📱 <b>Telefon:</b> {driver_phone}
 
 📍 Haydovchi siz tomonga yo'lga chiqdi!
         """
