@@ -209,7 +209,11 @@ async def complaint_text_entered(message: Message, session: AsyncSession, driver
     """Shikoyat matni kiritildi - ✅ REFACTORED"""
     # Orqaga tugmasi kelganda complaint sifatida qabul qilmasdan menyuga qaytamiz
     if message.text == "⬅️ Orqaga":
-        await back_to_main_menu(message, session, driver, state)
+        await state.clear()
+        await message.answer(
+            "⬅️ Asosiy menyu",
+            reply_markup=get_driver_main_menu()
+        )
         return
 
     if message.text in ("💡 Taklif yuborish", "📝 Shikoyat yuborish"):
