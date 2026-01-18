@@ -17,4 +17,4 @@ scrape_configs:
   # Server resurslari (node_exporter)
   - job_name: "node"
     static_configs:
-      - targets: ["172.31.45.85:9100"]
+      - targets: ["node_exporter:9100"]
