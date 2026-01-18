@@ -127,6 +127,19 @@ services:
     depends_on:
       - prometheus
 
+  redis_exporter:
+    image: oliver006/redis_exporter:v1.62.0
+    container_name: hamroh_redis_exporter
+    env_file:
+      - .env
+    command:
+      - '--redis.addr=redis://redis:6379'
+    ports:
+      - "9121:9121"
+    restart: unless-stopped
+    depends_on:
+      - redis
+
   node_exporter:
     image: prom/node-exporter:v1.8.1
     container_name: hamroh_node_exporter

@@ -18,3 +18,14 @@ scrape_configs:
   - job_name: "node"
     static_configs:
       - targets: ["node_exporter:9100"]
+
+  # Redis (redis_exporter)
+  - job_name: "redis"
+    static_configs:
+      - targets: ["redis_exporter:9121"]
+
+  # Flower (Celery monitoring) - agar metrics yoqilgan bo'lsa
+  - job_name: "flower"
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["flower:5555"]
