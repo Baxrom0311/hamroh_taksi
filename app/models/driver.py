@@ -28,7 +28,26 @@ ISHLATISH:
     
     driver = await get_driver_by_id(session, driver_id)
 """
-from .dependencies import *
+from __future__ import annotations
+from typing import Optional, TYPE_CHECKING
+from decimal import Decimal
+from datetime import datetime
+
+from sqlalchemy import (
+    BigInteger, Integer, String, Boolean, DateTime, Numeric,
+    ForeignKey, CheckConstraint, Index, func, select, update, text
+)
+from sqlalchemy.orm import Mapped, mapped_column, relationship, selectinload
+from geoalchemy2 import Geometry
+
+from app.core.database import Base
+
+if TYPE_CHECKING:
+    from .user import User
+    from .route import Route
+    from .order import Order
+    from .trip import Trip
+    from .transaction import Transaction
 
 
 # ============================================
@@ -430,6 +449,8 @@ async def create_driver(
         car_model=car_model,
         car_color=car_color,
         car_number=car_number,
+        is_active=False,          # Ro'yxatdan keyin qo'lda yoqadi
+        available_seats=0,        # Keyinroq set_seats orqali belgilanadi
         **kwargs
     )
     

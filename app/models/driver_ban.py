@@ -6,7 +6,22 @@ DRIVER BAN RECORDS MODEL
 Yo'lovchilar haydovchini ban qilganda yoziladi
 """
 
-from .dependencies import *
+from __future__ import annotations
+from typing import Optional, TYPE_CHECKING
+from datetime import datetime
+
+from sqlalchemy import (
+    Integer, BigInteger, ForeignKey, Text, DateTime, func, Index, select
+)
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from app.core.database import Base
+
+if TYPE_CHECKING:
+    from .driver import Driver
+    from .passenger import Passenger
+    from .order import Order
+    from .user import User
 
 
 

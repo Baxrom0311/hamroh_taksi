@@ -6,7 +6,26 @@ ORDER (BUYURTMA) MODEL - ENG MUHIM!
 Bu model yo'lovchi va haydovchini bog'laydi
 """
 
-from .dependencies import *
+from __future__ import annotations
+from typing import Optional, TYPE_CHECKING
+from decimal import Decimal
+from datetime import datetime
+import enum
+
+from sqlalchemy import (
+    Integer, BigInteger, Text, Numeric, Boolean, String, DateTime,
+    ForeignKey, CheckConstraint, Index, Enum as SQLEnum, func,
+    select, update
+)
+from sqlalchemy.orm import Mapped, mapped_column, relationship, selectinload
+
+from app.core.database import Base
+
+if TYPE_CHECKING:
+    from .passenger import Passenger
+    from .driver import Driver
+    from .route import Route
+    from .trip import Trip
 
 
 # ============================================

@@ -4,7 +4,22 @@ app/models/passenger.py
 PASSENGER (YO'LOVCHI) MODEL
 """
 
-from .dependencies import *
+from __future__ import annotations
+from typing import Optional, List, TYPE_CHECKING
+from datetime import datetime
+import enum
+
+from sqlalchemy import (
+    BigInteger, Integer, String, DateTime, Enum as SQLEnum, ForeignKey, func,
+    select, update
+)
+from sqlalchemy.orm import Mapped, mapped_column, relationship, selectinload
+
+from app.core.database import Base
+
+if TYPE_CHECKING:
+    from .user import User
+    from .order import Order
 
 # ============================================
 # ENUM

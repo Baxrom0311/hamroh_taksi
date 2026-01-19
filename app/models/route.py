@@ -8,7 +8,21 @@ Vazir → Gurlan
 Gurlan → Qoratol
 Qoratol → Gurlan
 """
-from .dependencies import *
+from __future__ import annotations
+from typing import Optional, List, TYPE_CHECKING
+from decimal import Decimal
+from datetime import datetime
+
+from sqlalchemy import (
+    Integer, String, Numeric, Boolean, DateTime, func, Index, select
+)
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from app.core.database import Base
+
+if TYPE_CHECKING:
+    from .order import Order
+    from .trip import Trip
 
 
 from app.core.database import Base

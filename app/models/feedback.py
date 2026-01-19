@@ -2,7 +2,20 @@
 app/models/feedback.py
 """
 
-from .dependencies import *
+from __future__ import annotations
+from typing import Optional, TYPE_CHECKING
+from datetime import datetime
+import enum
+
+from sqlalchemy import (
+    BigInteger, Text, Enum as SQLEnum, DateTime, ForeignKey, func
+)
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from app.core.database import Base
+
+if TYPE_CHECKING:
+    from .user import User
 # ============================================
 # ENUMS
 # ============================================

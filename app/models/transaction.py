@@ -6,7 +6,24 @@ TRANSACTION (TRANZAKSIYA) MODEL
 To'lov va balans tarixi
 """
 
-from .dependencies import *
+from __future__ import annotations
+from typing import Optional, TYPE_CHECKING
+from decimal import Decimal
+from datetime import datetime
+import enum
+
+from sqlalchemy import (
+    Integer, BigInteger, ForeignKey, Numeric, Enum as SQLEnum, String, Text,
+    DateTime, func, Index, select, update
+)
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from app.core.database import Base
+
+if TYPE_CHECKING:
+    from .driver import Driver
+    from .user import User
+    from .order import Order
 
 
 # ============================================

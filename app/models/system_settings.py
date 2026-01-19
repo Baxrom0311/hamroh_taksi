@@ -6,7 +6,16 @@ SYSTEM SETTINGS MODEL
 Bu model tizim sozlamalarini saqlaydi (admin o'zgartira oladi)
 """
 
-from .dependencies import *
+from __future__ import annotations
+from typing import Optional
+from datetime import datetime
+
+from sqlalchemy import (
+    String, Text, DateTime, func, Index, select
+)
+from sqlalchemy.orm import Mapped, mapped_column
+
+from app.core.database import Base
 
 
 
