@@ -324,7 +324,6 @@ async def manual_complete_trip(message: Message, session: AsyncSession, driver: 
         logger.warning(f"Driver {driver.driver_id} has no current_order_id in state, checking database...")
         
         # Driver'ning aktiv buyurtmalarini topish
-        from sqlalchemy import select
         active_orders_result = await session.execute(
             select(Order)
             .where(Order.driver_id == driver.driver_id)
@@ -343,7 +342,6 @@ async def manual_complete_trip(message: Message, session: AsyncSession, driver: 
             )
             
             # Driver holatini tozalash
-            from sqlalchemy import update
             await session.execute(
                 update(Driver)
                 .where(Driver.driver_id == driver.driver_id)
