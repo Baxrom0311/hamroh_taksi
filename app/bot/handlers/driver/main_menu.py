@@ -228,7 +228,7 @@ async def seats_selected(callback: CallbackQuery, session: AsyncSession, driver:
     route_id = data.get('route_id')
     
     if not route_id:
-        if callback.message:
+        if callback.message and isinstance(callback.message, Message):
             await callback.message.answer(
                 "⚠️ Sessiya tugagan. Iltimos qayta boshlang."
             )

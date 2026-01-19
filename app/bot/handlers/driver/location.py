@@ -133,8 +133,8 @@ async def update_location_while_waiting(message: Message, session: AsyncSession,
     3. Silent update (xabar yuborilmaydi)
     """
     location = message.location
-    lat = location.latitude
-    lon = location.longitude
+    lat = location.latitude if location else None
+    lon = location.longitude if location else None
     
     point_wkt = f"POINT({lon} {lat})"
     try:

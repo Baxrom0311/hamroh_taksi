@@ -442,6 +442,10 @@ async def create_driver(
         )
         await session.commit()
     """
+    # Validatsiyadan o'tgan kwargs'larni tozalash (duplication oldini olish)
+    kwargs.pop('is_active', None)
+    kwargs.pop('available_seats', None)
+
     driver = Driver(
         user_id=user_id,
         full_name=full_name,

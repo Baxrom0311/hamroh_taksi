@@ -13,8 +13,9 @@ Yangi trip-based flow:
 from ..base import *
 from app.models.order import Order, OrderStatus
 from app.models.trip import Trip, TripStatus, get_active_trip_by_driver, start_trip, complete_trip
-from app.bot.keyboards.driver import get_driver_main_menu, get_passenger_contact_keyboard
-
+from app.bot.keyboards.driver import get_driver_main_menu
+from typing import Any, cast
+from sqlalchemy.sql import func as sql_func
 
 router = Router()
 
@@ -73,12 +74,7 @@ async def contact_passenger_handler(message: Message, session: AsyncSession, dri
             text += f"   📍 {order.pickup_location[:50]}...\n\n"
     
     # Keyboard
-    keyboard = get_passenger_contact_keyboard(trip_orders)
-    
-    if keyboard:
-        await message.answer(text, reply_markup=keyboard, parse_mode="HTML")
-    else:
-        await message.answer(text, parse_mode="HTML")
+    await message.answer(text, parse_mode="HTML")
     
     logger.info(f"Driver {driver.driver_id} viewed trip #{active_trip.trip_id} passengers")
 
@@ -133,7 +129,7 @@ async def start_trip_handler(message: Message, session: AsyncSession, driver: Dr
     
     # Avtomatik yakunlash task (10 daqiqa)
     from app.tasks.matching import auto_complete_trip_task
-    auto_complete_trip_task.apply_async(
+    cast(Any, auto_complete_trip_task).apply_async(
         args=[active_trip.trip_id],
         countdown=600  # 10 daqiqa
     )
@@ -214,4 +210,3 @@ async def cancel_trip_handler(callback: CallbackQuery, session: AsyncSession, dr
 
 
 __all__ = ['router']
-

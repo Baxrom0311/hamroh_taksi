@@ -74,6 +74,14 @@ class BalanceUpdateRequest(BaseModel):
     operation: str = "add"  # "add" yoki "subtract"
 
 
+class DriverStateUpdateRequest(BaseModel):
+    """Driver holatini qo'lda boshqarish"""
+    is_active: Optional[bool] = None
+    is_on_trip: Optional[bool] = None
+    available_seats: Optional[int] = None
+    current_route_id: Optional[int] = None
+
+
 # ============================================
 # ENDPOINTS
 # ============================================
@@ -599,6 +607,73 @@ async def get_drivers_statistics(
     
     except Exception as e:
         logger.error(f"Failed to get drivers statistics: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================
+# DRIVER HOLATINI QO'LDA YANGILASH (is_active, is_on_trip, seats, route)
+# ============================================
+
+@router.put("/{driver_id}/state")
+async def update_driver_state(
+    driver_id: int,
+    payload: DriverStateUpdateRequest,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Admin uchun: driver holatini qo'lda boshqarish.
+    
+    - is_active: online/offline
+    - is_on_trip: safarda/safarda emas
+    - available_seats: qo'lda o'rnatish
+    - current_route_id: qo'lda marshrut biriktirish yoki None
+    """
+    try:
+        async with transaction() as session:
+            driver = await get_driver_by_id(session, driver_id, eager_load_user=True)
+            if not driver:
+                raise HTTPException(status_code=404, detail="Driver topilmadi")
+
+            values = {}
+            if payload.is_active is not None:
+                values['is_active'] = payload.is_active
+                # Offline qilinsa, joy va marshrutni tozalash mumkin
+                if payload.is_active is False:
+                    values.setdefault('available_seats', 0)
+                    values.setdefault('current_route_id', None)
+            if payload.is_on_trip is not None:
+                values['is_on_trip'] = payload.is_on_trip
+            if payload.available_seats is not None:
+                values['available_seats'] = payload.available_seats
+            if payload.current_route_id is not None:
+                values['current_route_id'] = payload.current_route_id
+
+            if not values:
+                return {"success": False, "message": "O'zgartirish uchun maydon topilmadi"}
+
+            await session.execute(
+                update(Driver)
+                .where(Driver.driver_id == driver_id)
+                .values(**values)
+            )
+
+            # Yangilangan ma'lumotni qayta yuklash
+            await session.refresh(driver)
+
+            return {
+                "success": True,
+                "driver": {
+                    'driver_id': driver.driver_id,
+                    'is_active': driver.is_active,
+                    'is_on_trip': driver.is_on_trip,
+                    'available_seats': driver.available_seats,
+                    'current_route_id': driver.current_route_id
+                }
+            }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to update driver state {driver_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

@@ -109,21 +109,7 @@ def get_location_request_keyboard():
     )
 
 
-def get_passenger_contact_keyboard(active_orders):
-    """Yo'lovchilar bilan bog'lanish uchun keyboard"""
-    keyboard_buttons = []
-    
-    for order in active_orders:
-        if order.passenger and order.passenger.user:
-            passenger_name = order.passenger.full_name
-            keyboard_buttons.append([
-                InlineKeyboardButton(
-                    text=f"💬 {passenger_name}",
-                    url=f"tg://user?id={order.passenger.user.user_id}"
-                )
-            ])
-            
-    return InlineKeyboardMarkup(inline_keyboard=keyboard_buttons) if keyboard_buttons else None
+
 
 
 def get_order_cancellation_keyboard(active_orders):

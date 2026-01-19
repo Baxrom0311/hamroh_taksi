@@ -16,7 +16,8 @@ ISHLATISH:
         accept_order
     )
 """
-from sqlalchemy import update
+from sqlalchemy import update, select
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import func
 from typing import Optional
 from decimal import Decimal
@@ -47,7 +48,8 @@ from app.models.driver import Driver
 from app.models.passenger import Passenger
 from app.models.system_settings import get_pricing_settings
 from config.settings import settings
-
+from app.models.route import Route
+from app.models.trip import Trip, TripStatus
 # Geo service import (keyinroq yozamiz)
 # from app.services.geo_service import find_nearby_drivers
 
@@ -481,7 +483,11 @@ async def accept_order_by_driver(
                     .where(Driver.driver_id == driver_id)
                 )
                 updated_available_seats = result.scalar_one()
-                
+
+                # 2.8. Agar o'rinlar tugagan bo'lsa, tripni avtomatik boshlash
+                if updated_available_seats < 1:
+                    await _auto_start_trip_if_full(session, trip_id, driver_id)
+
                 return {
                     'success': True,
                     'passenger_id': passenger_user_id, # MUHIM: Yo'lovchining Telegram ID si
@@ -660,6 +666,12 @@ async def complete_trip(order_id: int, driver_id: int) -> dict:
                     .where(Driver.driver_id == driver_id)
                     .values(is_on_trip=False)
                 )
+                # Safardan keyin offline bo'lishi va qayta ruta tanlashi uchun
+                await session.execute(
+                    update(Driver)
+                    .where(Driver.driver_id == driver_id)
+                    .values(is_active=False, available_seats=0, current_route_id=None)
+                )
                 
                 # Trip holatini ham COMPLETED qilish
                 if order.trip_id:
@@ -694,6 +706,58 @@ async def complete_trip(order_id: int, driver_id: int) -> dict:
             'success': False,
             'message': f'❌ Xatolik: {str(e)}'
         }
+
+
+# ============================================
+# HELPERS
+# ============================================
+
+async def _auto_start_trip_if_full(session: AsyncSession, trip_id: int, driver_id: int) -> None:
+    """
+    Driver o'rinlari to'lganda tripni avtomatik boshlash:
+    - Trip.started_at ni set qiladi
+    - Tripdagi ACCEPTED orderlarni IN_PROGRESS qiladi
+    - Driver.is_on_trip = True, is_active = False
+    - 10 daqiqalik auto-complete taskni ishga tushiradi
+    """
+    # Trip started_at
+    await session.execute(
+        update(Trip)
+        .where(Trip.trip_id == trip_id)
+        .values(started_at=func.now())
+    )
+
+    # ACCEPTED → IN_PROGRESS
+    await session.execute(
+        update(Order)
+        .where(Order.trip_id == trip_id)
+        .where(Order.status == OrderStatus.ACCEPTED)
+        .values(
+            status=OrderStatus.IN_PROGRESS,
+            started_at=func.now()
+        )
+    )
+
+    # Driver flag
+    await session.execute(
+        update(Driver)
+        .where(Driver.driver_id == driver_id)
+        .values(is_on_trip=True, is_active=False)
+    )
+
+    # Auto-complete (10 daqiqa) — tripdagi birinchi order id bilan
+    first_order_result = await session.execute(
+        select(Order.order_id)
+        .where(Order.trip_id == trip_id)
+        .limit(1)
+    )
+    first_order_id = first_order_result.scalar_one_or_none()
+    if first_order_id:
+        from typing import Any, cast
+        from app.tasks.matching import auto_confirm_trip_task
+        cast(Any, auto_confirm_trip_task).apply_async(args=[first_order_id], countdown=600)
+
+    logger.info(f"Auto-started trip {trip_id} for driver {driver_id} (seats full)")
 
 # ============================================
 # EXPORT

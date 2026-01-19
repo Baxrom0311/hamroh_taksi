@@ -35,24 +35,11 @@ def with_driver_session(func: Callable):
     """
     Driver handler'lar uchun session va driver'ni avtomatik olish
     
-    ISHLATISH:
-        @with_driver_session
-        async def my_handler(message: Message, session, driver):
-            # session va driver allaqachon mavjud
-            await message.answer(f"Haydovchi: {driver.full_name}")
-    
-    NIMA QILADI:
-    1. Session ochadi
-    2. Driver'ni user_id bo'yicha topadi
-    3. Agar driver yo'q bo'lsa - SkipHandler raise qiladi (SILENT skip)
-    4. Session va driver'ni handler'ga beradi
-    5. Xato bo'lsa - session'ni yopadi
-    
-    Args:
-        func: Handler function (message/callback, session, driver)
-    
-    Returns:
-        Wrapped function
+    STRICT MODE:
+    1. User borligini tekshiradi
+    2. User.role == DRIVER ekanligini tekshiradi
+    3. Agar role != DRIVER -> SkipHandler (Passenger handlerlariga o'tkazish)
+    4. Agar role == DRIVER va driver record yo'q -> ERROR (Stop propagation)
     """
     
     @wraps(func)
@@ -65,30 +52,43 @@ def with_driver_session(func: Callable):
         
         async with get_session() as session:
             try:
-                # Driver'ni olish
+                # 1. User va Role tekshirish
+                from app.models.user import get_user_by_id, UserRole
+                user = await get_user_by_id(session, user_id)
+                
+                if not user:
+                    # Ro'yxatdan o'tmagan -> Skip
+                    raise SkipHandler()
+                
+                if user.role != UserRole.DRIVER:
+                    # Haydovchi emas (demak passenger yoki admin) -> Skip
+                    raise SkipHandler()
+                    
+                # 2. Driver record olish
                 driver = await get_driver_by_user_id(session, user_id)
                 
                 if not driver:
-                    # Driver topilmadi — boshqa handlerlarga o'tkazamiz (SILENT)
-                    logger.debug(f"Driver not found for user_id={user_id}, skipping to next handler")
-                    raise SkipHandler()
+                    # DATA INTEGRITY ERROR: Role driver, lekin profil yo'q
+                    logger.critical(f"Data integrity error: User {user_id} is DRIVER but has no driver profile!")
+                    error_msg = "❌ Tizim xatoligi: Haydovchi profili topilmadi. Iltimos @support'ga murojaat qiling."
+                    if isinstance(event, Message):
+                        await event.answer(error_msg)
+                    else:
+                        await event.answer(error_msg, show_alert=True)
+                    return # Stop propagation (SkipHandler EMAS!)
                 
-                # Handler'ni chaqirish (session va driver bilan)
+                # Handler'ni chaqirish
                 return await func(event, session, driver, *args, **kwargs)
             
             except SkipHandler:
-                # Shartga to'g'ri kelmadi, boshqa handlerlar ishlashini davom ettiramiz
-                raise  # ✅ CRITICAL: raise qilish kerak, return emas!
+                raise
             except Exception as e:
                 logger.error(f"Error in driver handler {func.__name__}: {e}")
-                
-                error_msg = "⚠️ Xatolik yuz berdi. Iltimos, qayta urinib ko'ring."
-                
+                err_text = "⚠️ Xatolik yuz berdi. Iltimos, qayta urinib ko'ring."
                 if isinstance(event, Message):
-                    await event.answer(error_msg)
+                    await event.answer(err_text)
                 else:
-                    await event.answer(error_msg, show_alert=True)
-                
+                    await event.answer(err_text, show_alert=True)
                 raise
     
     return wrapper
@@ -101,18 +101,6 @@ def with_driver_session(func: Callable):
 def with_passenger_session(func: Callable):
     """
     Passenger handler'lar uchun session va passenger'ni avtomatik olish
-    
-    ISHLATISH:
-        @with_passenger_session
-        async def my_handler(message: Message, session, passenger):
-            # session va passenger allaqachon mavjud
-            await message.answer(f"Yo'lovchi: {passenger.full_name}")
-    
-    Args:
-        func: Handler function (message/callback, session, passenger)
-    
-    Returns:
-        Wrapped function
     """
     
     @wraps(func)
@@ -125,30 +113,42 @@ def with_passenger_session(func: Callable):
         
         async with get_session() as session:
             try:
-                # Passenger'ni olish
+                # 1. User va Role tekshirish
+                from app.models.user import get_user_by_id, UserRole
+                user = await get_user_by_id(session, user_id)
+                
+                if not user:
+                    raise SkipHandler()
+                
+                if user.role != UserRole.PASSENGER:
+                    # Passenger emas -> Skip
+                    raise SkipHandler()
+
+                # 2. Passenger record olish
                 passenger = await get_passenger_by_user_id(session, user_id)
                 
                 if not passenger:
-                    # Passenger topilmadi — boshqa handlerlarga o'tkazamiz (SILENT)
-                    logger.debug(f"Passenger not found for user_id={user_id}, skipping to next handler")
-                    raise SkipHandler()
+                    # DATA INTEGRITY ERROR
+                    logger.critical(f"Data integrity error: User {user_id} is PASSENGER but has no profile!")
+                    error_msg = "❌ Tizim xatoligi: Yo'lovchi profili topilmadi. @support"
+                    if isinstance(event, Message):
+                        await event.answer(error_msg)
+                    else:
+                        await event.answer(error_msg, show_alert=True)
+                    return # Stop propagation
                 
-                # Handler'ni chaqirish (session va passenger bilan)
+                # Handler'ni chaqirish
                 return await func(event, session, passenger, *args, **kwargs)
             
             except SkipHandler:
-                # Shartga to'g'ri kelmadi, boshqa handlerlar ishlashini davom ettiramiz
-                raise  # ✅ CRITICAL: raise qilish kerak!
+                raise
             except Exception as e:
                 logger.error(f"Error in passenger handler {func.__name__}: {e}")
-                
-                error_msg = "⚠️ Xatolik yuz berdi. Iltimos, qayta urinib ko'ring."
-                
+                err_text = "⚠️ Xatolik yuz berdi."
                 if isinstance(event, Message):
-                    await event.answer(error_msg)
+                    await event.answer(err_text)
                 else:
-                    await event.answer(error_msg, show_alert=True)
-                
+                    await event.answer(err_text, show_alert=True)
                 raise
     
     return wrapper

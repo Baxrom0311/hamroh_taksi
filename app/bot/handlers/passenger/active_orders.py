@@ -176,7 +176,7 @@ async def change_car_handler(callback: CallbackQuery, session: AsyncSession, pas
     # Order yangilash (cancel)
     await session.commit()
     
-    if callback.message:
+    if callback.message and isinstance(callback.message, Message):
         await callback.message.edit_text(
             f"✅ <b>Buyurtma bekor qilindi</b>\n\n"
             f"💰 Haydovchiga {result.get('refunded_amount', 0):,.0f} so'm qaytarildi\n\n"

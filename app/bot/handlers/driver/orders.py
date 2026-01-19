@@ -10,6 +10,7 @@ BU HANDLER NIMA QILADI:
 """
 from ..base import *
 from aiogram.filters import StateFilter
+from aiogram.exceptions import TelegramBadRequest
 from app.core.database import transaction
 from app.models.order import Order, get_order_by_id, OrderStatus
 from app.models.trip import Trip, TripStatus
@@ -22,7 +23,6 @@ from app.bot.states.driver import DriverStates
 from app.bot.keyboards.driver import (
     get_trip_confirmation_keyboard,
     get_trip_active_keyboard,
-    get_passenger_contact_keyboard,
     get_order_cancellation_keyboard,
     get_driver_main_menu
 )
@@ -547,11 +547,10 @@ async def contact_passenger_handler(message: Message, session: AsyncSession, dri
     
     # Barcha ma'lumotlarni birlashtirish
     contact_text = f"📞 <b>Yo'lovchilar ma'lumotlari</b>\n\n" + chr(10).join(passengers_info)
-    
+
     await message.answer(
         contact_text,
         parse_mode="HTML",
-        reply_markup=get_passenger_contact_keyboard(active_orders)
     )
 
 

@@ -10,12 +10,11 @@ BU SERVICE NIMA QILADI:
 4. Auto-confirm (2 daqiqadan keyin)
 """
 
-from typing import Dict, Optional
+from typing import Dict, Optional, List
 from datetime import datetime
 from decimal import Decimal
 from loguru import logger
 from sqlalchemy.orm import selectinload
-
 from app.core.database import get_session, transaction
 from app.core.exceptions import (
     OrderNotFoundException,
@@ -27,6 +26,7 @@ from app.models.order import (
     OrderStatus,
     get_order_by_id
 )
+from app.models.trip import Trip, TripStatus
 from app.models.driver import get_driver_by_id
 from app.models.passenger import get_passenger_by_id
 from app.schemas import order
@@ -486,6 +486,83 @@ async def refund_commission_for_order(
         }
 
 
+# ========================================
+# TRIP CANCEL HELPERS (for driver side)
+# ========================================
+
+async def can_cancel_trip(trip_id: int, driver_id: int) -> Dict:
+    """
+    Trip'ni bekor qilishga ruxsat bormi?
+    """
+    try:
+        async with get_session() as session:
+            result = await session.execute(
+                select(Trip)
+                .options(selectinload(Trip.orders))
+                .where(Trip.trip_id == trip_id)
+            )
+            trip = result.scalar_one_or_none()
+
+            if not trip:
+                return {'can_cancel': False, 'reason': 'Trip topilmadi'}
+
+            if trip.driver_id != driver_id:
+                return {'can_cancel': False, 'reason': 'Bu trip sizga tegishli emas'}
+
+            if trip.status != TripStatus.ACTIVE:
+                return {'can_cancel': False, 'reason': 'Trip allaqachon yakunlangan yoki bekor qilingan'}
+
+            return {'can_cancel': True}
+    except Exception as e:
+        logger.error(f"can_cancel_trip error: {e}")
+        return {'can_cancel': False, 'reason': str(e)}
+
+
+async def cancel_pending_orders_in_trip(trip_id: int, driver_id: int) -> Dict:
+    """
+    Trip ichidagi ACCEPTED (boshlanmagan) orderlarni bekor qiladi va komissiyani qaytaradi.
+    """
+    try:
+        async with transaction() as session:
+            trip_result = await session.execute(
+                select(Trip)
+                .options(selectinload(Trip.orders).selectinload(Order.passenger))
+                .where(Trip.trip_id == trip_id)
+                .with_for_update()
+            )
+            trip = trip_result.scalar_one_or_none()
+
+            if not trip:
+                return {'success': False, 'message': 'Trip topilmadi'}
+
+            if trip.driver_id != driver_id:
+                return {'success': False, 'message': 'Bu trip sizga tegishli emas'}
+
+            refundable_orders: List[Order] = [
+                o for o in trip.orders if o.status == OrderStatus.ACCEPTED
+            ]
+
+            for order_obj in refundable_orders:
+                refund_result = await refund_commission_for_order(
+                    order_obj.order_id,
+                    reason="trip_cancelled_by_driver"
+                )
+                if not refund_result.get('success'):
+                    raise Exception(refund_result.get('message', 'Refund failed'))
+
+                # Bekor qilish (status CANCELLED, driver_id qolsin tarix uchun)
+                order_obj.status = OrderStatus.CANCELLED
+                order_obj.completed_at = None
+                order_obj.started_at = None
+                order_obj.driver_arrived = False
+
+            message = f"{len(refundable_orders)} ta buyurtma bekor qilindi"
+            return {'success': True, 'message': message}
+    except Exception as e:
+        logger.error(f"cancel_pending_orders_in_trip error: {e}")
+        return {'success': False, 'message': str(e)}
+
+
 # ============================================
 # GLOBAL INSTANCE
 # ============================================
@@ -493,4 +570,10 @@ async def refund_commission_for_order(
 trip_service = TripService()
 
 
-__all__ = ['trip_service', 'TripService', 'refund_commission_for_order']
+__all__ = [
+    'trip_service',
+    'TripService',
+    'refund_commission_for_order',
+    'can_cancel_trip',
+    'cancel_pending_orders_in_trip'
+]
