@@ -119,8 +119,8 @@ async def location_text_received(message: Message, state: FSMContext):
     # GPS koordinatalari bo'lmaydi (None)
     await state.update_data(
         pickup_location=location_text,
-        pickup_lat=None,  # ✅ GPS yo'q - matn ko'rinishida
-        pickup_lon=None   # ✅ GPS yo'q - matn ko'rinishida
+        pickup_lat=1,  # ✅ GPS yo'q - matn ko'rinishida
+        pickup_lon=1   # ✅ GPS yo'q - matn ko'rinishida
     )
     await message.answer(
         "✅ Manzil qabul qilindi\n\n"
