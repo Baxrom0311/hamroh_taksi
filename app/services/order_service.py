@@ -761,6 +761,7 @@ async def _auto_start_trip_if_full(session: AsyncSession, trip_id: int, driver_i
     - Tripdagi ACCEPTED orderlarni IN_PROGRESS qiladi
     - Driver.is_on_trip = True, is_active = False
     - 10 daqiqalik auto-complete taskni ishga tushiradi
+    - Driver va yo'lovchilarga xabar beradi
     """
     # Trip started_at
     await session.execute(
@@ -796,7 +797,69 @@ async def _auto_start_trip_if_full(session: AsyncSession, trip_id: int, driver_i
     # Trip ID bilan chaqiramiz (shunda tripdagi barcha IN_PROGRESS orderlar yakunlanadi)
     cast(Any, auto_complete_trip_task).apply_async(args=[trip_id], countdown=600)
 
-    logger.info(f"Auto-started trip {trip_id} for driver {driver_id} (seats full)")
+    # Flush to ensure fresh data for notifications
+    await session.flush()
+
+    # Xabarlar uchun ma'lumotlarni yuklash
+    trip_result = await session.execute(
+        select(Trip)
+        .options(
+            selectinload(Trip.orders)
+            .options(selectinload(Order.passenger).selectinload(Passenger.user))
+        )
+        .where(Trip.trip_id == trip_id)
+    )
+    trip = trip_result.scalar_one_or_none()
+
+    driver_result = await session.execute(
+        select(Driver).where(Driver.driver_id == driver_id)
+    )
+    driver = driver_result.scalar_one_or_none()
+
+    # Driverga xabar (UI tugmalar bilan)
+    if trip and driver and driver.user_id:
+        first_order = next((o for o in trip.orders if o.status == OrderStatus.IN_PROGRESS), None)
+        if first_order:
+            from app.bot.main import bot
+            from app.bot.keyboards.driver import get_trip_active_keyboard
+            try:
+                await bot.send_message(
+                    chat_id=driver.user_id,
+                    text=(
+                        "✅ Safar avtomatik boshlandi (o'rinlar to'ldi)\n\n"
+                        f"Trip #{trip.trip_id} | Buyurtma #{first_order.order_id}\n"
+                        "⏱ 10 daqiqadan so'ng avtomatik yakunlanadi."
+                    ),
+                    parse_mode="HTML",
+                    reply_markup=get_trip_active_keyboard(first_order.order_id)
+                )
+            except Exception as e:
+                logger.error(f"Failed to notify driver about auto-start trip {trip_id}: {e}")
+
+    # Yo'lovchilarga xabar
+    if trip and trip.orders:
+        from app.bot.main import bot
+        for order in trip.orders:
+            if order.status != OrderStatus.IN_PROGRESS:
+                continue
+            if not order.passenger or not order.passenger.user:
+                continue
+            try:
+                await bot.send_message(
+                    chat_id=order.passenger.user.user_id,
+                    text=(
+                        "✅ <b>Safar boshlandi</b>\n\n"
+                        f"📦 Buyurtma #{order.order_id}\n"
+                        f"🚗 Haydovchi: {driver.full_name if driver else 'N/A'}\n"
+                        f"🚙 Mashina: {driver.car_model if driver else 'N/A'}\n"
+                        "⏱ 10 daqiqadan so'ng avtomatik yakunlanadi."
+                    ),
+                    parse_mode="HTML"
+                )
+            except Exception as e:
+                logger.error(f"Failed to notify passenger for order {order.order_id}: {e}")
+
+    logger.info(f"Auto-started trip {trip_id} for driver {driver_id} (seats full) and sent notifications")
 
 # ============================================
 # EXPORT
