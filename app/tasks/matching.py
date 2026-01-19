@@ -178,21 +178,31 @@ async def notify_driver_new_order_task(self, driver_id: int, order_id: int):
     order_type_text = order_data['type_text']
 
     
-    # Lokatsiya linklari
-    from app.utils.location_helpers import get_google_maps_link, get_telegram_location_link
+    # Lokatsiya linklari - conditional
+    location_links_html = ""
     
-    pickup_lat = float(order.pickup_lat)
-    pickup_lon = float(order.pickup_lon)
-    
-    google_maps_link = get_google_maps_link(pickup_lat, pickup_lon, order_data['pickup'])
-    telegram_location_link = get_telegram_location_link(pickup_lat, pickup_lon)
+    if order.pickup_lat and order.pickup_lon:
+        # ✅ GPS bor - linklar ko'rsatish
+        from app.utils.location_helpers import get_google_maps_link, get_telegram_location_link
+        
+        pickup_lat = float(order.pickup_lat)
+        pickup_lon = float(order.pickup_lon)
+        
+        google_maps_link = get_google_maps_link(pickup_lat, pickup_lon, order_data['pickup'])
+        telegram_location_link = get_telegram_location_link(pickup_lat, pickup_lon)
+        
+        if google_maps_link and telegram_location_link:
+            location_links_html = f'<a href="{google_maps_link}">🗺️ Google Maps</a> | <a href="{telegram_location_link}">📍 Telegram xarita</a>'
+    else:
+        # ❌ GPS yo'q - faqat matn
+        location_links_html = "⚠️ <i>GPS yo'q - matn manzil</i>"
     
     message_text = f"""
 🔔 <b>Yangi buyurtma!</b>
 
 📦 Buyurtma #{order_id}
 📍 <b>Olish joyi:</b> {order_data['pickup']}
-<a href="{google_maps_link}">🗺️ Google Maps</a> | <a href="{telegram_location_link}">📍 Telegram xarita</a>
+{location_links_html}
 {order_type_text}
 📱 <b>Telefon:</b> {order_data['passenger_phone']}
 
@@ -475,6 +485,13 @@ async def auto_complete_trip_task(self, target_id: int):
                 # ✅ NEW: Retry on database errors
                 if hasattr(self, 'retry'):
                     raise self.retry(exc=e, countdown=60)
+
+        await session.execute(
+            update(Driver)
+            .where(Driver.driver_id == driver_id)
+            .values(is_on_trip=False, is_active=False)
+        )
+        await session.commit()
 
 
 

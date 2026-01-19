@@ -1,6 +1,6 @@
 aiofiles==23.2.1
 aiogram==3.4.1
-aiohttp==3.10.11
+aiohttp==3.9.5
 aiosignal==1.4.0
 alembic==1.13.1
 amqp==5.3.1

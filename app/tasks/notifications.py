@@ -296,13 +296,7 @@ async def request_passenger_confirmation(order_id: int, driver_id: int):
         
         # Telefon raqami faqat matn sifatida ko'rsatiladi (tel: URL Telegram tomonidan qo'llab-quvvatlanmaydi)
         
-        if driver.user:
-            keyboard_buttons.append([
-                InlineKeyboardButton(
-                    text="💬 Telegram",
-                    url=f"tg://user?id={driver.user.user_id}"
-                )
-            ])
+        # Telefon raqami faqat matn sifatida ko'rsatiladi (tel: URL Telegram tomonidan qo'llab-quvvatlanmaydi)
         
         # "Ketdik" va "Bekor qilish" tugmalari
         keyboard_buttons.append([

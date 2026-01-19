@@ -1,21 +1,17 @@
 """
 app/bot/handlers/driver/balance.py
 """
-
 from ..base import *
 from app.models.transaction import create_transaction, TransactionType
 from app.bot.states.driver import DriverStates
 from app.bot.keyboards.driver import get_driver_main_menu, get_balance_keyboard
 from aiogram.filters import StateFilter
 router = Router()
-
-
 @router.message(F.text == "💰 Balans")
 @with_driver_session  # ✅ Decorator qo'shildi
 async def show_balance(message: Message, session: AsyncSession, driver: Driver):
     """
     Balans ko'rsatish
-    
     ✅ REFACTORED: Decorator ishlatadi, session va driver avtomatik
     """
     await message.answer(
@@ -26,8 +22,6 @@ async def show_balance(message: Message, session: AsyncSession, driver: Driver):
         reply_markup=get_balance_keyboard(),
         parse_mode="HTML"
     )
-
-
 @router.callback_query(F.data == "topup_balance")
 async def topup_balance_start(callback: CallbackQuery, state: FSMContext):
     """Balans to'ldirish boshlash"""
@@ -43,8 +37,6 @@ async def topup_balance_start(callback: CallbackQuery, state: FSMContext):
     )
     await state.set_state(DriverStates.balance_topup)
     await callback.answer()
-
-
 @router.message(DriverStates.balance_topup, F.text)
 async def topup_amount_entered(message: Message, state: FSMContext):
     """Summa kiritildi"""
@@ -53,40 +45,30 @@ async def topup_amount_entered(message: Message, state: FSMContext):
             await message.answer("❌ Iltimos, summa kiriting")
             return
         amount = int(message.text.replace(" ", "").replace(",", ""))
-        
         if amount < 10000:
             await message.answer("❌ Minimal summa: 10,000 so'm")
             return
-        
         await state.update_data(topup_amount=amount)
-        
         await message.answer(
             f"✅ Summa: <b>{amount:,} so'm</b>\n\n"
             f"📸 Chekni yuboring:"
         )
-        
         await state.set_state(DriverStates.balance_receipt)
-    
     except ValueError:
         await message.answer("❌ Faqat raqam kiriting")
-
-
 @router.message(DriverStates.balance_receipt, F.photo)
 @with_driver_session  # ✅ Decorator
 async def receipt_uploaded(message: Message, session: AsyncSession, driver: Driver, state: FSMContext):
     """
     Chek yuklandi
-    
     ✅ REFACTORED: 15 qator → 5 qator
     """
     if message.photo is None:
         await message.answer("Xatolik: rasm topilmadi")
         return
-    
     photo = message.photo[-1]
     data = await state.get_data()
     amount = data['topup_amount']
-    
     # Transaction yaratish
     transaction = await create_transaction(
         session,
@@ -96,9 +78,7 @@ async def receipt_uploaded(message: Message, session: AsyncSession, driver: Driv
         receipt_file_id=photo.file_id,
         description=f"Balans to'ldirish: {amount:,} so'm"
     )
-    
     await session.commit()
-    
     await message.answer(
         f"✅ <b>So'rov yuborildi!</b>\n\n"
         f"Summa: <b>{amount:,} so'm</b>\n"
@@ -108,17 +88,11 @@ async def receipt_uploaded(message: Message, session: AsyncSession, driver: Driv
         reply_markup=get_driver_main_menu(),
         parse_mode="HTML"
     )
-    
     logger.info(
         f"Balance topup request: driver={driver.driver_id}, "
         f"amount={amount}, transaction={transaction.transaction_id}"
     )
-    
     await state.clear()
-
-
-
-
 @router.message(
     StateFilter(
         DriverStates.balance_topup,
@@ -132,8 +106,6 @@ async def cancel_balance_topup(message: Message, state: FSMContext):
         "❌ Balans to‘ldirish bekor qilindi",
         reply_markup=get_driver_main_menu()
     )
-
-
 # Fallback cancel — balansdan tashqari hollarda faqat holatni tozalaymiz
 @router.message(StateFilter("*"), F.text == "❌ Bekor qilish")
 @with_driver_session
@@ -147,5 +119,4 @@ async def cancel_fallback(message: Message, session: AsyncSession, driver: Drive
         return
     await state.clear()
     await message.answer("❌ Bekor qilindi", reply_markup=get_driver_main_menu())
-
 __all__ = ['router']

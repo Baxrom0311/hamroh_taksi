@@ -133,13 +133,10 @@ async def cmd_start(message: Message, session: AsyncSession, state: FSMContext):
                 )
                 return
             else:
-                # DB flag safarda, lekin aktiv order topilmadi -> flagni tozalaymiz
-                await session.execute(
-                    update(Driver)
-                    .where(Driver.driver_id == driver.driver_id)
-                    .values(is_on_trip=False)
-                )
-                await session.commit()
+                # ✅ AUTO-CLEANUP: Centralized helper
+                from app.utils.driver_state_utils import cleanup_stuck_driver_state
+                
+                await cleanup_stuck_driver_state(session, driver.driver_id)
                 await state.clear()
         
         # Driver menyusiga yo'naltirish

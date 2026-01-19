@@ -1,16 +1,13 @@
 
 """
 app/admin/routes/dashboard.py
-
 DASHBOARD - Asosiy statistika va monitoring
-
 ENDPOINTS:
 - GET /dashboard/stats - Asosiy statistika
 - GET /dashboard/realtime - Real-time ma'lumotlar
 - GET /dashboard/charts/trips - Safarlar grafigi
 - GET /dashboard/charts/revenue - Daromad grafigi
 """
-
 from fastapi import APIRouter, Depends, Query
 from datetime import datetime, timedelta
 from typing import Optional

@@ -87,12 +87,6 @@ def get_driver_action_keyboard(driver_user_id, order_id):
     return InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(
-                text="💬 Telegram",
-                url=f"tg://user?id={driver_user_id}"
-            )
-        ],
-        [
-            InlineKeyboardButton(
                 text="🔄 Mashinani o'zgartirish",
                 callback_data=f"change_driver:{order_id}"
             )

@@ -114,39 +114,31 @@ async def location_received(message: Message, state: FSMContext):
 async def location_text_received(message: Message, state: FSMContext):
     """Lokatsiya matn ko'rinishida yuborildi"""
     location_text = message.text or ""
-    
-    # Geocoding qilish kerak (keyinroq implementatsiya qilamiz)
-    # Hozircha default koordinatalar
+    # ✅ FIXED: Default koordinatalar olib tashlandi
+    # Faqat matn saqlanadi - haydovchi matnni ko'radi
+    # GPS koordinatalari bo'lmaydi (None)
     await state.update_data(
         pickup_location=location_text,
-        pickup_lat=41.3111,  # Toshkent default
-        pickup_lon=69.2797
+        pickup_lat=None,  # ✅ GPS yo'q - matn ko'rinishida
+        pickup_lon=None   # ✅ GPS yo'q - matn ko'rinishida
     )
-    
     await message.answer(
         "✅ Manzil qabul qilindi\n\n"
         "📍 Lokatsiya haqida qo'shimcha ma'lumot yozing:\n"
-        "(Masalan: \"Uy oldida\", \"Kafe yonida\", \"Ko'cha 5\")"
+        "(Masalan: \"Uy oldida\", \"Kafe yonida\", \"Ko'cha 5\")",
+        reply_markup=ReplyKeyboardRemove()
     )
-    
     await state.set_state(PassengerStates.location_description)
-
-
 @router.message(PassengerStates.location_description, F.text)
 async def location_description_received(message: Message, state: FSMContext):
     """Lokatsiya izohi olindi"""
     description = message.text or ""
-    
     await state.update_data(location_description=description)
-    
     await message.answer(
         Messages.Passenger.LOCATION_DESC_RECEIVED,
         reply_markup=get_passenger_count_keyboard()
     )
-    
     await state.set_state(PassengerStates.add_details)
-
-
 @router.callback_query(
     PassengerStates.add_details,
     F.data.startswith("passenger_count:")
@@ -155,7 +147,6 @@ async def location_description_received(message: Message, state: FSMContext):
 async def passenger_count_selected(callback: CallbackQuery, session: AsyncSession, state: FSMContext):
     """Yo'lovchilar soni yoki pochtani tanlandi"""
     count = int(callback.data.split(":")[1]) # type: ignore
-    
     if count == 0:
         # Pochta tanlandi
         await state.update_data(
@@ -170,12 +161,9 @@ async def passenger_count_selected(callback: CallbackQuery, session: AsyncSessio
             has_luggage=False,
             luggage_count=0
         )
-    
     # Buyurtmani yaratish
     await finalize_order(callback.message, session, state)
     await callback.answer()
-
-
 async def finalize_order(message, session: AsyncSession, state: FSMContext):
     """
     Buyurtmani yaratish
@@ -372,15 +360,21 @@ async def passenger_cancel_order(callback: CallbackQuery, session: AsyncSession,
                     reason="cancelled_by_passenger"
                 )
 
-            await cancel_session.execute(
+            # ✅ ATOMIC UPDATE: Faqat PENDING yoki ACCEPTED bo'lsa bekor qilish
+            result = await cancel_session.execute(
                 update(Order)
                 .where(Order.order_id == order_id)
+                .where(Order.status.in_([OrderStatus.PENDING, OrderStatus.ACCEPTED]))
                 .values(
                     status=OrderStatus.CANCELLED,
                     cancellation_reason='passenger_cancelled',
                     cancelled_at=func.now()
                 )
             )
+            
+            if result.rowcount == 0:
+                await callback.answer("⚠️ Buyurtma holati o'zgargan, bekor qilib bo'lmaydi.", show_alert=True)
+                return
             
             # Driver'ni bo'shatish
             if order.driver_id:

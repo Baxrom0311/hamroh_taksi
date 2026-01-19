@@ -98,10 +98,9 @@ def setup_dispatcher(storage: Optional[RedisStorage] = None) -> Dispatcher:
     # 2. Driver Handlers
     from app.bot.handlers.driver.main_menu import router as driver_menu_router
     from app.bot.handlers.driver.orders import router as driver_orders_router
-    from app.bot.handlers.driver.trip_handlers import router as driver_trip_router
     from app.bot.handlers.driver.balance import router as driver_balance_router
     from app.bot.handlers.driver.support import router as driver_support_router
-    from app.bot.handlers.driver.location import router as driver_location_router
+    from app.bot.handlers.driver.location import router as driver_location_router  # ✅ Restored
     
     # 3. Passenger Handlers
     from app.bot.handlers.passenger.main_menu import router as passenger_menu_router
@@ -130,7 +129,7 @@ def setup_dispatcher(storage: Optional[RedisStorage] = None) -> Dispatcher:
     # 3. Driver Logic
     dp.include_router(driver_menu_router)
     dp.include_router(driver_orders_router)
-    dp.include_router(driver_trip_router)
+    # dp.include_router(driver_trip_router)  # ❌ REMOVED: File does not exist
     dp.include_router(driver_balance_router)
     dp.include_router(driver_support_router)
     dp.include_router(driver_location_router)

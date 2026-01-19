@@ -36,7 +36,7 @@ def upgrade() -> None:
     op.execute("""
         CREATE UNIQUE INDEX idx_unique_pending_order_per_passenger
         ON orders (passenger_id)
-        WHERE status = 'pending';
+        WHERE status = 'PENDING';
     """)
     
     # Alternative: Agar multiple PENDING bo'lishi kerak bo'lsa (per route)

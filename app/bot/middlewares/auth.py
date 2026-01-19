@@ -25,7 +25,16 @@ class AuthMiddleware(BaseMiddleware):
             user_id = event.from_user.id
         
         if user_id:
-            async with get_session() as session:
-                await update_last_active(session, user_id)
+            from app.core.redis_client import redis_client
+            
+            # Redis throttling (5 minutda 1 marta update)
+            throttle_key = f"user:last_active:{user_id}"
+            should_update = not await redis_client.exists(throttle_key)
+            
+            if should_update:
+                async with get_session() as session:
+                    await update_last_active(session, user_id)
+                # Redis key set (5 min TTL)
+                await redis_client.set(throttle_key, "1", ex=300)
         
         return await handler(event, data)

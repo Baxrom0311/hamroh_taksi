@@ -2,14 +2,12 @@
 app/bot/handlers/registration.py
 RO'YXATDAN O'TISH HANDLER (PYLANCE-CLEAN)
 """
-
 from .base import *
 from sqlalchemy.exc import IntegrityError
 from app.models.user import create_user, UserRole, get_user_by_phone
 from app.models.driver import create_driver
 from app.models.passenger import Gender, create_passenger
 from app.core.database import get_session
-
 from app.bot.states.registration import RegistrationStates
 from app.bot.keyboards.driver import get_driver_main_menu
 from app.bot.keyboards.passenger import get_passenger_main_menu
@@ -18,30 +16,21 @@ from app.core.validation import (  # ✅ Validation qo'shish
     validate_full_name,
     validate_car_number
 )
-
 router = Router()
-
-
 # =========================================================
 # HELPERS (TYPE SAFE)
 # =========================================================
-
 def require_text(message: Message) -> str:
     if message.text is None:
         raise ValueError("Message text is None")
     return message.text
-
-
 def require_user(message: Message):
     if message.from_user is None:
         raise ValueError("Telegram user not found")
     return message.from_user
-
-
 # =========================================================
 # 1. ROLE SELECTION
 # =========================================================
-
 @router.message(
     RegistrationStates.choose_role,
     F.text & F.text.in_(["🚗 Haydovchi sifatida", "👤 Yo'lovchi sifatida"]),
@@ -69,27 +58,27 @@ async def choose_role(message: Message, state: FSMContext) -> None:
     )
 
     await state.set_state(RegistrationStates.phone_number)
-
-
 # =========================================================
 # 2. PHONE (CONTACT)
 # =========================================================
-
 @router.message(RegistrationStates.phone_number, F.contact)
 async def phone_contact(message: Message, state: FSMContext) -> None:
     contact = message.contact
     if contact is None:
         return
-
     phone = contact.phone_number
     if not phone.startswith("+"):
         phone = f"+{phone}"
-
     await state.update_data(phone_number=phone)
-
-    import random
-    sms_code = "".join(str(random.randint(0, 9)) for _ in range(6))
+    # ✅ SECURITY: Secure RNG
+    import secrets
+    import string
+    # 6 digit secure code
+    sms_code = "".join(secrets.choice(string.digits) for _ in range(6))
     await state.update_data(sms_code=sms_code)
+    
+    # TODO: PRODUCTION: Replace with real SMS provider (e.g., Eskiz, Twilio)
+    # Hozircha "Demo" sifatida chatga yuborilmoqda
 
     await message.answer(
         f"📨 SMS kod yuborildi\n\n"
@@ -118,8 +107,10 @@ async def phone_text(message: Message, state: FSMContext) -> None:
 
     await state.update_data(phone_number=text)
 
-    import random
-    sms_code = "".join(str(random.randint(0, 9)) for _ in range(6))
+    # ✅ SECURITY: Secure RNG
+    import secrets
+    import string
+    sms_code = "".join(secrets.choice(string.digits) for _ in range(6))
     await state.update_data(sms_code=sms_code)
 
     await message.answer(
@@ -137,6 +128,16 @@ async def phone_text(message: Message, state: FSMContext) -> None:
 async def sms_code_verify(message: Message, state: FSMContext) -> None:
     text = require_text(message).strip()
     data = await state.get_data()
+
+    # ✅ SECURITY: Rate Limit (Brute force protection)
+    # 1 daqiqada 5 ta urinish ruxsat etiladi
+    from app.utils.rate_limiter import RateLimiter, redis_client
+    
+    verify_limiter = RateLimiter(redis_client, max_requests=5, window_seconds=60, prefix="sms_verify")
+    
+    if not await verify_limiter.check_limit(message.from_user.id, "verify_attempt"):
+        await message.answer("🚫 <b>Juda ko'p urinish!</b>\n\nIltimos, 1 daqiqa kuting.", parse_mode="HTML")
+        return
 
     if text != data.get("sms_code"):
         await message.answer("❌ Noto'g'ri kod, qayta urinib ko'ring:")
@@ -165,26 +166,19 @@ async def driver_full_name(message: Message, state: FSMContext) -> None:
     if not is_valid:
         await message.answer(f"❌ {error_msg or 'Noto\'g\'ri format'}")
         return
-    
     await state.update_data(full_name=name)
     await message.answer("🚙 Mashina modeli:")
     await state.set_state(RegistrationStates.driver_car_model)
-
-
 @router.message(RegistrationStates.driver_car_model, F.text)
 async def driver_car_model(message: Message, state: FSMContext) -> None:
     await state.update_data(car_model=require_text(message))
     await message.answer("🎨 Mashina rangi:")
     await state.set_state(RegistrationStates.driver_car_color)
-
-
 @router.message(RegistrationStates.driver_car_color, F.text)
 async def driver_car_color(message: Message, state: FSMContext) -> None:
     await state.update_data(car_color=require_text(message))
     await message.answer("🔢 Mashina raqami (01 A 123 BC):")
     await state.set_state(RegistrationStates.driver_car_number)
-
-
 @router.message(RegistrationStates.driver_car_number, F.text)
 @with_session  # ✅ Decorator
 async def driver_car_number(message: Message, session: AsyncSession, state: FSMContext) -> None:
@@ -276,12 +270,9 @@ async def driver_car_number(message: Message, session: AsyncSession, state: FSMC
 
     finally:
         await state.clear()
-
-
 # =========================================================
 # 5. PASSENGER REGISTRATION
 # =========================================================
-
 @router.message(RegistrationStates.passenger_full_name, F.text)
 async def passenger_full_name(message: Message, state: FSMContext) -> None:
     name = require_text(message)
@@ -314,8 +305,6 @@ async def passenger_gender(message: Message, state: FSMContext) -> None:
 
     await message.answer("🎂 Yoshingiz:", reply_markup=ReplyKeyboardRemove())
     await state.set_state(RegistrationStates.passenger_age)
-
-
 @router.message(RegistrationStates.passenger_age, F.text)
 @with_session  # ✅ Decorator
 async def passenger_age(message: Message, session: AsyncSession, state: FSMContext) -> None:
@@ -367,74 +356,4 @@ async def passenger_age(message: Message, session: AsyncSession, state: FSMConte
     )
 
     await state.clear()
-
-
-# =========================================================
-# LEGACY TEST HELPER
-# =========================================================
-
-async def complete_registration(message: Message, state: FSMContext) -> None:
-    """
-    Tests call this to finish registration in a single step using current state data.
-    """
-    data = await state.get_data()
-    if not data:
-        await message.answer("❌ Ma'lumotlar topilmadi.")
-        return
-
-    role_value = data.get("role") or UserRole.PASSENGER
-    if isinstance(role_value, str):
-        role_value = UserRole.DRIVER if "driver" in role_value.lower() else UserRole.PASSENGER
-
-    phone_number = data.get("phone_number")
-    full_name = data.get("full_name") or (require_text(message) if message.text else "Foydalanuvchi")
-    first_name = full_name.split(" ")[0]
-
-    session_ctx = get_session()
-    owns_session = True
-    session: AsyncSession
-
-    try:
-        if isinstance(session_ctx, AsyncSession):
-            session = session_ctx
-            owns_session = False
-        else:
-            session = await session_ctx.__aenter__()  # type: ignore[attr-defined]
-
-        user = await create_user(
-            session,
-            user_id=message.from_user.id if message.from_user else None,
-            phone_number=phone_number,
-            first_name=first_name,
-            role=role_value,
-        )
-
-        if role_value == UserRole.DRIVER:
-            await create_driver(
-                session,
-                user_id=user.user_id,
-                full_name=full_name,
-                phone_number=phone_number,
-                car_model=data.get("car_model", "Test Car"),
-                car_color=data.get("car_color", "Oq"),
-                car_number=data.get("car_number", "TEST-001"),
-            )
-        else:
-            await create_passenger(
-                session,
-                user_id=user.user_id,
-                full_name=full_name,
-                gender=data.get("gender", Gender.MALE),
-                age=data.get("age", 25),
-                phone_number=phone_number,
-            )
-
-        await session.commit()
-        await state.clear()
-        await message.answer("✅ Ro'yxatdan o'tish yakunlandi!")
-    finally:
-        if owns_session and not isinstance(session_ctx, AsyncSession):
-            await session_ctx.__aexit__(None, None, None)  # type: ignore[attr-defined]
-
-
 __all__ = ["router"]

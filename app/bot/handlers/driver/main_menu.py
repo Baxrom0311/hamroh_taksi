@@ -68,13 +68,11 @@ async def trip_in_progress_blocker(message: Message, state: FSMContext):
         active_order = active_orders_result.scalar_one_or_none()
         
         if not active_order:
+            # ✅ AUTO-CLEANUP: Centralized helper
+            from app.utils.driver_state_utils import cleanup_stuck_driver_state
+            
             await state.clear()
-            await session.execute(
-                update(Driver)
-                .where(Driver.driver_id == driver.driver_id)
-                .values(is_on_trip=False)
-            )
-            await session.commit()
+            await cleanup_stuck_driver_state(session, driver.driver_id)
             # Driver menyusiga qaytish haqida xabar bermaymiz, passenger konteksti bo'lishi mumkin
             return
         
@@ -85,7 +83,6 @@ async def trip_in_progress_blocker(message: Message, state: FSMContext):
                 "📞 Yo'lovchi bilan bog'lanish",
                 "🚗 Yo'lga chiqdik",
                 "❌ Buyurtmani bekor qilish",
-                "❌ Safarni bekor qilish",
             }
         elif active_order.status == OrderStatus.IN_PROGRESS:
             allowed = {
@@ -138,7 +135,6 @@ async def start_accepting_orders(message: Message, session: AsyncSession, driver
             Messages.Driver.BLOCKED.format(reason=driver.block_reason or 'Noma\'lum')
         )
         return
-        # ❗ Allaqachon aktivmi? (FSM yo‘qolgan bo‘lishi mumkin)
     # ❗ Allaqachon aktivmi? (FSM yo‘qolgan bo‘lishi mumkin)
     if driver.is_active:
         await state.set_state(DriverStates.waiting_orders)
@@ -161,10 +157,36 @@ async def start_accepting_orders(message: Message, session: AsyncSession, driver
         )
         return
     
-    # Allaqachon safardaligi?
+    # ✅ CRITICAL FIX: Allaqachon safardaligi tekshiruvi + AUTO-CLEANUP
     if driver.is_on_trip:
-        await message.answer(Messages.Driver.ALREADY_ON_TRIP)
-        return
+        # Database'dan aktiv order borligini tekshirish
+        from sqlalchemy import select
+        active_check = await session.execute(
+            select(Order.order_id)
+            .where(Order.driver_id == driver.driver_id)
+            .where(Order.status.in_([OrderStatus.ACCEPTED, OrderStatus.IN_PROGRESS]))
+            .limit(1)
+        )
+        has_active_order = active_check.scalar_one_or_none()
+        
+        if has_active_order:
+            # ✅ Haqiqatan ham safarda - bloklash to'g'ri
+            await message.answer(Messages.Driver.ALREADY_ON_TRIP)
+            return
+        else:
+            # ❌ STUCK STATE: is_on_trip=True lekin order yo'q!
+            # ✅ AUTO-CLEANUP: Centralized helper
+            from app.utils.driver_state_utils import cleanup_stuck_driver_state
+            
+            await cleanup_stuck_driver_state(session, driver.driver_id)
+            
+            await message.answer(
+                "✅ <b>Holatingiz tuzatildi!</b>\n\n"
+                "Siz safarda emasdingiz, lekin tizimda xatolik bo'lgan.\n"
+                "Endi buyurtma qabul qilishingiz mumkin.",
+                parse_mode="HTML"
+            )
+            # Davom etish - quyidagi kodlar location so'raydi
     
     # Jonli joylashuv so'rash
     await message.answer(

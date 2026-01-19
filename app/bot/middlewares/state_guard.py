@@ -67,50 +67,62 @@ class StateGuardMiddleware(BaseMiddleware):
             return await handler(event, data)
         
         try:
-            # Database'dan user rolini olish
-            async with get_session() as session:
-                user = await get_user_by_id(session, user_id)
-                
-                if not user:
-                    # User ro'yxatdan o'tmagan - state tozalash
-                    current_state = await state.get_state()
-                    if current_state:
-                        logger.info(f"Clearing state for unregistered user {user_id}")
-                        await state.clear()
-                    return await handler(event, data)
-                
-                # Current state'ni tekshirish
-                current_state = await state.get_state()
-                
-                if current_state:
-                    # State pollution tekshiruvi
-                    should_clear = False
-                    reason = ""
+            # 1. Check FSM (Cache)
+            data_context = await state.get_data()
+            user_role = data_context.get("role")
+            
+            if user_role:
+                # Cache hit - use stored role
+                logger.debug(f"StateGuard: Role hit from cache for {user_id}: {user_role}")
+            else:
+                # Cache miss - fetch from DB
+                async with get_session() as session:
+                    user = await get_user_by_id(session, user_id)
                     
-                    # Driver user uchun Passenger state
-                    if user.role == UserRole.DRIVER and "Passenger" in current_state:
-                        should_clear = True
-                        reason = f"Driver user {user_id} had Passenger state"
+                    if not user:
+                        # User ro'yxatdan o'tmagan - state tozalash
+                        current_state = await state.get_state()
+                        if current_state:
+                            logger.info(f"Clearing state for unregistered user {user_id}")
+                            await state.clear()
+                        return await handler(event, data)
                     
-                    # Passenger user uchun Driver state
-                    elif user.role == UserRole.PASSENGER and "Driver" in current_state:
-                        should_clear = True
-                        reason = f"Passenger user {user_id} had Driver state"
+                    # Store in FSM
+                    user_role = user.role
+                    await state.update_data(role=user_role)
+            
+            # Current state'ni tekshirish
+            current_state = await state.get_state()
+            
+            if current_state:
+                # State pollution tekshiruvi
+                should_clear = False
+                reason = ""
+                
+                # Driver user uchun Passenger state
+                if user_role == UserRole.DRIVER and "Passenger" in current_state:
+                    should_clear = True
+                    reason = f"Driver user {user_id} had Passenger state"
+                
+                # Passenger user uchun Driver state
+                elif user_role == UserRole.PASSENGER and "Driver" in current_state:
+                    should_clear = True
+                    reason = f"Passenger user {user_id} had Driver state"
+                
+                # Agar noto'g'ri state bo'lsa, tozalash
+                if should_clear:
+                    logger.warning(
+                        f"🚨 STATE POLLUTION DETECTED: {reason} "
+                        f"(state: {current_state}). Clearing..."
+                    )
+                    await state.clear()
                     
-                    # Agar noto'g'ri state bo'lsa, tozalash
-                    if should_clear:
-                        logger.warning(
-                            f"🚨 STATE POLLUTION DETECTED: {reason} "
-                            f"(state: {current_state}). Clearing..."
+                    # User'ga xabar (optional)
+                    if isinstance(event, Message):
+                        await event.answer(
+                            "⚠️ Tizim xatosi aniqlandi va tuzatildi.\n"
+                            "Iltimos, jarayonni qaytadan boshlang."
                         )
-                        await state.clear()
-                        
-                        # User'ga xabar (optional)
-                        if isinstance(event, Message):
-                            await event.answer(
-                                "⚠️ Tizim xatosi aniqlandi va tuzatildi.\n"
-                                "Iltimos, jarayonni qaytadan boshlang."
-                            )
         
         except Exception as e:
             # Middleware xatosi handler'ni to'xtatmasligi kerak

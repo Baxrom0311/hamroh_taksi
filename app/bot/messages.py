@@ -37,10 +37,8 @@ class Messages:
         )
         NO_ACTIVE_ROUTES = "❌ Hozirda aktiv marshrutlar yo'q"
         LOCATION_REQUEST = (
-            "📍 <b>Jonli joylashuv</b>\n\n"
+            "📍 <b>Locatsiyangizni yuboring</b>\n\n"
             "Buyurtma qabul qilish uchun lokatsiyangizni yuboring.\n\n"
-            "💡 <b>Maslahat:</b> Telegram'da lokatsiya yuborishda \"Jonli joylashuv\" tanlasangiz, "
-            "lokatsiyangiz avtomatik yangilanadi va biz har safar aniq joylashuvni bilamiz.\n\n"
             "📍 Lokatsiyani yuborish tugmasini bosing:"
         )
         QUEUE_JOINED = (

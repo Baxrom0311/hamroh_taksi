@@ -12,39 +12,43 @@ BU FAYL NIMA QILADI:
 from typing import Optional
 
 
-def get_google_maps_link(lat: float, lon: float, label: Optional[str] = None) -> str:
+def get_google_maps_link(lat: Optional[float], lon: Optional[float], label: Optional[str] = None) -> Optional[str]:
     """
     Google Maps link yaratish
     
     Args:
-        lat: Latitude
-        lon: Longitude
+        lat: Latitude (None bo'lishi mumkin)
+        lon: Longitude (None bo'lishi mumkin)
         label: Xarita label (ixtiyoriy)
     
     Returns:
-        Google Maps URL
+        Google Maps URL yoki None (agar koordinatalar bo'lmasa)
     """
+    if lat is None or lon is None:
+        return None  # ✅ GPS yo'q - link yo'q
     return f"https://www.google.com/maps?q={lat},{lon}"
 
 
-def get_telegram_location_link(lat: float, lon: float) -> str:
+def get_telegram_location_link(lat: Optional[float], lon: Optional[float]) -> Optional[str]:
     """
     Telegram location link yaratish
     
     Args:
-        lat: Latitude
-        lon: Longitude
+        lat: Latitude (None bo'lishi mumkin)
+        lon: Longitude (None bo'lishi mumkin)
     
     Returns:
-        Telegram location URL (tg://location?lat=...&lon=...)
+        Telegram location URL yoki None
     """
+    if lat is None or lon is None:
+        return None  # ✅ GPS yo'q - link yo'q
     return f"tg://location?lat={lat}&lon={lon}"
 
 
 def format_location_with_links(
     location_text: str,
-    lat: float,
-    lon: float,
+    lat: Optional[float],
+    lon: Optional[float],
     label: Optional[str] = None
 ) -> str:
     """
@@ -52,13 +56,17 @@ def format_location_with_links(
     
     Args:
         location_text: Lokatsiya matni
-        lat: Latitude
-        lon: Longitude
+        lat: Latitude (None bo'lishi mumkin)
+        lon: Longitude (None bo'lishi mumkin)
         label: Label (ixtiyoriy)
     
     Returns:
-        HTML formatdagi matn (Google Maps va Telegram linklari bilan)
+        HTML formatdagi matn (Google Maps va Telegram linklari bilan yoki linklar)
     """
+    if lat is None or lon is None:
+        # ✅ GPS yo'q - faqat matn
+        return f"{location_text}\n\n⚠️ GPS lokatsiya yo'q - faqat matn manzil"
+    
     google_link = get_google_maps_link(lat, lon, label)
     telegram_link = get_telegram_location_link(lat, lon)
     
@@ -70,10 +78,12 @@ def format_location_with_links(
     """.strip()
 
 
+
+
 def format_location_message(
     location_text: str,
-    lat: float,
-    lon: float,
+    lat: Optional[float],
+    lon: Optional[float],
     show_links: bool = True
 ) -> str:
     """
@@ -81,8 +91,8 @@ def format_location_message(
     
     Args:
         location_text: Lokatsiya matni
-        lat: Latitude
-        lon: Longitude
+        lat: Latitude (None bo'lishi mumkin)
+        lon: Longitude (None bo'lishi mumkin)
         show_links: Linklarni ko'rsatish
     
     Returns:

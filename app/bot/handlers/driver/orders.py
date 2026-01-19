@@ -300,118 +300,78 @@ async def driver_started_trip(message: Message, session: AsyncSession, driver: D
 
 
 # ============================================
-# YETIB KELDIM (GPS CHECK) - ESKILANGA
-# ============================================
-
-@router.message(
-    DriverStates.trip_in_progress,
-    F.text == "📍 Yetib keldim"
-)
-@with_driver_session  # ✅ Decorator
-async def driver_arrived(message: Message, session: AsyncSession, driver: Driver, state: FSMContext):
-    """
-    Haydovchi yo'lovchi joyiga yetib keldi
-    
-    ✅ REFACTORED: Session va driver avtomatik
-    """
-    data = await state.get_data()
-    order_id = data.get('current_order_id')
-    
-    if not order_id:
-        await message.answer(Messages.Error.ACTIVE_ORDER_NOT_FOUND)
-        return
-    
-    # GPS proximity check (TODO: implement)
-    
-    # Yo'lovchiga tasdiqlash so'rash
-    await message.answer(
-        "✅ <b>Yo'lovchiga xabar yuborildi</b>\n\n"
-        "Yo'lovchi mashinaga tushganini tasdiqlashi kutilmoqda...\n\n"
-        "⏱ Maksimal 2 daqiqa"
-    )
-    
-    # Celery task (yo'lovchiga tasdiqlash so'rash + auto-confirm)
-    from app.tasks.notifications import request_passenger_confirmation
-    request_passenger_confirmation.delay(order_id, driver.driver_id) # type: ignore
-    
-    await state.set_state(DriverStates.trip_confirmation)
-
-
-# ============================================
-# SAFAR BOSHLASH (YO'LOVCHI TASDIQLADI)
-# ============================================
-
-@router.callback_query(F.data.startswith("trip_confirmed:"))
-@with_driver_session  # ✅ Decorator
-async def trip_confirmed(callback: CallbackQuery, session: AsyncSession, driver: Driver, state: FSMContext):
-    """
-    Yo'lovchi tasdiqladi - safar boshlandi
-    
-    ✅ REFACTORED: Session va driver avtomatik
-    """
-    if callback.data is None:
-        await callback.answer(Messages.Error.CALLBACK_DATA_MISSING)
-        return
-
-    order_id = int(callback.data.split(":")[1])
-    
-    # Safarni boshlash
-    result = await start_trip(order_id, driver.driver_id)
-    
-    if result['success']:
-        # ✅ NOTE: Auto-complete task allaqachon driver_started_trip'da ishga tushgan
-        # Bu yerda dublikat yaratmaslik uchun OLIB TASHLANDI
-        
-        # State yangilash - safar boshlandi
-        await state.update_data(current_order_id=order_id)
-        await state.set_state(DriverStates.trip_in_progress)
-        
-        if isinstance(callback.message, Message):
-            await callback.message.answer(
-                f"✅ <b>Safar boshlandi!</b>\n\n"
-                f"📦 Buyurtma #{order_id}\n\n"
-                f"⏱ <b>10 daqiqadan so'ng</b> safar avtomatik yakunlanadi.",
-                reply_markup=get_trip_active_keyboard(order_id),
-                parse_mode="HTML"
-            )
-            await callback.message.delete()
-        
-        logger.info(f"Trip started: order={order_id}, driver={driver.driver_id}")
-        await callback.answer("✅ Safar boshlandi!")  # ✅ User feedback
-    
-    else:
-        if callback.message is not None:
-            await callback.message.edit_text(f"❌ {result['message']}") # type: ignore
-        await callback.answer("❌ Xatolik", show_alert=True)  # ✅ Error feedback
-    
-    # ✅ Callback.answer() allaqachon yuqorida
-
-
-# ============================================
 # SAFAR YAKUNLASH (MANUAL FALLBACK)
 # ============================================
 
 @router.message(
-    DriverStates.trip_in_progress,
+    StateFilter("*"),  # ✅ CRITICAL FIX: Har qanday state'da qabul qilish!
     F.text == "✅ Safarni yakunlash"
 )
 @with_driver_session
 async def manual_complete_trip(message: Message, session: AsyncSession, driver: Driver, state: FSMContext):
     """
     Haydovchi o'zi safarni yakunlasa (timer ishlamagan holatlarga fallback).
+    
+    ✅ CRITICAL FIX: State'ga bog'liq emas, database holatiga qarab ishlaydi!
+    Bu driver FSM state yo'qolsa ham safar yakunlash imkonini beradi.
     """
+    # 1. Avval state'dan order_id olishga harakat
     data = await state.get_data()
     order_id = data.get('current_order_id')
-
+    
+    # 2. Agar state'da yo'q bo'lsa, database'dan o'zining aktiv order'ini topamiz
     if not order_id:
-        await message.answer(Messages.Error.ACTIVE_ORDER_NOT_FOUND)
-        return
+        logger.warning(f"Driver {driver.driver_id} has no current_order_id in state, checking database...")
+        
+        # Driver'ning aktiv buyurtmalarini topish
+        from sqlalchemy import select
+        active_orders_result = await session.execute(
+            select(Order)
+            .where(Order.driver_id == driver.driver_id)
+            .where(Order.status.in_([OrderStatus.ACCEPTED, OrderStatus.IN_PROGRESS]))
+            .order_by(Order.created_at.desc())  # Eng yangi birinchi
+            .limit(1)
+        )
+        active_order = active_orders_result.scalar_one_or_none()
+        
+        if not active_order:
+            # ✅ CRITICAL FIX: Aktiv order yo'q, lekin driver safarda qolgan bo'lishi mumkin
+            # Buni avtomatik tozalash kerak!
+            logger.warning(
+                f"Driver {driver.driver_id} has no active orders but may be stuck in trip state. "
+                f"Auto-cleaning driver state..."
+            )
+            
+            # Driver holatini tozalash
+            from sqlalchemy import update
+            await session.execute(
+                update(Driver)
+                .where(Driver.driver_id == driver.driver_id)
+                .values(is_on_trip=False, is_active=False)
+            )
+            await session.commit()
+            
+            # State'ni tozalash
+            await state.clear()
+            
+            await message.answer(
+                "✅ Holatingiz tozalandi!\n\n"
+                "Aktiv buyurtma topilmadi, siz endi yangi buyurtma qabul qilishingiz mumkin.",
+                reply_markup=get_driver_main_menu()
+            )
+            logger.info(f"Driver {driver.driver_id} state auto-cleaned successfully")
+            return
+        
+        order_id = active_order.order_id
+        logger.info(f"Found active order {order_id} from database for driver {driver.driver_id}")
 
+    # 3. Safarni yakunlash
     result = await complete_trip(order_id, driver.driver_id)
     if not result['success']:
         await message.answer(result['message'])
         return
 
+    # 4. Order ma'lumotlarini olish (yo'lovchiga reyting so'rash uchun)
     updated_order_result = await session.execute(
         select(Order)
         .options(selectinload(Order.passenger).selectinload(Passenger.user))
@@ -428,7 +388,7 @@ async def manual_complete_trip(message: Message, session: AsyncSession, driver: 
     )
     await state.clear()
 
-    # Yo'lovchidan reyting so'rash
+    # 5. Yo'lovchidan reyting so'rash
     if updated_order and updated_order.passenger and updated_order.passenger.user:
         from app.bot.main import bot
         from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
@@ -813,5 +773,135 @@ async def reject_order_handler(callback: CallbackQuery, session: AsyncSession, d
     )
     
     await callback.answer("Buyurtma rad etildi")
+
+
+# ============================================
+# SAFAR (TRIP) BEKOR QILISH
+# ============================================
+
+@router.message(
+    StateFilter("*"),
+    F.text.in_(["❌ Safarni bekor qilish", "Safarni bekor qilish"])
+)
+@with_driver_session
+async def cancel_trip_handler(message: Message, session: AsyncSession, driver: Driver, state: FSMContext):
+    """
+    Safar (trip) bekor qilish - tripdagi BARCHA buyurtmalarni bekor qiladi
+    
+    CRITICAL: Bu juda katta harakat!
+    - Tripdagi barcha ACCEPTED buyurtmalar cancelled
+    - Komissiyalar qaytariladi
+    - Warning beriladi
+    """
+    # Aktiv trip olish
+    from app.models.trip import get_active_trip_by_driver
+    active_trip = await get_active_trip_by_driver(session, driver.driver_id)
+    
+    if not active_trip:
+        await message.answer(
+            "⚠️ Aktiv trip topilmadi.\n\n"
+            "Avval buyurtma qabul qiling.",
+            reply_markup=get_driver_main_menu()
+        )
+        return
+    
+    # Permission check
+    from app.services.trip_service import can_cancel_trip
+    check_result = await can_cancel_trip(active_trip.trip_id, driver.driver_id)
+    
+    if not check_result['can_cancel']:
+        await message.answer(
+            f"❌ {check_result['reason']}",
+            reply_markup=get_trip_active_keyboard(active_trip.trip_id) if active_trip else get_driver_main_menu(),
+            parse_mode="HTML"
+        )
+        return
+    
+    # Tasdiqlash so'rash
+    await state.update_data(cancel_trip_id=active_trip.trip_id)
+    await state.set_state(DriverStates.confirming_trip_cancellation)
+    
+    await message.answer(
+        "⚠️ <b>SAFAR BEKOR QILISH</b>\n\n"
+        f"🚗 Trip #{active_trip.trip_id}\n"
+        f"👥 Buyurtmalar: {active_trip.passenger_count} ta\n\n"
+        "<b>Bu jiddiy harakat!</b> Agar bekor qilsangiz:\n"
+        "• BARCHA buyurtmalar cancelled\n"
+        "• Komissiyalar qaytariladi\n"
+        "• Warning olasiz\n"
+        "• 3 ta warning = 24 soat ban\n\n"
+        "Davom ettirish uchun 'Tasdiqlash' yozing",
+        parse_mode="HTML"
+    )
+
+
+@router.message(
+    DriverStates.confirming_trip_cancellation,
+    F.text.lower() == "tasdiqlash"
+)
+@with_driver_session
+async def confirm_trip_cancellation(message: Message, session: AsyncSession, driver: Driver, state: FSMContext):
+    """
+    Trip bekor qilish tasdiqlandi
+    """
+    data = await state.get_data()
+    trip_id = data.get('cancel_trip_id')
+    
+    if not trip_id:
+        await message.answer("❌ Trip topilmadi")
+        await state.clear()
+        return
+    
+    # Trip'ni bekor qilish
+    from app.services.trip_service import cancel_pending_orders_in_trip
+    result = await cancel_pending_orders_in_trip(trip_id, driver.driver_id)
+    
+    if not result['success']:
+        await message.answer(
+            f"❌ {result['message']}",
+            reply_markup=get_driver_main_menu(),
+            parse_mode="HTML"
+        )
+        await state.clear()
+        return
+    
+    # Trip statusini o'zgartirish
+    from app.models.trip import Trip, TripStatus
+    
+    await session.execute(
+        update(Trip)
+        .where(Trip.trip_id == trip_id)
+        .values(
+            status=TripStatus.CANCELLED,
+            completed_at=func.now()
+        )
+    )
+    
+    # Driver'ni reset qilish
+    await session.execute(
+        update(Driver)
+        .where(Driver.driver_id == driver.driver_id)
+        .values(
+            is_on_trip=False,
+            is_active=False,
+            available_seats=0
+        )
+    )
+    
+    await session.commit()
+    
+    await message.answer(
+        f"✅ <b>Safar bekor qilindi</b>\n\n"
+        f"🚗 Trip #{trip_id}\n"
+        f"📊 {result.get('cancelled_count', 0)} ta buyurtma bekor qilindi\n"
+        f"💰 Komissiyalar qaytarildi",
+        reply_markup=get_driver_main_menu(),
+        parse_mode="HTML"
+    )
+    
+    await state.clear()
+    
+    logger.warning(f"Trip #{trip_id} cancelled by driver {driver.driver_id}")
+
 
 __all__ = ['router']

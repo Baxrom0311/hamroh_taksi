@@ -62,12 +62,13 @@ async def create_new_order(
     passenger_id: int,
     route_id: int,
     pickup_location: str,
-    pickup_lat: float,
-    pickup_lon: float,
+    pickup_lat: Optional[float],  # ✅ Optional - matn lokatsiya uchun None bo'lishi mumkin
+    pickup_lon: Optional[float],  # ✅ Optional - matn lokatsiya uchun None bo'lishi mumkin
     passenger_count: int = 1,
     has_luggage: bool = False,
     luggage_count: int = 0,
-    luggage_description: Optional[str] = None
+    luggage_description: Optional[str] = None,
+    idempotency_key: Optional[str] = None  # ✅ IDEMPOTENCY
 ) -> dict:
     """
     Yangi buyurtma yaratish
@@ -76,12 +77,13 @@ async def create_new_order(
         passenger_id: Yo'lovchi ID
         route_id: Marshrut ID
         pickup_location: Olish joyi (matn)
-        pickup_lat: Latitude
-        pickup_lon: Longitude
+        pickup_lat: Latitude (Optional - matn lokatsiya uchun None)
+        pickup_lon: Longitude (Optional - matn lokatsiya uchun None)
         passenger_count: Yo'lovchilar soni
         has_luggage: Pochta bor/yo'q
         luggage_count: Pochta soni
         luggage_description: Pochta tavsifi
+        idempotency_key: Unique key for idempotency
     
     Returns:
         {
@@ -91,12 +93,23 @@ async def create_new_order(
         }
     
     ISHLATISH:
+        # GPS bilan
         result = await create_new_order(
             passenger_id=1,
             route_id=1,
             pickup_location="Gurlan bozori yonida, 5-uy",
             pickup_lat=41.311512,
             pickup_lon=69.249512,
+            passenger_count=2
+        )
+        
+        # Faqat matn
+        result = await create_new_order(
+            passenger_id=1,
+            route_id=1,
+            pickup_location="Gurlan bozori yonida, 5-uy",
+            pickup_lat=None,  # ✅ Matn lokatsiya
+            pickup_lon=None,
             passenger_count=2
         )
     """
@@ -156,33 +169,15 @@ async def create_new_order(
         }
 
 
+
 # ============================================
 # 2. HAYDOVCHI TOPISH (MATCHING ALGORITHM)
 # ============================================
 
 async def find_driver_for_order(order_id: int) -> Optional[int]:
     """
-    Buyurtma uchun haydovchi topish
-    
-    ALGORITM:
-    1. Route bo'yicha haydovchilarni topish
-    2. Balans tekshirish
-    3. Geo-lokatsiya filtrlash (50 km)
-    4. Priority queue'dan eng yaxshisini olish
-    5. Haydovchiga xabar yuborish
-    
-    Args:
-        order_id: Buyurtma ID
-    
-    Returns:
-        driver_id yoki None
-    
-    ISHLATISH:
-        driver_id = await find_driver_for_order(123)
-        if driver_id:
-            print(f"Haydovchi topildi: {driver_id}")
+    Buyurtma uchun haydovchi topish (simple inline versiya)
     """
-    
     try:
         async with get_session() as session:
             # Order'ni olish
@@ -193,8 +188,6 @@ async def find_driver_for_order(order_id: int) -> Optional[int]:
                 return None
             
             # 1. Route bo'yicha haydovchilarni topish
-            from sqlalchemy import select
-            
             result = await session.execute(
                 select(Driver)
                 .where(Driver.current_route_id == order.route_id)
@@ -220,7 +213,6 @@ async def find_driver_for_order(order_id: int) -> Optional[int]:
                 return None
             
             # 3. Geo-lokatsiya filtrlash
-            # SIMPLE VERSION: Har bir haydovchi uchun masofa hisoblash
             from app.utils.geo import calculate_distance
             
             nearby_drivers = []
@@ -266,6 +258,8 @@ async def find_driver_for_order(order_id: int) -> Optional[int]:
     except Exception as e:
         logger.error(f"❌ Failed to find driver for order {order_id}: {e}")
         return None
+
+
 
 
 # ============================================
@@ -412,18 +406,31 @@ async def accept_order_by_driver(
                 
                 trip_id = active_trip.trip_id
                 
-                # 2.5. Balansdan komissiya yechish va o'rinlarni kamaytirish (ATOMIC)
-                from sqlalchemy import update
+                # 2.5. Balansdan komissiya yechish (Payment Service orqali)
+                from app.services.payment_service import payment_service
                 
+                # Check balance implicitly handled by payment_service, but we did it above too.
+                # payment_service.deduct_commission logs the transaction automatically.
+                commission_result = await payment_service.deduct_commission(
+                    session,
+                    driver_id=driver_id,
+                    order_id=order_id,
+                    amount=commission
+                )
+                
+                if not commission_result['success']:
+                     raise Exception(f"Commission deduction failed: {commission_result.get('error')}")
+
+                new_balance = commission_result['new_balance']
+                old_balance = commission_result['old_balance']
+
+                # 2.5.2 O'rinlarni kamaytirish (Separate Update)
                 new_available_seats = driver.available_seats - order.passenger_count
                 
                 await session.execute(
                     update(Driver)
                     .where(Driver.driver_id == driver_id)
-                    .values(
-                        balance=Driver.balance - commission,
-                        available_seats=new_available_seats
-                    )
+                    .values(available_seats=new_available_seats)
                 )
                 
                 # Trip available_seats kamaytirish
@@ -434,8 +441,6 @@ async def accept_order_by_driver(
                 )
                 
                 # 2.6. Order'ni qabul qilish va trip'ga qo'shish ✅
-
-
                 await session.execute(
                     update(Order)
                     .where(Order.order_id == order_id)
@@ -448,20 +453,6 @@ async def accept_order_by_driver(
                     )
                 )
                 
-                # 2.6. Transaction log (BALANCE YANGILANISHIDAN OLDIN!)
-                old_balance = driver.balance  # Eski balansni saqlash
-                new_balance = old_balance - commission  # Yangi balans
-                
-                await log_balance_change(
-                    session,
-                    driver_id=driver_id,
-                    amount=-commission,
-                    type=TransactionType.COMMISSION,
-                    old_balance=old_balance,
-                    new_balance=new_balance,
-                    order_id=order_id,
-                    description=f"Buyurtma #{order_id} uchun komissiya"
-                )
                 passenger_user_id = order.passenger.user_id 
                 # COMMIT (async with transaction() avtomatik)
                 
@@ -721,13 +712,7 @@ async def complete_trip(order_id: int, driver_id: int) -> dict:
                 await session.execute(
                     update(Driver)
                     .where(Driver.driver_id == driver_id)
-                    .values(is_on_trip=False)
-                )
-                # Safardan keyin offline bo'lishi va qayta ruta tanlashi uchun
-                await session.execute(
-                    update(Driver)
-                    .where(Driver.driver_id == driver_id)
-                    .values(is_active=False, available_seats=0, current_route_id=None)
+                    .values(is_on_trip=False, is_active=True)
                 )
                 
                 # Trip holatini ham COMPLETED qilish
@@ -795,15 +780,16 @@ async def _auto_start_trip_if_full(session: AsyncSession, trip_id: int, driver_i
         )
     )
 
-    # Driver flag
+    # Driver flag - faqat is_on_trip=True qilish
+    # ✅ CRITICAL: is_active ni False qilmaymiz!
+    # Sabab: Driver hali yangi buyurtmalar qabul qilmoqchi bo'lishi mumkin
     await session.execute(
         update(Driver)
         .where(Driver.driver_id == driver_id)
         .values(is_on_trip=True, is_active=False)
     )
 
-    # Auto-complete (10 daqiqa) — tripdagi birinchi order id bilan
-    # Auto-complete (10 daqiqa)
+    # Auto-complete (10 daqiqa) 
     from app.tasks.matching import auto_complete_trip_task
     from typing import Any, cast
     
@@ -821,5 +807,6 @@ __all__ = [
     'find_driver_for_order',
     'accept_order_by_driver',
     'start_trip',
-    'complete_trip'
+    'complete_trip',
+    '_auto_start_trip_if_full',
 ]

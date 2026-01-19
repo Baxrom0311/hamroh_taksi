@@ -399,9 +399,9 @@ def format_user_mention(
         full_name += f" {last_name}"
     
     if username:
-        return f'<a href="https://t.me/{username}">{full_name}</a>'
+        return f"{full_name} (@{username})"
     else:
-        return f'<a href="tg://user?id={user_id}">{full_name}</a>'
+        return full_name
 
 
 # ============================================
@@ -430,72 +430,6 @@ def format_file_size(bytes: int) -> str:
     
     gb = mb / 1024
     return f"{gb:.1f} GB"
-
-
-# ============================================
-# TESTING
-# ============================================
-
-if __name__ == "__main__":
-    """
-    Test qilish:
-    python -m app.utils.formatters
-    """
-    
-    print("\n🧪 Testing Formatters...\n")
-    
-    # Test 1: Money
-    print("📝 Test 1: Money formatting")
-    print(f"   {format_money(5000)}")
-    print(f"   {format_money(1234567)}")
-    print(f"   {format_money_short(1500000)}")
-    
-    print()
-    
-    # Test 2: Phone
-    print("📝 Test 2: Phone formatting")
-    print(f"   {format_phone('+998901234567')}")
-    print(f"   {format_phone('998901234567', style='dashed')}")
-    print(f"   {mask_phone('+998901234567')}")
-    
-    print()
-    
-    # Test 3: DateTime
-    print("📝 Test 3: DateTime formatting")
-    now = datetime.now()
-    print(f"   Full: {format_datetime(now, 'full')}")
-    print(f"   Date: {format_datetime(now, 'date')}")
-    print(f"   Time: {format_datetime(now, 'time')}")
-    
-    print()
-    
-    # Test 4: Time ago
-    print("📝 Test 4: Time ago")
-    past = datetime.now() - timedelta(minutes=30)
-    print(f"   {format_time_ago(past)}")
-    
-    print()
-    
-    # Test 5: Duration
-    print("📝 Test 5: Duration")
-    print(f"   {format_duration(65)}")
-    print(f"   {format_duration(3665)}")
-    
-    print()
-    
-    # Test 6: Text
-    print("📝 Test 6: Text formatting")
-    print(f"   {truncate('Bu juda uzun matn ekan', 15)}")
-    print(f"   {escape_html('5 < 10 & 10 > 5')}")
-    
-    print()
-    
-    # Test 7: List
-    print("📝 Test 7: List formatting")
-    print(f"   {format_list(['Olma', 'Nok', 'Banan'])}")
-    
-    print("\n✅ All formatter tests passed!\n")
-
 
 __all__ = [
     'format_money',

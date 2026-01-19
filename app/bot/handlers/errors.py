@@ -16,9 +16,17 @@ from loguru import logger
 from aiogram import Router, F
 from aiogram.types import ErrorEvent, Message, CallbackQuery
 from aiogram.filters import ExceptionTypeFilter
-from aiogram.exceptions import TelegramAPIError
+from aiogram.exceptions import TelegramAPIError, TelegramBadRequest
 
 router = Router()
+
+@router.error(ExceptionTypeFilter(TelegramBadRequest))
+async def handle_bad_request(event: ErrorEvent):
+    """
+    Osilib qolgan (old) callback query'larni indamay o'tkazib yuborish
+    """
+    logger.warning(f"⚠️ Bad Request (likely old query): {event.exception}")
+    return True # Prevent crash
 
 @router.error(ExceptionTypeFilter(Exception))
 async def global_error_handler(event: ErrorEvent):

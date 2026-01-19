@@ -38,6 +38,7 @@ class DriverStates(StatesGroup):
     # Safar
     trip_in_progress = State()     # Safar davom etmoqda
     trip_confirmation = State()    # Yo'lovchi tasdiqlashi kutilmoqda
+    confirming_trip_cancellation = State()  # Tripni to'liq bekor qilish tasdiqlash
     confirming_cancellation = State()  # <<< bu qo‘shildi
     
     # Balans
