@@ -644,9 +644,17 @@ async def update_driver_state(
             if payload.is_on_trip is not None:
                 values['is_on_trip'] = payload.is_on_trip
             if payload.available_seats is not None:
+                if payload.available_seats < 0:
+                     raise HTTPException(status_code=400, detail="Available seats must be non-negative")
                 values['available_seats'] = payload.available_seats
+
             if payload.current_route_id is not None:
-                values['current_route_id'] = payload.current_route_id
+                 from app.models.route import get_route_by_id
+                 # Validate route exists
+                 route = await get_route_by_id(session, payload.current_route_id)
+                 if not route:
+                      raise HTTPException(status_code=400, detail=f"Route {payload.current_route_id} not found")
+                 values['current_route_id'] = payload.current_route_id
 
             if not values:
                 return {"success": False, "message": "O'zgartirish uchun maydon topilmadi"}

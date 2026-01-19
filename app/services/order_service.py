@@ -746,16 +746,12 @@ async def _auto_start_trip_if_full(session: AsyncSession, trip_id: int, driver_i
     )
 
     # Auto-complete (10 daqiqa) — tripdagi birinchi order id bilan
-    first_order_result = await session.execute(
-        select(Order.order_id)
-        .where(Order.trip_id == trip_id)
-        .limit(1)
-    )
-    first_order_id = first_order_result.scalar_one_or_none()
-    if first_order_id:
-        from typing import Any, cast
-        from app.tasks.matching import auto_confirm_trip_task
-        cast(Any, auto_confirm_trip_task).apply_async(args=[first_order_id], countdown=600)
+    # Auto-complete (10 daqiqa)
+    from app.tasks.matching import auto_complete_trip_task
+    from typing import Any, cast
+    
+    # Trip ID bilan chaqiramiz (shunda tripdagi barcha IN_PROGRESS orderlar yakunlanadi)
+    cast(Any, auto_complete_trip_task).apply_async(args=[trip_id], countdown=600)
 
     logger.info(f"Auto-started trip {trip_id} for driver {driver_id} (seats full)")
 

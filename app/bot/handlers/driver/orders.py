@@ -177,11 +177,14 @@ async def accept_order_handler(callback: CallbackQuery, session: AsyncSession, d
                 )
                 passenger_text += f"\n📍 <a href=\"{driver_loc_link}\">Haydovchi joriy lokatsiyasi</a>"
 
-            await bot.send_message(
-                chat_id=order.passenger.user.user_id,
-                text=passenger_text,
-                parse_mode="HTML"
-            )
+            try:
+                await bot.send_message(
+                    chat_id=order.passenger.user.user_id,
+                    text=passenger_text,
+                    parse_mode="HTML"
+                )
+            except Exception as e:
+                logger.warning(f"Failed to notify passenger (accept_order): {e}")
         
         logger.success(f"Order {order_id} accepted and UI updated for driver {driver.driver_id}")
     
