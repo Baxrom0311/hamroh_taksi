@@ -37,9 +37,15 @@ def setup_dispatcher(storage: Optional[RedisStorage] = None) -> Dispatcher:
         Configured Dispatcher
     """
     
-    # Storage
+    # Storage with TTL (hanging state prevention)
+    from config.settings import settings
+    
     if storage is None:
-        storage = RedisStorage(redis=redis_client.client)
+        storage = RedisStorage(
+            redis=redis_client.client,
+            state_ttl=settings.STATE_TTL_SECONDS,  # ✅ NEW: 1 soat TTL
+            data_ttl=settings.STATE_TTL_SECONDS    # ✅ NEW: Data ham 1 soat
+        )
     
     # Dispatcher
     dp = Dispatcher(storage=storage)
@@ -52,7 +58,8 @@ def setup_dispatcher(storage: Optional[RedisStorage] = None) -> Dispatcher:
     
     from app.bot.middlewares.auth import AuthMiddleware
     from app.bot.middlewares.logging import LoggingMiddleware
-    from app.bot.middlewares.rate_limit import RateLimitMiddleware  # ✅ Yangi
+    from app.bot.middlewares.rate_limit import RateLimitMiddleware
+    from app.bot.middlewares.state_guard import StateGuardMiddleware  # ✅ NEW
     
     # Rate limiting (BIRINCHI!) - Spam protection
     dp.message.middleware(RateLimitMiddleware(
@@ -61,7 +68,11 @@ def setup_dispatcher(storage: Optional[RedisStorage] = None) -> Dispatcher:
         ban_threshold=5,
         ban_duration=300  # 5 min ban
     ))
-    dp.callback_query.middleware(RateLimitMiddleware())  # ✅
+    dp.callback_query.middleware(RateLimitMiddleware())
+    
+    # State Guard (IKKINCHI!) - State pollution prevention ✅
+    dp.message.middleware(StateGuardMiddleware())
+    dp.callback_query.middleware(StateGuardMiddleware())
     
     # Message middleware'lar
     dp.message.middleware(LoggingMiddleware())
@@ -70,55 +81,73 @@ def setup_dispatcher(storage: Optional[RedisStorage] = None) -> Dispatcher:
     # Callback query middleware'lar
     dp.callback_query.middleware(AuthMiddleware())
     
-    logger.info("✅ Middlewares registered")
+    logger.info("✅ Middlewares registered (including StateGuard)")
     
     # ============================================
     # HANDLER ROUTER'LAR
     # ============================================
     
-    # Start va Registration
+    # ============================================
+    # HANDLER ROUTER'LAR
+    # ============================================
+    
+    # 1. Start va Registration
     from app.bot.handlers.start import router as start_router
     from app.bot.handlers.registration import router as registration_router
     
-    # Driver handlers
+    # 2. Driver Handlers
     from app.bot.handlers.driver.main_menu import router as driver_menu_router
     from app.bot.handlers.driver.orders import router as driver_orders_router
-    from app.bot.handlers.driver.trip_handlers import router as driver_trip_router  # ✅ Yangi
+    from app.bot.handlers.driver.trip_handlers import router as driver_trip_router
     from app.bot.handlers.driver.balance import router as driver_balance_router
     from app.bot.handlers.driver.support import router as driver_support_router
     from app.bot.handlers.driver.location import router as driver_location_router
     
-    # Passenger handlers
+    # 3. Passenger Handlers
     from app.bot.handlers.passenger.main_menu import router as passenger_menu_router
     from app.bot.handlers.passenger.booking import router as passenger_booking_router
     from app.bot.handlers.passenger.driver_info import router as passenger_driver_info_router
-    from app.bot.handlers.passenger.active_orders import router as passenger_active_orders_router  # ✅ Yangi
-    from app.bot.handlers.passenger.history import router as passenger_history_router  # ✅ Yangi
+    from app.bot.handlers.passenger.active_orders import router as passenger_active_orders_router
+    from app.bot.handlers.passenger.history import router as passenger_history_router
     from app.bot.handlers.passenger.rating import router as passenger_rating_router
     from app.bot.handlers.passenger.support import router as passenger_support_router
+
+    # 4. Common & Error Handlers
+    from app.bot.handlers.common import router as common_router
+    from app.bot.handlers.errors import router as errors_router
     
-    # Router'larni qo'shish (TARTIB MUHIM!)
-    # Birinchi qo'shilgan router'lar birinchi tekshiriladi
+    # ============================================
+    # ROUTER INCLUDE (TARTIB MUHIM!)
+    # ============================================
     
+    # 1. Global Errors (Catch exceptions properly)
+    dp.include_router(errors_router)
+
+    # 2. Asosiy buyruqlar (/start)
     dp.include_router(start_router)
     dp.include_router(registration_router)
-    
-    # Driver router'lar
+
+    # 3. Driver Logic
     dp.include_router(driver_menu_router)
     dp.include_router(driver_orders_router)
-    dp.include_router(driver_trip_router)  # ✅ Yangi
+    dp.include_router(driver_trip_router)
     dp.include_router(driver_balance_router)
     dp.include_router(driver_support_router)
     dp.include_router(driver_location_router)
-    
-    # Passenger router'lar
+
+    # 4. Passenger Logic
     dp.include_router(passenger_menu_router)
     dp.include_router(passenger_booking_router)
-    dp.include_router(passenger_active_orders_router)  # ✅ Yangi
-    dp.include_router(passenger_history_router)  # ✅ Yangi
+    dp.include_router(passenger_active_orders_router)
+    dp.include_router(passenger_history_router)
     dp.include_router(passenger_rating_router)
     dp.include_router(passenger_support_router)
     dp.include_router(passenger_driver_info_router)
+
+    # 5. Common / Fallback (MUST BE LAST)
+    # Generic content handlers, cancel command, etc.
+    dp.include_router(common_router)
+
     
     logger.success("✅ All handlers registered")
     

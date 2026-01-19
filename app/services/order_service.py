@@ -139,6 +139,17 @@ async def create_new_order(
     
     except Exception as e:
         logger.error(f"❌ Failed to create order: {e}")
+        
+        # ✅ IDEMPOTENCY FIX: Duplicate order detection
+        error_str = str(e).lower()
+        if 'unique' in error_str or 'duplicate' in error_str:
+            # Unique constraint violation - user allaqachon order qo'ygan
+            return {
+                'success': False,
+                'message': 'Sizda allaqachon kutilayotgan buyurtma bor. Iltimos, avval uni yakunlang yoki bekor qiling.'
+            }
+        
+        # Generic error
         return {
             'success': False,
             'message': f'Buyurtma yaratishda xatolik: {str(e)}'
@@ -298,14 +309,19 @@ async def accept_order_by_driver(
     """
     
     # 1. REDIS LOCK OLISH (Race condition oldini olish)
-    async with acquire_order_lock(order_id, timeout=10) as locked:
+    # ✅ FIXED: timeout 10s → 30s (settings.ORDER_LOCK_TIMEOUT_SECONDS)
+    # ✅ FIXED: automatic retry with exponential backoff
+    async with acquire_order_lock(order_id) as locked:  # Uses settings defaults
         
         if not locked:
-            # Boshqa haydovchi qabul qilmoqda
-            logger.warning(f"Order {order_id} is locked by another driver")
+            # Boshqa haydovchi qabul qilmoqda yoki lock timeout
+            logger.warning(
+                f"❌ Failed to acquire lock for order {order_id}: "
+                f"driver_id={driver_id}, possible race condition or timeout"
+            )
             return {
                 'success': False,
-                'message': '⚠️ Bu buyurtma boshqa haydovchi tomonidan qabul qilinmoqda'
+                'message': '⚠️ Bu buyurtma boshqa haydovchi tomonidan qabul qilinmoqda yoki band. Iltimos qayta urinib ko\'ring.'
             }
         
         # 2. DATABASE TRANSACTION (ATOMIC)
@@ -533,36 +549,58 @@ async def accept_order_by_driver(
 
 async def start_trip(order_id: int, driver_id: int) -> dict:
     """
-    Safar boshlash
+    Safar boshlash (RACE CONDITION FIXED)
     
     STATUS: accepted → in_progress
+    
+    ✅ ATOMIC UPDATE: Status check va o'zgartirish bir vaqtda
+    ✅ RACE CONDITION SAFE: Ikki haydovchi bir vaqtda boshlay olmaydi
     
     ISHLATISH:
         result = await start_trip(order_id=123, driver_id=1)
     """
     
     try:
-        async with get_session() as session:
-            # Order tekshirish
-            order = await get_order_by_id(session, order_id)
+        async with transaction() as session:
+            # ✅ ATOMIC UPDATE WITH STATUS CHECK (Race condition fix)
+            # WHERE conditions ichida status check qilamiz
+            result = await session.execute(
+                update(Order)
+                .where(Order.order_id == order_id)
+                .where(Order.driver_id == driver_id)  # Faqat to'g'ri driver
+                .where(Order.status == OrderStatus.ACCEPTED)  # ✅ CRITICAL: Status check atomic
+                .values(
+                    status=OrderStatus.IN_PROGRESS,
+                    started_at=func.now()
+                )
+            )
             
-            if not order:
-                raise OrderNotFoundException(order_id=order_id)
-            
-            if order.driver_id != driver_id:
+            # ✅ CRITICAL CHECK: Agar rowcount == 0, demak:
+            # - Order topilmadi
+            # - Driver noto'g'ri
+            # - Status allaqachon o'zgargan (RACE CONDITION bo'lgan!)
+            if result.rowcount == 0:
+                # Aniq sabab ni aniqlash uchun order'ni tekshiramiz
+                order_check = await session.execute(
+                    select(Order)
+                    .where(Order.order_id == order_id)
+                )
+                order = order_check.scalar_one_or_none()
+                
+                if not order:
+                    raise OrderNotFoundException(order_id=order_id)
+                
+                if order.driver_id != driver_id:
+                    return {
+                        'success': False,
+                        'message': '⚠️ Bu buyurtma sizga tegishli emas'
+                    }
+                
+                # Status noto'g'ri - allaqachon boshlangan yoki tugallangan
                 return {
                     'success': False,
-                    'message': '⚠️ Bu buyurtma sizga tegishli emas'
+                    'message': f'⚠️ Safar allaqachon {order.status.value} holatida'
                 }
-            
-            if order.status != OrderStatus.ACCEPTED:
-                return {
-                    'success': False,
-                    'message': f'⚠️ Buyurtma holati noto\'g\'ri: {order.status.value}'
-                }
-            
-            # Status o'zgartirish
-            await start_order(session, order_id)
             
             # Driver'ni on_trip qilish
             await session.execute(
@@ -571,14 +609,33 @@ async def start_trip(order_id: int, driver_id: int) -> dict:
                 .values(is_on_trip=True)
             )
             
-            await session.commit()
+            # Trip statusini ham yangilash (agar trip mavjud bo'lsa)
+            order_result = await session.execute(
+                select(Order.trip_id).where(Order.order_id == order_id)
+            )
+            trip_id = order_result.scalar_one_or_none()
             
-            logger.info(f"✅ Trip started: order_id={order_id}, driver_id={driver_id}")
+            if trip_id:
+                await session.execute(
+                    update(Trip)
+                    .where(Trip.trip_id == trip_id)
+                    .where(Trip.started_at.is_(None))  # Faqat boshlanmagan tripni
+                    .values(started_at=func.now())
+                )
+            
+            logger.info(f"✅ Trip started (atomic): order_id={order_id}, driver_id={driver_id}")
             
             return {
                 'success': True,
                 'message': '✅ Safar boshlandi! Xavfsiz yo\'l!'
             }
+    
+    except OrderNotFoundException as e:
+        logger.error(f"Order not found: {order_id}")
+        return {
+            'success': False,
+            'message': f'❌ Buyurtma topilmadi: #{order_id}'
+        }
     
     except Exception as e:
         logger.error(f"❌ Failed to start trip: {e}")

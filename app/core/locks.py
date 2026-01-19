@@ -84,9 +84,9 @@ async def _load_lua_script():
 @asynccontextmanager
 async def acquire_order_lock(
     order_id: int,
-    timeout: int = 10,
-    retry_delay: float = 0.1,
-    max_retries: int = 3
+    timeout: Optional[int] = None,
+    retry_delay: Optional[float] = None,
+    max_retries: Optional[int] = None
 ) -> AsyncGenerator[bool, None]:
     """
     Buyurtma uchun distributed lock
@@ -142,6 +142,15 @@ async def acquire_order_lock(
         
         ✅ NATIJA: Faqat A qabul qildi!
     """
+    # Settings'dan default qiymatlarni olish
+    from config.settings import settings
+    
+    if timeout is None:
+        timeout = settings.ORDER_LOCK_TIMEOUT_SECONDS
+    if retry_delay is None:
+        retry_delay = settings.ORDER_LOCK_RETRY_DELAY_SECONDS
+    if max_retries is None:
+        max_retries = settings.ORDER_LOCK_MAX_RETRIES
     
     lock_key = f"lock:order:{order_id}"
     token = str(uuid.uuid4())  # Unique token

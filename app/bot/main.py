@@ -66,7 +66,12 @@ async def on_startup():
     # Redis & Dispatcher
     await init_redis()
     from app.bot.dispatcher import setup_dispatcher
-    storage = RedisStorage(redis=redis_client.client)
+    
+    storage = RedisStorage(
+        redis=redis_client.client,
+        state_ttl=settings.STATE_TTL_SECONDS,  # ✅ NEW: Hanging state prevention
+        data_ttl=settings.STATE_TTL_SECONDS
+    )
     dp = setup_dispatcher(storage=storage)
     
     # Bot ma'lumotlarini olish

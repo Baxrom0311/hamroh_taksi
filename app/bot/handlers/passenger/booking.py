@@ -25,7 +25,26 @@ router = Router()
 @router.message(F.text == "🚖 Taksi chaqirish")
 @with_passenger_session  # ✅ Decorator
 async def start_booking(message: Message, session: AsyncSession, passenger: Passenger, state: FSMContext):
-    """Taksi chaqirishni boshlash - ✅ REFACTORED"""
+    """
+    Taksi chaqirishni boshlash
+    
+    ✅ REFACTORED + RATE LIMITED
+    """
+    
+    # ✅ RATE LIMIT CHECK (3 orders per minute)
+    from app.utils.rate_limiter import order_rate_limiter
+    
+    if not await order_rate_limiter.check_limit(
+        user_id=message.from_user.id,  # type: ignore
+        action="order_creation"
+    ):
+        await message.answer(
+            "⏳ **Juda ko'p so'rov!**\n\n"
+            "Siz 1 daqiqada 3 ta buyurtma bera olasiz.\n"
+            "Iltimos, biroz kutib turing.",
+            parse_mode="Markdown"
+        )
+        return
         
     # Aktiv marshrutlarni tekshirish
     active_routes = await get_all_active_routes(session)
@@ -39,6 +58,7 @@ async def start_booking(message: Message, session: AsyncSession, passenger: Pass
     )
     
     await state.set_state(PassengerStates.choose_route)
+
 
 
 @router.callback_query(
@@ -157,9 +177,19 @@ async def passenger_count_selected(callback: CallbackQuery, session: AsyncSessio
 
 
 async def finalize_order(message, session: AsyncSession, state: FSMContext):
-    """Buyurtmani yaratish"""
+    """
+    Buyurtmani yaratish
+    
+    ✅ IDEMPOTENCY: Takroriy button bosilishini oldini oladi
+    """
     data = await state.get_data()
     user_id = message.chat.id
+    
+    # ✅ IDEMPOTENCY CHECK: Allaqachon order yaratilganmi?
+    if data.get('order_created'):
+        logger.warning(f"Duplicate order creation attempt by user {user_id}")
+        await message.answer("✅ Buyurtma allaqachon yaratilgan!")
+        return
     
     passenger = await get_passenger_by_user_id(session, user_id)
     
@@ -167,6 +197,13 @@ async def finalize_order(message, session: AsyncSession, state: FSMContext):
     pickup_location = data['pickup_location']
     if data.get('location_description'):
         pickup_location = f"{pickup_location}\n 📝 {data['location_description']}"
+    
+    # ✅ Idempotency key yaratish (session uchun unique)
+    import uuid
+    idempotency_key = data.get('idempotency_key')
+    if not idempotency_key:
+        idempotency_key = str(uuid.uuid4())
+        await state.update_data(idempotency_key=idempotency_key)
     
     # Buyurtma yaratish
     result = await create_new_order(
@@ -177,10 +214,14 @@ async def finalize_order(message, session: AsyncSession, state: FSMContext):
         pickup_lon=data['pickup_lon'],
         passenger_count=data['passenger_count'],
         has_luggage=data.get('has_luggage', False),
-        luggage_count=data.get('luggage_count', 0)
+        luggage_count=data.get('luggage_count', 0),
+        idempotency_key=idempotency_key  # ✅ Pass idempotency key
     )
     
     if result['success']:
+        # ✅ ORDER CREATED flag set qilish
+        await state.update_data(order_created=True)
+        
         # Inline callback message cannot carry ReplyKeyboardMarkup, so split into edit + new message
         await message.edit_text(  # type: ignore
             Messages.Passenger.ORDER_CREATED.format(order_id=result['order_id']),
@@ -190,12 +231,17 @@ async def finalize_order(message, session: AsyncSession, state: FSMContext):
             "🔝 Asosiy menyu:",
             reply_markup=get_passenger_main_menu()
         )
-        logger.success(f"Order created: {result['order_id']}")
+        logger.success(f"Order created: {result['order_id']} with idempotency_key={idempotency_key}")
     else:
-        # HTML escape qilish - xatolik xabarlarida HTML taglar bo'lmasligi uchun
-        error_message = str(result['message']).replace('<', '&lt;').replace('>', '&gt;')
+        # ✅ SECURITY FIX: Error sanitization
+        from app.utils.error_sanitizer import sanitize_error_for_user
+        
+        safe_error = sanitize_error_for_user(
+            str(result['message']),
+            context='order_creation'
+        )
         await message.answer(
-            f"❌ {error_message}",
+            f"❌ {safe_error}",
             parse_mode="HTML"
         )
     
@@ -279,6 +325,8 @@ async def passenger_started(callback: CallbackQuery, session: AsyncSession, pass
 async def passenger_cancel_order(callback: CallbackQuery, session: AsyncSession, passenger: Passenger):
     """
     Yo'lovchi buyurtmani bekor qildi
+    
+    ✅ SECURITY FIX: Ownership validation qo'shildi
     """
     if callback.data is None:
         return
@@ -290,45 +338,67 @@ async def passenger_cancel_order(callback: CallbackQuery, session: AsyncSession,
     if not order:
         return
     
+    # ✅ CRITICAL SECURITY FIX: Ownership validation
+    # Faqat o'z buyurtmasini bekor qilishi mumkin!
+    if order.passenger_id != passenger.passenger_id:
+        await callback.answer(
+            "❌ Bu sizning buyurtmangiz emas! Faqat o'z buyurtmalaringizni bekor qilishingiz mumkin.",
+            show_alert=True
+        )
+        logger.warning(
+            f"🚨 SECURITY: Passenger {passenger.passenger_id} (user {callback.from_user.id}) "
+            f"tried to cancel order {order_id} belonging to passenger {order.passenger_id}"
+        )
+        return
+    
+    # Status tekshirish
     if order.status not in [OrderStatus.ACCEPTED, OrderStatus.PENDING]:
         await callback.answer("⚠️ Bu buyurtmani bekor qilib bo'lmaydi", show_alert=True)
         return
     
-    # Order'ni bekor qilish
-    async with transaction() as session:
-        from app.models.driver import Driver
-        from app.services.payment_service import payment_service
-        
-        # Komissiya haydovchiga qaytariladi (agar bor bo'lsa)
-        if order.driver_id and order.commission_amount:
-            await payment_service.refund_commission(
-                session,
-                driver_id=order.driver_id,
-                order_id=order.order_id,
-                amount=order.commission_amount,
-                reason="cancelled_by_passenger"
-            )
+    # Order'ni bekor qilish - TRANSACTION
+    try:
+        async with transaction() as cancel_session:
+            from app.models.driver import Driver
+            from app.services.payment_service import payment_service
+            
+            # Komissiya haydovchiga qaytariladi (agar bor bo'lsa)
+            if order.driver_id and order.commission_amount:
+                await payment_service.refund_commission(
+                    cancel_session,
+                    driver_id=order.driver_id,
+                    order_id=order.order_id,
+                    amount=order.commission_amount,
+                    reason="cancelled_by_passenger"
+                )
 
-        await session.execute(
-            update(Order)
-            .where(Order.order_id == order_id)
-            .values(
-                status=OrderStatus.CANCELLED,
-                cancellation_reason='passenger_cancelled',
-                cancelled_at=func.now()
-            )
-        )
-        
-        # Driver'ni bo'shatish
-        if order.driver_id:
-            await session.execute(
-                update(Driver)
-                .where(Driver.driver_id == order.driver_id)
+            await cancel_session.execute(
+                update(Order)
+                .where(Order.order_id == order_id)
                 .values(
-                    available_seats=Driver.available_seats + order.passenger_count,
-                    is_on_trip=False
+                    status=OrderStatus.CANCELLED,
+                    cancellation_reason='passenger_cancelled',
+                    cancelled_at=func.now()
                 )
             )
+            
+            # Driver'ni bo'shatish
+            if order.driver_id:
+                await cancel_session.execute(
+                    update(Driver)
+                    .where(Driver.driver_id == order.driver_id)
+                    .values(
+                        available_seats=Driver.available_seats + order.passenger_count,
+                        is_on_trip=False
+                    )
+                )
+        
+        logger.info(f"✅ Order cancelled by passenger: order={order_id}, passenger={passenger.passenger_id}")
+    
+    except Exception as e:
+        logger.error(f"Failed to cancel order {order_id}: {e}")
+        await callback.answer(f"❌ Bekor qilishda xatolik: {str(e)}", show_alert=True)
+        return
     
     # Haydovchiga xabar
     if order.driver_id:
@@ -354,7 +424,6 @@ async def passenger_cancel_order(callback: CallbackQuery, session: AsyncSession,
             parse_mode="HTML"
         )
     
-    logger.info(f"Order cancelled by passenger: order={order_id}")
     await callback.answer("Buyurtma bekor qilindi")
 
 

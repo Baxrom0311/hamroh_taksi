@@ -73,7 +73,7 @@ services:
   flower:
     build: .
     container_name: hamroh_flower
-    command: celery -A app.core.celery_app flower --port=5555 --basic_auth=user:pass
+    command: celery -A app.core.celery_app flower --port=5555 --basic_auth=${FLOWER_USER}:${FLOWER_PASSWORD}
     depends_on:
       - redis
       - celery_worker
@@ -135,7 +135,7 @@ services:
     env_file:
       - .env
     command:
-      - '--redis.addr=redis://redis:6379'
+      - '--redis.addr=redis://:${REDIS_PASSWORD}@redis:6379'
     ports:
       - "9121:9121"
     restart: unless-stopped

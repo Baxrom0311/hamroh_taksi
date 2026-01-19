@@ -1,6 +1,6 @@
 aiofiles==23.2.1
 aiogram==3.4.1
-aiohttp==3.9.1
+aiohttp==3.10.11
 aiosignal==1.4.0
 alembic==1.13.1
 amqp==5.3.1
@@ -85,10 +85,9 @@ tornado==6.5.4
 typing_extensions==4.15.0
 tzdata==2025.2
 uvicorn==0.27.0
-uvloop==0.22.1
 vine==5.1.0
 watchfiles==1.1.1
 wcwidth==0.2.14
 websockets==16.0
 yarl==1.22.0
-faker
+faker==24.0.0

@@ -173,6 +173,39 @@ class Settings(BaseSettings):
     MAX_DRIVER_REJECTS_PER_DAY: int = 50  # Kuniga max 50 ta rad etish
     
     # ============================================
+    # DISTRIBUTED LOCK SOZLAMALARI
+    # ============================================
+    
+    # Order acceptance lock (double booking prevention)
+    ORDER_LOCK_TIMEOUT_SECONDS: int = 30  # Lock timeout (30s)
+    ORDER_LOCK_MAX_RETRIES: int = 3  # Max retry count
+    ORDER_LOCK_RETRY_DELAY_SECONDS: float = 0.2  # Retry delay
+    
+    # Generic lock defaults
+    GENERIC_LOCK_TIMEOUT_SECONDS: int = 10
+    GENERIC_LOCK_MAX_RETRIES: int = 3
+    
+    # ============================================
+    # FSM STATE SOZLAMALARI
+    # ============================================
+    
+    # State TTL (hanging state prevention)
+    STATE_TTL_SECONDS: int = 3600  # 1 soat
+    # Agar user 1 soat davomida hech narsa qilmasa, state avtomatik tozalanadi
+    
+    # ============================================
+    # CELERY TASK SOZLAMALARI
+    # ============================================
+    
+    # Auto-complete trip timer
+    AUTO_COMPLETE_TRIP_SECONDS: int = 600  # 10 daqiqa
+    AUTO_COMPLETE_TRIP_MAX_RETRIES: int = 3
+    
+    # Driver matching task
+    DRIVER_MATCHING_TIMEOUT_SECONDS: int = 300  # 5 daqiqa
+    DRIVER_MATCHING_MAX_RETRIES: int = 5
+    
+    # ============================================
     # LOGGING SOZLAMALARI
     # ============================================
     

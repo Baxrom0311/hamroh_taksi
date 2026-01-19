@@ -64,6 +64,65 @@ pytest
 - `ADMIN_ALLOWED_IPS`
 - `GRAFANA_ADMIN_PASSWORD` (agar override qilsangiz)
 
+## 🎯 **YANGI XUSUSIYATLAR** (v2.0)
+
+### 🔐 Xavfsizlik yaxshilangan:
+- ✅ Environment variable'lar orqali password management
+- ✅ Flower authentication (FLOWER_USER/FLOWER_PASSWORD)
+- ✅ Redis password authentication
+- ✅ Centralized error handling va validation
+
+### ⚡ Celery Retry Mexanizmi:
+- ✅ Exponential backoff (2^retry * 60s)
+- ✅ Automatic retry (max 3-5 marta)
+- ✅ Custom task classes (BaseTask, CriticalTask, IdempotentTask)
+- ✅ Detailed error logging
+
+### 🧪 Testing Infrastructure:
+- ✅ Unit tests (models, services, utilities)
+- ✅ Integration tests (API endpoints)
+- ✅ Test fixtures va factories
+- ✅ Database isolation
+
+### 📚 Code Quality:
+- ✅ DRY utilities (`validators.py`, `error_handlers.py`, `auth_utils.py`)
+- ✅ Type annotations
+- ✅ Centralized authentication checks
+- ✅ Reusable decorators
+
+## 🧪 Testlar
+
+### Testlarni ishga tushirish:
+```bash
+# Barcha testlar
+pytest
+
+# Verbose mode
+pytest -v
+
+# Coverage bilan
+pytest --cov=app --cov-report=html
+
+# Faqat unit testlar
+pytest tests/unit -v
+
+# Faqat integration testlar
+pytest tests/integration -v
+
+# Bitta fayl
+pytest tests/unit/test_utils/test_validators.py -v
+```
+
+### Test Coverage:
+```bash
+# Coverage hisobot
+pytest --cov=app --cov-report=term-missing
+
+# HTML hisobot
+pytest --cov=app --cov-report=html
+# Keyin: open htmlcov/index.html
+```
+
 ## 🔍 Troubleshooting
 - **`relation "users" does not exist`**: migratsiyalarni qayta ishlating (`alembic upgrade head`) va seed skriptlarni ishga tushiring.
 - **bcrypt ogohlantirishlari**: requirements-da `bcrypt==4.0.1` bor, konteynerlarda `pip install -r requirements.txt` avtomatik qo‘yiladi; muammo bo‘lsa `docker compose exec bot pip install "bcrypt==4.0.1"`.

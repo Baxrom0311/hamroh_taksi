@@ -56,6 +56,10 @@ async def accept_order_handler(callback: CallbackQuery, session: AsyncSession, d
     result = await accept_order_by_driver(driver_id=driver.driver_id, order_id=order_id)
     
     if result['success']:
+        # ✅ SESSION REFRESH: Fresh data olish (balance, available_seats)
+        from app.utils.session_utils import refresh_model
+        await refresh_model(session, driver)
+        
         commission_amount = result['order']['commission'] # Extract commission amount
 
         # Order ma'lumotlarini olish (mijoz ma'lumotlari bilan)
@@ -72,7 +76,7 @@ async def accept_order_handler(callback: CallbackQuery, session: AsyncSession, d
                 Messages.Driver.ORDER_ACCEPTED.format(
                     order_id=order_id,
                     commission=commission_amount,
-                    new_balance=result['order']['new_balance']
+                    new_balance=driver.balance  # ✅ Fresh balance
                 ),
                 parse_mode="HTML"
             )
@@ -355,9 +359,8 @@ async def trip_confirmed(callback: CallbackQuery, session: AsyncSession, driver:
     result = await start_trip(order_id, driver.driver_id)
     
     if result['success']:
-        # Avto-yakunlash task (10 daqiqa)
-        from app.tasks.matching import auto_complete_trip_task
-        auto_complete_trip_task.apply_async(args=[order_id], countdown=600) # type: ignore
+        # ✅ NOTE: Auto-complete task allaqachon driver_started_trip'da ishga tushgan
+        # Bu yerda dublikat yaratmaslik uchun OLIB TASHLANDI
         
         # State yangilash - safar boshlandi
         await state.update_data(current_order_id=order_id)
@@ -374,12 +377,14 @@ async def trip_confirmed(callback: CallbackQuery, session: AsyncSession, driver:
             await callback.message.delete()
         
         logger.info(f"Trip started: order={order_id}, driver={driver.driver_id}")
+        await callback.answer("✅ Safar boshlandi!")  # ✅ User feedback
     
     else:
         if callback.message is not None:
             await callback.message.edit_text(f"❌ {result['message']}") # type: ignore
+        await callback.answer("❌ Xatolik", show_alert=True)  # ✅ Error feedback
     
-    await callback.answer()
+    # ✅ Callback.answer() allaqachon yuqorida
 
 
 # ============================================

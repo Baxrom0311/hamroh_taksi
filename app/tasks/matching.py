@@ -339,9 +339,14 @@ async def auto_confirm_trip_task(order_id: int):
 # 6. AVTOMATIK SAFAR YAKUNLASH (10 daqiqa)
 # ============================================
 
-@celery_app.task(name="app.tasks.matching.auto_complete_trip_task")
+@celery_app.task(
+    bind=True,
+    name="app.tasks.matching.auto_complete_trip_task",
+    max_retries=3,  # ✅ NEW: Max 3 marta retry
+    default_retry_delay=60  # ✅ NEW: 1 daqiqa oraliqda
+)
 @async_to_sync
-async def auto_complete_trip_task(target_id: int):
+async def auto_complete_trip_task(self, target_id: int):
     """
     "Ketdik" bosilgandan keyin 10 daqiqa o'tsa safarni avtomatik yakunlash.
     
@@ -455,14 +460,21 @@ async def auto_complete_trip_task(target_id: int):
 
         # Agar trip ishlovdan o'tgan bo'lsa, statusni COMPLETED ga o'zgartiramiz
         if trip and trip.status == TripStatus.ACTIVE:
-            await session.execute(
-                update(Trip)
-                .where(Trip.trip_id == trip.trip_id)
-                .values(
-                    status=TripStatus.COMPLETED,
-                    completed_at=func.now()
+            try:
+                await session.execute(
+                    update(Trip)
+                    .where(Trip.trip_id == trip.trip_id)
+                    .values(
+                        status=TripStatus.COMPLETED,
+                        completed_at=func.now()
+                    )
                 )
-            )
+                await session.commit()
+            except Exception as e:
+                logger.error(f"Failed to update trip status: {e}")
+                # ✅ NEW: Retry on database errors
+                if hasattr(self, 'retry'):
+                    raise self.retry(exc=e, countdown=60)
 
 
 
