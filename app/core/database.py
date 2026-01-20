@@ -173,6 +173,10 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
         yield session  # Session'ni berish
         await session.commit()  # Auto commit
     except Exception as e:
+        # Aiogram SkipHandler kabi control-flow istisnolari uchun log yozmaymiz
+        if e.__class__.__name__ == "SkipHandler":
+            await session.rollback()
+            raise
         await session.rollback()  # Xato bo'lsa rollback
         logger.error(f"❌ Database error: {e}")
         raise  # Xatoni qaytarish
