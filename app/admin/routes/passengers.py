@@ -110,6 +110,8 @@ async def get_passengers_list(
             # Response
             passengers_list = []
             for passenger in passengers:
+                user = passenger.user
+                is_blocked = bool(user.is_blocked) if user else False
                 passengers_list.append({
                     'passenger_id': passenger.passenger_id,
                     'user_id': passenger.user_id,
@@ -118,7 +120,7 @@ async def get_passengers_list(
                     'gender': passenger.gender.value,
                     'age': passenger.age,
                     'total_trips': passenger.total_trips,
-                    'is_blocked': passenger.user.is_blocked,
+                    'is_blocked': is_blocked,
                     'created_at': passenger.created_at.isoformat()
                 })
             
@@ -162,6 +164,8 @@ async def get_passenger_details(
             orders_result = await session.execute(orders_query)
             orders = orders_result.scalars().all()
             # Response
+            user = passenger.user
+            is_blocked = bool(user.is_blocked) if user else False
             return {
                 'success': True,
                 'passenger': {
@@ -174,7 +178,7 @@ async def get_passenger_details(
                     'total_trips': passenger.total_trips,
                     'cancellation_count_hour': passenger.cancellation_count_hour,
                     'last_cancellation_time': passenger.last_cancellation_time.isoformat() if passenger.last_cancellation_time else None,
-                    'is_blocked': passenger.user.is_blocked,
+                    'is_blocked': is_blocked,
                     'created_at': passenger.created_at.isoformat()
                 },
                 'recent_orders': [
@@ -271,7 +275,7 @@ async def block_passenger(
             if not passenger:
                 raise HTTPException(status_code=404, detail="Passenger topilmadi")
             
-            if passenger.user.is_blocked:
+            if passenger.user and passenger.user.is_blocked:
                 raise HTTPException(status_code=400, detail="Passenger allaqachon bloklangan")
             
             # Bloklash
@@ -320,7 +324,7 @@ async def unblock_passenger(
             if not passenger:
                 raise HTTPException(status_code=404, detail="Passenger topilmadi")
             
-            if not passenger.user.is_blocked:
+            if not passenger.user or not passenger.user.is_blocked:
                 raise HTTPException(status_code=400, detail="Passenger bloklangan emas")
             
             # Blokdan ochish
@@ -412,4 +416,3 @@ async def get_passengers_statistics(
 
 
 all = ['router']
-

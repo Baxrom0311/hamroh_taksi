@@ -135,8 +135,9 @@
     </div>
 </div>
 
-<script>
-const BOT_TOKEN = '{{ settings.BOT_TOKEN }}';
+    <script>
+    // Inline constants (Jinja templating remains intact)
+    const BOT_TOKEN = '{{ settings.BOT_TOKEN }}';
 const txPageSize = 20;
 let txCurrentPage = 1;
 let currentReceiptUrl = null;

@@ -337,15 +337,18 @@ async def block_driver(
                 f"for {request.duration_hours}h: {request.reason}"
             )
             
-            # Haydovchiga xabar
-            from app.tasks.notifications import send_telegram_message
-            send_telegram_message.delay( # type: ignore
-                driver.user_id,
-                f"🚫 <b>Sizning hisobingiz bloklandi!</b>\n\n"
-                f"Muddat: {request.duration_hours} soat\n"
-                f"Sabab: {request.reason}\n\n"
-                f"Agar bu xato deb hisoblasangiz, admin bilan bog'laning."
-            )
+            # Haydovchiga xabar (best-effort)
+            try:
+                from app.tasks.notifications import send_telegram_message
+                send_telegram_message.delay(  # type: ignore
+                    driver.user_id,
+                    f"🚫 <b>Sizning hisobingiz bloklandi!</b>\n\n"
+                    f"Muddat: {request.duration_hours} soat\n"
+                    f"Sabab: {request.reason}\n\n"
+                    f"Agar bu xato deb hisoblasangiz, admin bilan bog'laning."
+                )
+            except Exception as notify_err:
+                logger.warning(f"Failed to notify driver {driver_id} about block: {notify_err}")
             
             return {
                 'success': True,
@@ -395,13 +398,16 @@ async def unblock_driver(
             
             logger.info(f"Driver {driver_id} unblocked by admin {current_user['username']}")
             
-            # Haydovchiga xabar
-            from app.tasks.notifications import send_telegram_message
-            send_telegram_message.delay( # type: ignore
-                driver.user_id,
-                "✅ <b>Sizning hisobingiz ochildi!</b>\n\n"
-                "Endi tizimdan foydalanishingiz mumkin."
-            )
+            # Haydovchiga xabar (best-effort)
+            try:
+                from app.tasks.notifications import send_telegram_message
+                send_telegram_message.delay(  # type: ignore
+                    driver.user_id,
+                    "✅ <b>Sizning hisobingiz ochildi!</b>\n\n"
+                    "Endi tizimdan foydalanishingiz mumkin."
+                )
+            except Exception as notify_err:
+                logger.warning(f"Failed to notify driver {driver_id} about unblock: {notify_err}")
             
             return {
                 'success': True,
