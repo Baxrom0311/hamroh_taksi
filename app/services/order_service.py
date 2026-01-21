@@ -802,10 +802,16 @@ async def complete_trip(order_id: int, driver_id: int) -> dict:
             
             logger.success(f"✅ Trip completed successfully: order_id={order_id}")
             
+            # Return data including passenger info for feedback
             return {
                 'success': True,
                 'message': '✅ Safar yakunlandi!',
-                'duration_minutes': duration
+                'duration_minutes': duration,
+                'order': {
+                    'order_id': order_id,
+                    'passenger_id': passenger_id,
+                    'passenger_user_id': order.passenger.user_id if order.passenger else None
+                }
             }
 
     except Exception as e:
