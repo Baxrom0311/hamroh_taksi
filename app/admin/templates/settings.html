@@ -86,7 +86,7 @@
                 <input type="number" x-model.number="form.max_driver_change_per_hour" min="1"
                     class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
                     placeholder="Masalan: 3" />
-                <p class="text-xs text-gray-500">Yo'lovchi soatiga necha marta haydovchi almashtirishmumkin</p>
+                <p class="text-xs text-gray-500">Yo'lovchi soatiga necha marta haydovchi almashtirish mumkin</p>
             </div>
         </div>
     </div>
@@ -112,7 +112,7 @@
                 <input type="number" x-model.number="form.max_pickup_distance_km" min="1" step="0.5"
                     class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
                     placeholder="Masalan: 5" />
-                <p class="text-xs text-gray-500">Haydovchi yo'lovchidan qancha uzoqlikda bo'lishmumkin (km)</p>
+                <p class="text-xs text-gray-500">Haydovchi yo'lovchidan qancha uzoqlikda bo'lish mumkin (km)</p>
             </div>
 
             <div class="space-y-2">
@@ -121,6 +121,156 @@
                     class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
                     placeholder="Masalan: 120" />
                 <p class="text-xs text-gray-500">Haydovchi qabul qilmasa, ushbu vaqtda avtotasdiqlash</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Rate Limiting -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6 space-y-6 mb-6">
+        <div class="flex items-center justify-between border-b pb-4">
+            <div>
+                <h2 class="text-lg font-bold flex items-center gap-2">
+                    <svg class="w-5 h-5 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                    Rate Limiting
+                </h2>
+                <p class="text-sm text-gray-500 mt-1">SMS va haydovchi rad etish limitleri</p>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div class="space-y-2">
+                <label class="text-sm font-medium text-gray-700">SMS kunlik limit</label>
+                <input type="number" x-model.number="form.sms_rate_limit_per_day" min="1" max="100"
+                    class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+                    placeholder="Masalan: 5" />
+                <p class="text-xs text-gray-500">Bir yo'lovchiga kuniga max SMS soni</p>
+            </div>
+
+            <div class="space-y-2">
+                <label class="text-sm font-medium text-gray-700">SMS soatlik limit</label>
+                <input type="number" x-model.number="form.sms_rate_limit_per_hour" min="1" max="20"
+                    class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+                    placeholder="Masalan: 3" />
+                <p class="text-xs text-gray-500">Bir yo'lovchiga soatiga max SMS soni</p>
+            </div>
+
+            <div class="space-y-2">
+                <label class="text-sm font-medium text-gray-700">Haydovchi rad etish limiti</label>
+                <input type="number" x-model.number="form.max_driver_rejects_per_day" min="1" max="200"
+                    class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+                    placeholder="Masalan: 50" />
+                <p class="text-xs text-gray-500">Haydovchi kuniga max nechta order rad eta oladi</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Celery Timing -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6 space-y-6 mb-6">
+        <div class="flex items-center justify-between border-b pb-4">
+            <div>
+                <h2 class="text-lg font-bold flex items-center gap-2">
+                    <svg class="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    Celery Timing
+                </h2>
+                <p class="text-sm text-gray-500 mt-1">Avtomatik jarayонlar va timeout sozlamalari</p>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div class="space-y-2">
+                <label class="text-sm font-medium text-gray-700">Trip avtoyakunlash (soniya)</label>
+                <input type="number" x-model.number="form.auto_complete_trip_seconds" min="60" step="60"
+                    class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+                    placeholder="Masalan: 600" />
+                <p class="text-xs text-gray-500">Trip avtomatik yakunlanish vaqti</p>
+            </div>
+
+            <div class="space-y-2">
+                <label class="text-sm font-medium text-gray-700">Order avtorad (soniya)</label>
+                <input type="number" x-model.number="form.auto_reject_order_seconds" min="30" step="30"
+                    class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+                    placeholder="Masalan: 120" />
+                <p class="text-xs text-gray-500">Haydovchi qabul qilmasa order rad etiladi</p>
+            </div>
+
+            <div class="space-y-2">
+                <label class="text-sm font-medium text-gray-700">Trip avtotasdiqlash (soniya)</label>
+                <input type="number" x-model.number="form.auto_confirm_trip_seconds" min="300" step="300"
+                    class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+                    placeholder="Masalan: 1800" />
+                <p class="text-xs text-gray-500">Yo'lovchi tasdiqlamasa trip avtotasdiqlash</p>
+            </div>
+
+            <div class="space-y-2">
+                <label class="text-sm font-medium text-gray-700">Driver matching timeout (soniya)</label>
+                <input type="number" x-model.number="form.driver_matching_timeout_seconds" min="60" step="60"
+                    class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+                    placeholder="Masalan: 300" />
+                <p class="text-xs text-gray-500">Haydovchi topish maksimal vaqti</p>
+            </div>
+
+            <div class="space-y-2">
+                <label class="text-sm font-medium text-gray-700">Matching max retries</label>
+                <input type="number" x-model.number="form.driver_matching_max_retries" min="1" max="10"
+                    class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+                    placeholder="Masalan: 5" />
+                <p class="text-xs text-gray-500">Haydovchi topish maksimal urinishlar soni</p>
+            </div>
+
+            <div class="space-y-2">
+                <label class="text-sm font-medium text-gray-700">Matching retry delay (soniya)</label>
+                <input type="number" x-model.number="form.driver_matching_retry_delay_seconds" min="5" step="5"
+                    class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+                    placeholder="Masalan: 30" />
+                <p class="text-xs text-gray-500">Urinishlar orasidagi kutish vaqti</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Lock & State Management -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6 space-y-6 mb-6">
+        <div class="flex items-center justify-between border-b pb-4">
+            <div>
+                <h2 class="text-lg font-bold flex items-center gap-2">
+                    <svg class="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                    </svg>
+                    Lock & State Management
+                </h2>
+                <p class="text-sm text-gray-500 mt-1">Distributed lock va state TTL sozlamalari</p>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div class="space-y-2">
+                <label class="text-sm font-medium text-gray-700">Order lock timeout (soniya)</label>
+                <input type="number" x-model.number="form.order_lock_timeout_seconds" min="10" max="300" step="10"
+                    class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+                    placeholder="Masalan: 60" />
+                <p class="text-xs text-gray-500">Order qabul qilish lock timeout vaqti</p>
+            </div>
+
+            <div class="space-y-2">
+                <label class="text-sm font-medium text-gray-700">Generic lock timeout (soniya)</label>
+                <input type="number" x-model.number="form.generic_lock_timeout_seconds" min="5" max="60" step="5"
+                    class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+                    placeholder="Masalan: 10" />
+                <p class="text-xs text-gray-500">Umumiy lock timeout vaqti</p>
+            </div>
+
+            <div class="space-y-2">
+                <label class="text-sm font-medium text-gray-700">FSM state TTL (soniya)</label>
+                <input type="number" x-model.number="form.state_ttl_seconds" min="600" step="600"
+                    class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+                    placeholder="Masalan: 3600" />
+                <p class="text-xs text-gray-500">User state tozalanish vaqti (faolsiz bo'lsa)</p>
             </div>
         </div>
     </div>
@@ -148,7 +298,19 @@
                 ban_count_threshold: 5,
                 max_driver_change_per_hour: 3,
                 max_pickup_distance_km: 5,
-                auto_confirm_delay_seconds: 120
+                auto_confirm_delay_seconds: 120,
+                sms_rate_limit_per_day: 5,
+                sms_rate_limit_per_hour: 3,
+                max_driver_rejects_per_day: 50,
+                auto_complete_trip_seconds: 600,
+                auto_reject_order_seconds: 120,
+                auto_confirm_trip_seconds: 1800,
+                driver_matching_timeout_seconds: 300,
+                driver_matching_max_retries: 5,
+                driver_matching_retry_delay_seconds: 30,
+                order_lock_timeout_seconds: 60,
+                generic_lock_timeout_seconds: 10,
+                state_ttl_seconds: 3600
             },
 
             async init() {
@@ -165,6 +327,18 @@
                     this.form.max_driver_change_per_hour = Number(data.settings.max_driver_change_per_hour ?? 3);
                     this.form.max_pickup_distance_km = Number(data.settings.max_pickup_distance_km ?? 5);
                     this.form.auto_confirm_delay_seconds = Number(data.settings.auto_confirm_delay_seconds ?? 120);
+                    this.form.sms_rate_limit_per_day = Number(data.settings.sms_rate_limit_per_day ?? 5);
+                    this.form.sms_rate_limit_per_hour = Number(data.settings.sms_rate_limit_per_hour ?? 3);
+                    this.form.max_driver_rejects_per_day = Number(data.settings.max_driver_rejects_per_day ?? 50);
+                    this.form.auto_complete_trip_seconds = Number(data.settings.auto_complete_trip_seconds ?? 600);
+                    this.form.auto_reject_order_seconds = Number(data.settings.auto_reject_order_seconds ?? 120);
+                    this.form.auto_confirm_trip_seconds = Number(data.settings.auto_confirm_trip_seconds ?? 1800);
+                    this.form.driver_matching_timeout_seconds = Number(data.settings.driver_matching_timeout_seconds ?? 300);
+                    this.form.driver_matching_max_retries = Number(data.settings.driver_matching_max_retries ?? 5);
+                    this.form.driver_matching_retry_delay_seconds = Number(data.settings.driver_matching_retry_delay_seconds ?? 30);
+                    this.form.order_lock_timeout_seconds = Number(data.settings.order_lock_timeout_seconds ?? 60);
+                    this.form.generic_lock_timeout_seconds = Number(data.settings.generic_lock_timeout_seconds ?? 10);
+                    this.form.state_ttl_seconds = Number(data.settings.state_ttl_seconds ?? 3600);
                 }
             },
 
@@ -181,7 +355,19 @@
                     { key: 'ban_count_threshold', value: String(this.form.ban_count_threshold) },
                     { key: 'max_driver_change_per_hour', value: String(this.form.max_driver_change_per_hour) },
                     { key: 'max_pickup_distance_km', value: String(this.form.max_pickup_distance_km) },
-                    { key: 'auto_confirm_delay_seconds', value: String(this.form.auto_confirm_delay_seconds) }
+                    { key: 'auto_confirm_delay_seconds', value: String(this.form.auto_confirm_delay_seconds) },
+                    { key: 'sms_rate_limit_per_day', value: String(this.form.sms_rate_limit_per_day) },
+                    { key: 'sms_rate_limit_per_hour', value: String(this.form.sms_rate_limit_per_hour) },
+                    { key: 'max_driver_rejects_per_day', value: String(this.form.max_driver_rejects_per_day) },
+                    { key: 'auto_complete_trip_seconds', value: String(this.form.auto_complete_trip_seconds) },
+                    { key: 'auto_reject_order_seconds', value: String(this.form.auto_reject_order_seconds) },
+                    { key: 'auto_confirm_trip_seconds', value: String(this.form.auto_confirm_trip_seconds) },
+                    { key: 'driver_matching_timeout_seconds', value: String(this.form.driver_matching_timeout_seconds) },
+                    { key: 'driver_matching_max_retries', value: String(this.form.driver_matching_max_retries) },
+                    { key: 'driver_matching_retry_delay_seconds', value: String(this.form.driver_matching_retry_delay_seconds) },
+                    { key: 'order_lock_timeout_seconds', value: String(this.form.order_lock_timeout_seconds) },
+                    { key: 'generic_lock_timeout_seconds', value: String(this.form.generic_lock_timeout_seconds) },
+                    { key: 'state_ttl_seconds', value: String(this.form.state_ttl_seconds) }
                 ];
 
                 for (const item of payloads) {

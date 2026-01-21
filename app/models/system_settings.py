@@ -254,6 +254,7 @@ async def get_pricing_settings(session) -> dict:
 # ============================================
 
 DEFAULT_SETTINGS = [
+    # Tarif va Komissiya
     {
         'key': 'commission_amount',
         'value': '5000',
@@ -264,6 +265,8 @@ DEFAULT_SETTINGS = [
         'value': 'true',
         'description': 'Bot tekin/pullik (true/false)'
     },
+    
+    # Ban va Cheklovlar
     {
         'key': 'ban_percentage_threshold',
         'value': '50',
@@ -288,6 +291,74 @@ DEFAULT_SETTINGS = [
         'key': 'auto_confirm_delay_seconds',
         'value': '120',
         'description': 'Avtomatik tasdiqlash vaqti (soniya)'
+    },
+    
+    # Rate Limiting
+    {
+        'key': 'sms_rate_limit_per_day',
+        'value': '5',
+        'description': 'SMS kunlik limit (kun)'
+    },
+    {
+        'key': 'sms_rate_limit_per_hour',
+        'value': '3',
+        'description': 'SMS soatlik limit (soat)'
+    },
+    {
+        'key': 'max_driver_rejects_per_day',
+        'value': '50',
+        'description': 'Haydovchi kunlik rad etish limiti'
+    },
+    
+    # Celery Timing
+    {
+        'key': 'auto_complete_trip_seconds',
+        'value': '600',
+        'description': 'Trip avtomatik yakunlash vaqti (soniya)'
+    },
+    {
+        'key': 'auto_reject_order_seconds',
+        'value': '120',
+        'description': 'Order avtomatik rad etish vaqti (soniya)'
+    },
+    {
+        'key': 'auto_confirm_trip_seconds',
+        'value': '1800',
+        'description': 'Trip avtomatik tasdiqlash vaqti (soniya)'
+    },
+    {
+        'key': 'driver_matching_timeout_seconds',
+        'value': '300',
+        'description': 'Haydovchi topish timeout (soniya)'
+    },
+    {
+        'key': 'driver_matching_max_retries',
+        'value': '5',
+        'description': 'Haydovchi topish max retry soni'
+    },
+    {
+        'key': 'driver_matching_retry_delay_seconds',
+        'value': '30',
+        'description': 'Haydovchi topish retry delay (soniya)'
+    },
+    
+    # Lock Settings
+    {
+        'key': 'order_lock_timeout_seconds',
+        'value': '60',
+        'description': 'Order lock timeout (soniya)'
+    },
+    {
+        'key': 'generic_lock_timeout_seconds',
+        'value': '10',
+        'description': 'Generic lock timeout (soniya)'
+    },
+    
+    # State Management
+    {
+        'key': 'state_ttl_seconds',
+        'value': '3600',
+        'description': 'FSM state TTL (soniya)'
     },
 ]
 

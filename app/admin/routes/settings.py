@@ -81,13 +81,38 @@ async def get_system_settings(
             return {
                 'success': True,
                 'settings': {
+                    # Tarif va Komissiya
                     'commission_amount': settings_dict.get('commission_amount', config_settings.COMMISSION_AMOUNT),
                     'bot_is_free': settings_dict.get('bot_is_free', 'true'),
+                    
+                    # Ban va Cheklovlar
                     'ban_percentage_threshold': settings_dict.get('ban_percentage_threshold', '50'),
                     'ban_count_threshold': settings_dict.get('ban_count_threshold', '5'),
                     'max_driver_change_per_hour': settings_dict.get('max_driver_change_per_hour', '3'),
                     'max_pickup_distance_km': settings_dict.get('max_pickup_distance_km', str(config_settings.MAX_PICKUP_DISTANCE_KM)),
                     'auto_confirm_delay_seconds': settings_dict.get('auto_confirm_delay_seconds', str(config_settings.AUTO_CONFIRM_DELAY_SECONDS)),
+                    
+                    # Rate Limiting
+                    'sms_rate_limit_per_day': settings_dict.get('sms_rate_limit_per_day', str(config_settings.SMS_RATE_LIMIT_PER_DAY)),
+                    'sms_rate_limit_per_hour': settings_dict.get('sms_rate_limit_per_hour', str(config_settings.SMS_RATE_LIMIT_PER_HOUR)),
+                    'max_driver_rejects_per_day': settings_dict.get('max_driver_rejects_per_day', str(config_settings.MAX_DRIVER_REJECTS_PER_DAY)),
+                    
+                    # Celery Timing
+                    'auto_complete_trip_seconds': settings_dict.get('auto_complete_trip_seconds', str(config_settings.AUTO_COMPLETE_TRIP_SECONDS)),
+                    'auto_reject_order_seconds': settings_dict.get('auto_reject_order_seconds', str(config_settings.AUTO_REJECT_ORDER_SECONDS)),
+                    'auto_confirm_trip_seconds': settings_dict.get('auto_confirm_trip_seconds', str(config_settings.AUTO_CONFIRM_TRIP_SECONDS)),
+                    'driver_matching_timeout_seconds': settings_dict.get('driver_matching_timeout_seconds', str(config_settings.DRIVER_MATCHING_TIMEOUT_SECONDS)),
+                    'driver_matching_max_retries': settings_dict.get('driver_matching_max_retries', str(config_settings.DRIVER_MATCHING_MAX_RETRIES)),
+                    'driver_matching_retry_delay_seconds': settings_dict.get('driver_matching_retry_delay_seconds', str(config_settings.DRIVER_MATCHING_RETRY_DELAY_SECONDS)),
+                    
+                    # Lock Settings
+                    'order_lock_timeout_seconds': settings_dict.get('order_lock_timeout_seconds', str(config_settings.ORDER_LOCK_TIMEOUT_SECONDS)),
+                    'generic_lock_timeout_seconds': settings_dict.get('generic_lock_timeout_seconds', str(config_settings.GENERIC_LOCK_TIMEOUT_SECONDS)),
+                    
+                    # State Management
+                    'state_ttl_seconds': settings_dict.get('state_ttl_seconds', str(config_settings.STATE_TTL_SECONDS)),
+                    
+                    # Environment info
                     'environment': config_settings.ENVIRONMENT,
                     'is_production': config_settings.is_production
                 }
