@@ -7,6 +7,7 @@ Bu test ro'yxatdan o'tishdan boshlab safarni yakunlashgacha bo'm barcha jarayonn
 """
 
 import pytest
+import pytest_asyncio
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 from aiogram.types import Message, User, Chat, Update
@@ -169,8 +170,10 @@ class TestFullTripFlow:
         assert start_result['success'] is True
         
         # Check status
-        await db_session.refresh(accepted_order)
-        assert accepted_order.status == OrderStatus.IN_PROGRESS
+        from app.models.order import get_order_by_id
+        order_db = await get_order_by_id(db_session, accepted_order.order_id)
+        assert order_db is not None
+        assert order_db.status == OrderStatus.IN_PROGRESS
         
         # Complete trip
         complete_result = await complete_trip(
@@ -181,9 +184,10 @@ class TestFullTripFlow:
         assert complete_result['success'] is True
         
         # Check final status
-        await db_session.refresh(accepted_order)
-        assert accepted_order.status == OrderStatus.COMPLETED
-        assert accepted_order.completed_at is not None
+        order_db = await get_order_by_id(db_session, accepted_order.order_id)
+        assert order_db is not None
+        assert order_db.status == OrderStatus.COMPLETED
+        assert order_db.completed_at is not None
     
     # Helper methods
     def _create_mock_message(self, user_id: int, text: str = "", **kwargs):
@@ -207,7 +211,7 @@ class TestFullTripFlow:
 
 # Fixtures
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def passenger(db_session, faker):
     """Test passenger yaratish"""
     from app.models.user import create_user
@@ -238,7 +242,7 @@ async def passenger(db_session, faker):
     return passenger
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def driver(db_session, faker):
     """Test driver yaratish"""
     from app.models.user import create_user
@@ -270,7 +274,7 @@ async def driver(db_session, faker):
     return driver
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def active_route(db_session, faker):
     """Test route yaratish"""
     route = Route(
@@ -286,7 +290,7 @@ async def active_route(db_session, faker):
     return route
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def pending_order(db_session, passenger, active_route):
     """PENDING buyurtma yaratish"""
     from app.services.order_service import create_new_order
@@ -305,7 +309,7 @@ async def pending_order(db_session, passenger, active_route):
     return order
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def accepted_order(db_session, pending_order, driver):
     """ACCEPTED buyurtma yaratish"""
     from app.services.order_service import accept_order_by_driver

@@ -4,13 +4,16 @@ tests/conftest.py - Enhanced
 GLOBAL TEST FIXTURES VA KONFIGURATSIYALAR
 """
 
+import os
 import pytest
+import pytest_asyncio
 import asyncio
 from typing import AsyncGenerator
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.pool import NullPool
 from contextlib import asynccontextmanager
 from faker import Faker
+from sqlalchemy import text
 
 # Force the standard asyncio loop policy to avoid uvloop cross-loop issues in tests
 asyncio.set_event_loop_policy(asyncio.DefaultEventLoopPolicy())
@@ -24,10 +27,19 @@ def event_loop_policy():
 # DATABASE TEST FIXTURES
 # ============================================
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def test_engine():
     """Per-test database engine"""
-    TEST_DATABASE_URL = "postgresql+asyncpg://hamroh_user:test@localhost:5432/hamroh_test"
+    db_host = os.getenv("DB_HOST", "postgres")
+    db_port = os.getenv("DB_PORT", "5432")
+    db_user = os.getenv("DB_USER", "hamroh_user")
+    db_pass = os.getenv("DB_PASSWORD", "your_strong_password_here")
+    db_name = os.getenv("DB_NAME", "hamroh_bot")
+
+    TEST_DATABASE_URL = os.getenv(
+        "TEST_DATABASE_URL",
+        f"postgresql+asyncpg://{db_user}:{db_pass}@{db_host}:{db_port}/{db_name}"
+    )
     
     from app.core.database import Base
     from app.core.database import db_manager
@@ -51,7 +63,20 @@ async def test_engine():
 
     # Reset schema for every test to avoid cross-test bleed and loop reuse issues
     async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
+        # Terminate stray connections (bot process) to avoid deadlocks during DROP SCHEMA
+        await conn.execute(text("""
+            SELECT pg_terminate_backend(pid)
+            FROM pg_stat_activity
+            WHERE datname = current_database()
+              AND pid <> pg_backend_pid();
+        """))
+        # Keep lock waits short so tests don't hang
+        await conn.execute(text("SET lock_timeout TO '5s'"))
+        # Fast schema reset with cascade to avoid FK dependency issues
+        await conn.execute(text("DROP SCHEMA IF EXISTS public CASCADE;"))
+        await conn.execute(text("CREATE SCHEMA public;"))
+        # Ensure PostGIS is available for geometry columns
+        await conn.execute(text("CREATE EXTENSION IF NOT EXISTS postgis WITH SCHEMA public;"))
         await conn.run_sync(Base.metadata.create_all)
     
     yield engine
@@ -59,7 +84,7 @@ async def test_engine():
     await engine.dispose()
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def db_session(test_engine) -> AsyncGenerator[AsyncSession, None]:
     """Database session for tests"""
     async_session = async_sessionmaker(
@@ -82,7 +107,8 @@ def test_db(db_session):
 @pytest.fixture
 def faker():
     """Faker instance for generating test data"""
-    return Faker('uz_UZ')
+    # Use default locale to avoid missing locale errors in CI containers
+    return Faker()
 
 
 # ============================================
@@ -94,11 +120,21 @@ def disable_order_lock(monkeypatch):
     """
     Tests run without Redis; stub distributed lock to always succeed.
     """
-    @asynccontextmanager
-    async def _no_lock(*args, **kwargs):
-        yield True
+    lock_state = set()
 
-    monkeypatch.setattr("app.services.order_service.acquire_order_lock", _no_lock)
+    @asynccontextmanager
+    async def _fake_lock(order_id=None, *args, **kwargs):
+        key = order_id or kwargs.get("order_id") or "default"
+        if key in lock_state:
+            yield False
+        else:
+            lock_state.add(key)
+            try:
+                yield True
+            finally:
+                lock_state.discard(key)
+
+    monkeypatch.setattr("app.services.order_service.acquire_order_lock", _fake_lock)
 
 
 # ============================================
@@ -150,7 +186,7 @@ def mock_celery():
 # MODEL FIXTURES
 # ============================================
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def test_user(db_session, faker):
     """Test user fixture"""
     from app.models.user import create_user, UserRole
@@ -164,7 +200,7 @@ async def test_user(db_session, faker):
     await db_session.commit()
     return user
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def passenger(db_session, test_user, faker):
     """Passenger profile fixture"""
     from app.models.passenger import create_passenger, Gender
@@ -179,7 +215,7 @@ async def passenger(db_session, test_user, faker):
     await db_session.commit()
     return passenger
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def driver(db_session, faker):
     """Driver profile fixture"""
     from app.models.user import create_user, UserRole
