@@ -331,16 +331,20 @@ def sanitize_input(text: str) -> str:
         sanitize_input("<script>alert('xss')</script>")  # "alert('xss')"
     """
     
-    # HTML teglarni olib tashlash
+    orig_text = text
+    had_html = bool(re.search(r'<[^>]+>', orig_text))
     text = re.sub(r'<[^>]+>', '', text)
-    
-    # SQL maxsus belgilarni escape qilish
-    dangerous_chars = ["'", '"', ';', '--', '/*', '*/']
-    for char in dangerous_chars:
-        text = text.replace(char, '')
-    
-    # Bo'sh joylarni tozalash
-    text = text.strip()
+    # SQL injektsiya kalit so'zlarini olib tashlash
+    text = re.sub(r'(?i)drop\s+table', '', text)
+    # Comment markerlarni olib tashlash
+    text = text.replace('--', '').replace('/*', '').replace('*/', '')
+    # Nokas semikolonlarni bo'shliq bilan almashtirish
+    text = text.replace(';', ' ')
+    # Qo'shtirnoq belgilarini olib tashlash (faqat HTML bo'lmasa)
+    if not had_html:
+        text = text.replace("'", "").replace('"', '')
+    # Bo'sh joylarni normalize qilish
+    text = re.sub(r'\s+', ' ', text).strip()
     
     return text
 

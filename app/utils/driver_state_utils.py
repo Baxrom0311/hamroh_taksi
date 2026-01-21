@@ -42,7 +42,9 @@ async def cleanup_stuck_driver_state(
         .where(Driver.driver_id == driver_id)
         .values(
             is_on_trip=False,
-            is_active=False
+            is_active=False, 
+            current_route_id=None,
+            available_seats=0
         )
     )
     

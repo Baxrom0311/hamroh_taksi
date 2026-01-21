@@ -19,7 +19,7 @@ ISHLATISH:
         # code...
         pass
 """
-
+ 
 import time
 import functools
 from typing import Callable, Any

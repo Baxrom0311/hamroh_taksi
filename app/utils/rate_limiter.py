@@ -19,7 +19,7 @@ ISHLATISH:
         return
 """
 import time
-from typing import Optional
+from typing import Optional, Any, cast
 from loguru import logger
 from app.core.redis_client import redis_client
 
@@ -33,7 +33,7 @@ class RateLimiter:
     - Key format: ratelimit:{action}:{user_id}
     - Value: timestamp:count
     - TTL: window duration
-    
+     
     FEATURES:
     - User-specific limits
     - Action-specific limits  
@@ -121,36 +121,37 @@ class RateLimiter:
         """
         Current window ichidagi request'lar sonini olish
         """
-        # Get all entries
-        entries = await self.redis.client.lrange(key, 0, -1)
-        
+        client = cast(Any, self.redis.client)
+        entries = await client.lrange(key, 0, -1)
+
         if not entries:
             return 0
-        
-        # Window ichidagi entry'larni sanash
+
         count = 0
         for entry in entries:
             try:
-                timestamp, req_cost = entry.decode().split(":")
+                raw = entry.decode() if hasattr(entry, "decode") else str(entry)
+                timestamp, req_cost = raw.split(":")
                 if float(timestamp) >= window_start:
                     count += int(req_cost)
             except (ValueError, AttributeError):
+                # Ignore malformed entry but continue counting others
                 continue
-        
+
         return count
     
     async def _increment(self, key: str, timestamp: float, cost: int):
         """
         Request counter'ni oshirish
         """
-        # Yangi entry qo'shish
         entry = f"{timestamp}:{cost}"
-        await self.redis.client.rpush(key, entry)
+        client = cast(Any, self.redis.client)
+        await client.rpush(key, entry)
         
         # TTL set qilish (faqat birinchi marta)
-        ttl = await self.redis.client.ttl(key)
+        ttl = await client.ttl(key)
         if ttl == -1:  # TTL yo'q
-            await self.redis.client.expire(key, self.window)
+            await client.expire(key, self.window)
         
         # Eski entry'larni tozalash (optimization)
         await self._cleanup_old_entries(key, timestamp - self.window)
@@ -159,14 +160,15 @@ class RateLimiter:
         """
         Eski entry'larni o'chirish
         """
-        entries = await self.redis.client.lrange(key, 0, -1)
-        
+        client = cast(Any, self.redis.client)
+        entries = await client.lrange(key, 0, -1)
+
         for entry in entries:
             try:
-                timestamp_str = entry.decode().split(":")[0]
+                raw = entry.decode() if hasattr(entry, "decode") else str(entry)
+                timestamp_str = raw.split(":")[0]
                 if float(timestamp_str) < cutoff_time:
-                    # Eski entry - o'chirish
-                    await self.redis.client.lrem(key, 1, entry)
+                    await client.lrem(key, 1, entry)
             except (ValueError, AttributeError):
                 continue
     
@@ -175,7 +177,8 @@ class RateLimiter:
         Limitni reset qilish (admin uchun)
         """
         key = self._get_key(user_id, action)
-        await self.redis.client.delete(key)
+        client = cast(Any, self.redis.client)
+        await client.delete(key)
         logger.info(f"Rate limit reset: user={user_id}, action={action}")
     
     async def get_remaining(self, user_id: int, action: str) -> int:

@@ -12,6 +12,7 @@ MASALAN:
 """
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import field_validator
 from typing import List, Optional
 from pathlib import Path
 
@@ -177,7 +178,9 @@ class Settings(BaseSettings):
     # ============================================
     
     # Order acceptance lock (double booking prevention)
-    ORDER_LOCK_TIMEOUT_SECONDS: int = 30  # Lock timeout (30s)
+    # ✅ PRODUCTION FIX: Increased from 30s to 60s for safety margin
+    # This ensures DB transactions complete before lock expires
+    ORDER_LOCK_TIMEOUT_SECONDS: int = 60  # Lock timeout (60s - 2x safety margin)
     ORDER_LOCK_MAX_RETRIES: int = 3  # Max retry count
     ORDER_LOCK_RETRY_DELAY_SECONDS: float = 0.2  # Retry delay
     
@@ -201,9 +204,19 @@ class Settings(BaseSettings):
     AUTO_COMPLETE_TRIP_SECONDS: int = 600  # 10 daqiqa
     AUTO_COMPLETE_TRIP_MAX_RETRIES: int = 3
     
+    # Auto-reject timer (driver ignores order)
+    AUTO_REJECT_ORDER_SECONDS: int = 120  # 2 daqiqa
+    
+    # Auto-confirm trip (passenger confirmation timeout)
+    AUTO_CONFIRM_TRIP_SECONDS: int = 1800  # 30 daqiqa
+    
     # Driver matching task
     DRIVER_MATCHING_TIMEOUT_SECONDS: int = 300  # 5 daqiqa
     DRIVER_MATCHING_MAX_RETRIES: int = 5
+    DRIVER_MATCHING_RETRY_DELAY_SECONDS: int = 30  # Retry after 30s
+    
+    # Generic task retry delay
+    TASK_RETRY_DELAY_SECONDS: int = 60  # 1 daqiqa default retry
     
     # ============================================
     # LOGGING SOZLAMALARI
@@ -227,6 +240,74 @@ class Settings(BaseSettings):
     def is_development(self) -> bool:
         """Development muhitdami?"""
         return self.ENVIRONMENT == "development"
+    
+    # ============================================
+    # FIELD VALIDATORS (Production Safety)
+    # ============================================
+    
+    @field_validator('COMMISSION_AMOUNT')
+    @classmethod
+    def validate_commission(cls, v: int) -> int:
+        """Komissiya musbat bo'lishi kerak"""
+        if v < 0:
+            raise ValueError(
+                f"COMMISSION_AMOUNT manfiy bo'lishi mumkin emas! "
+                f"Kiritilgan: {v}. Kamida 0 bo'lishi kerak."
+            )
+        if v > 100000:
+            raise ValueError(
+                f"COMMISSION_AMOUNT juda katta! "
+                f"Kiritilgan: {v}. Maksimal: 100,000 so'm"
+            )
+        return v
+    
+    @field_validator('MAX_PICKUP_DISTANCE_KM')
+    @classmethod
+    def validate_distance(cls, v: int) -> int:
+        """Masofa 1-1000 km oralig'ida bo'lishi kerak"""
+        if v <= 0:
+            raise ValueError(
+                f"MAX_PICKUP_DISTANCE_KM musbat bo'lishi kerak! "
+                f"Kiritilgan: {v}"
+            )
+        if v > 1000:
+            raise ValueError(
+                f"MAX_PICKUP_DISTANCE_KM juda katta! "
+                f"Kiritilgan: {v}. Maksimal: 1000 km"
+            )
+        return v
+    
+    @field_validator('MAX_DRIVER_REJECTS_PER_DAY')
+    @classmethod
+    def validate_rejects(cls, v: int) -> int:
+        """Rad etish limiti 1-200 oralig'ida"""
+        if v < 1:
+            raise ValueError(
+                f"MAX_DRIVER_REJECTS_PER_DAY kamida 1 bo'lishi kerak! "
+                f"Kiritilgan: {v}"
+            )
+        if v > 200:
+            raise ValueError(
+                f"MAX_DRIVER_REJECTS_PER_DAY juda katta! "
+                f"Kiritilgan: {v}. Maksimal: 200"
+            )
+        return v
+    
+    @field_validator('ORDER_LOCK_TIMEOUT_SECONDS')
+    @classmethod
+    def validate_lock_timeout(cls, v: int) -> int:
+        """Lock timeout 10-300 sekund oralig'ida"""
+        if v < 10:
+            raise ValueError(
+                f"ORDER_LOCK_TIMEOUT_SECONDS juda kichik! "
+                f"Kiritilgan: {v}. Kamida: 10 sekund"
+            )
+        if v > 300:
+            raise ValueError(
+                f"ORDER_LOCK_TIMEOUT_SECONDS juda katta! "
+                f"Kiritilgan: {v}. Maksimal: 300 sekund (5 daqiqa)"
+            )
+        return v
     
     # ============================================
     # PYDANTIC CONFIG

@@ -17,7 +17,7 @@ ISHLATISH:
         # Database operations
         pass
 """
-from typing import Any, Callable, Optional, TypeVar, ParamSpec
+from typing import Any, Callable, Optional, TypeVar, ParamSpec, Awaitable
 from functools import wraps
 import traceback
 from loguru import logger
@@ -42,7 +42,7 @@ T = TypeVar('T')
 # DATABASE ERROR HANDLER DECORATOR
 # ============================================
 
-def handle_db_errors(func: Callable[P, T]) -> Callable[P, T]:
+def handle_db_errors(func: Callable[P, Awaitable[T]]) -> Callable[P, Awaitable[T]]:
     """
     Database error handling decorator
     
@@ -90,7 +90,7 @@ def handle_db_errors(func: Callable[P, T]) -> Callable[P, T]:
 # REDIS ERROR HANDLER DECORATOR
 # ============================================
 
-def handle_redis_errors(func: Callable[P, T]) -> Callable[P, T]:
+def handle_redis_errors(func: Callable[P, Awaitable[T]]) -> Callable[P, Awaitable[T]]:
     """
     Redis error handling decorator
     
@@ -124,7 +124,7 @@ def retry_on_failure(
     delay: float = 1.0,
     backoff: float = 2.0,
     exceptions: tuple = (Exception,)
-) -> Callable[[Callable[P, T]], Callable[P, T]]:
+) -> Callable[[Callable[P, Awaitable[T]]], Callable[P, Awaitable[T]]]:
     """
     Generic retry decorator
     
@@ -140,7 +140,7 @@ def retry_on_failure(
             # Operation that might fail
             pass
     """
-    def decorator(func: Callable[P, T]) -> Callable[P, T]:
+    def decorator(func: Callable[P, Awaitable[T]]) -> Callable[P, Awaitable[T]]:
         @wraps(func)
         async def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
             import asyncio
@@ -163,7 +163,11 @@ def retry_on_failure(
                     )
                     
                     await asyncio.sleep(current_delay)
+                    await asyncio.sleep(current_delay)
                     current_delay *= backoff
+            
+            # Should not happen if exceptions is (Exception,)
+            return await func(*args, **kwargs)
                     
         return wrapper
     return decorator
@@ -317,7 +321,7 @@ def map_exception_to_http(exception: Exception) -> tuple[int, str, str]:
 # ============================================
 
 async def safe_execute(
-    func: Callable[P, T],
+    func: Callable[P, Awaitable[T]],
     *args: P.args,
     **kwargs: P.kwargs
 ) -> tuple[bool, Optional[T], Optional[str]]:
@@ -433,3 +437,4 @@ __all__ = [
     'safe_execute',
     'ValidationErrorCollector',
 ]
+ 

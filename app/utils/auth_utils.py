@@ -16,12 +16,21 @@ ISHLATISH:
     async def admin_only_function():
         pass
 """
-from typing import Callable, Optional, Any, TypeVar, ParamSpec
+from typing import Callable, Optional, Any, TypeVar, ParamSpec, Coroutine, Awaitable
 from functools import wraps
 from loguru import logger
 
 from app.models.user import UserRole
-from app.core.exceptions import PermissionError, ValidationError
+# Import exceptions from app.core.exceptions (explicitly)
+from app.core.exceptions import (
+    HamrohBaseException, 
+    ValidationError as CoreValidationError,
+    PermissionError as CorePermissionError
+)
+
+# Alias for standard exceptions if needed, OR use Core exceptions
+PermissionError = CorePermissionError
+ValidationError = CoreValidationError
 
 # Type hints for decorators
 P = ParamSpec('P')
@@ -33,7 +42,7 @@ T = TypeVar('T')
 # ============================================
 
 def check_user_permission(
-    user_role: UserRole,
+    user_role: Optional[UserRole],
     required_role: UserRole
 ) -> bool:
     """
@@ -67,13 +76,16 @@ def check_user_permission(
         UserRole.PASSENGER: 1
     }
     
+    if user_role is None:
+        return False
+        
     user_level = role_hierarchy.get(user_role, 0)
     required_level = role_hierarchy.get(required_role, 0)
     
     return user_level >= required_level
 
 
-def is_admin(user_role: UserRole) -> bool:
+def is_admin(user_role: Optional[UserRole]) -> bool:
     """
     Admin yoki Glavni Admin'mi?
     
@@ -82,10 +94,12 @@ def is_admin(user_role: UserRole) -> bool:
             # Admin panel'ga kirish
             pass
     """
+    if user_role is None:
+        return False
     return user_role in [UserRole.GLAVNI_ADMIN, UserRole.ADMIN]
 
 
-def is_glavni_admin(user_role: UserRole) -> bool:
+def is_glavni_admin(user_role: Optional[UserRole]) -> bool:
     """
     Bosh admin'mi?
     
@@ -94,6 +108,8 @@ def is_glavni_admin(user_role: UserRole) -> bool:
             # Faqat bosh admin uchun
             pass
     """
+    if user_role is None:
+        return False
     return user_role == UserRole.GLAVNI_ADMIN
 
 
@@ -132,7 +148,7 @@ def require_role(required_role: UserRole):
             # Faqat admin kirishi mumkin
             pass
     """
-    def decorator(func: Callable[P, T]) -> Callable[P, T]:
+    def decorator(func: Callable[P, Awaitable[T]]) -> Callable[P, Awaitable[T]]:
         @wraps(func)
         async def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
             # current_user parametrni topish
@@ -152,6 +168,9 @@ def require_role(required_role: UserRole):
                     user_role = UserRole(user_role)
                 except ValueError:
                     raise PermissionError(f"Invalid user role: {user_role}")
+
+            if not isinstance(user_role, UserRole):
+                 raise PermissionError("Invalid user role type")
             
             # Permission tekshiruvi
             if not check_user_permission(user_role, required_role):
@@ -166,7 +185,7 @@ def require_role(required_role: UserRole):
     return decorator
 
 
-def require_admin(func: Callable[P, T]) -> Callable[P, T]:
+def require_admin(func: Callable[P, Awaitable[T]]) -> Callable[P, Awaitable[T]]:
     """
     Admin-only decorator
     
@@ -197,7 +216,7 @@ def require_admin(func: Callable[P, T]) -> Callable[P, T]:
     return wrapper
 
 
-def require_glavni_admin(func: Callable[P, T]) -> Callable[P, T]:
+def require_glavni_admin(func: Callable[P, Awaitable[T]]) -> Callable[P, Awaitable[T]]:
     """
     Glavni Admin-only decorator
     
@@ -245,9 +264,12 @@ def bot_require_role(required_role: UserRole):
             # Faqat admin
             pass
     """
-    def decorator(func: Callable[P, T]) -> Callable[P, T]:
+    def decorator(func: Callable[P, Awaitable[T]]) -> Callable[P, Awaitable[T]]:
         @wraps(func)
         async def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
+            # Typechecking imports inside wrapper to avoid circular deps if any
+            from aiogram.types import Message, CallbackQuery, TelegramObject
+            
             # user_role parametrni topish
             user_role = kwargs.get('user_role')
             
@@ -263,7 +285,12 @@ def bot_require_role(required_role: UserRole):
                     logger.error(f"Invalid user role: {user_role}")
                     return None  # type: ignore
             
+            # Handle potential 'Any' or 'object' type for user_role by ensuring it is UserRole (or close enough) before passing
+            if not isinstance(user_role, UserRole):
+                 raise PermissionError("Invalid user role type")
+
             # Permission tekshiruvi
+            # We explicitly cast or check if it matches expectations
             if not check_user_permission(user_role, required_role):
                 logger.warning(
                     f"Permission denied for {func.__name__}: "
@@ -271,10 +298,15 @@ def bot_require_role(required_role: UserRole):
                 )
                 
                 # Bot'da xabar yuborish (args'dan Message topish)
-                message = None
+                message: Optional[Message] = None
+                
                 for arg in args:
-                    if hasattr(arg, 'answer'):  # Message yoki CallbackQuery
-                        message = arg if hasattr(arg, 'text') else arg.message
+                    if isinstance(arg, Message):
+                        message = arg
+                        break
+                    elif isinstance(arg, CallbackQuery):
+                        if isinstance(arg.message, Message):
+                            message = arg.message
                         break
                 
                 if message:
@@ -295,9 +327,9 @@ def bot_require_role(required_role: UserRole):
 # ============================================
 
 async def check_resource_ownership(
-    user_id: int,
-    resource_owner_id: int,
-    user_role: UserRole
+    user_id: Any,
+    resource_owner_id: Any,
+    user_role: Optional[UserRole]
 ) -> bool:
     """
     Resource ownership tekshirish
@@ -352,7 +384,7 @@ def require_ownership(
             # Faqat owner yoki admin
             pass
     """
-    def decorator(func: Callable[P, T]) -> Callable[P, T]:
+    def decorator(func: Callable[P, Awaitable[T]]) -> Callable[P, Awaitable[T]]:
         @wraps(func)
         async def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
             current_user = kwargs.get('current_user')
@@ -406,3 +438,4 @@ __all__ = [
     'check_resource_ownership',
     'require_ownership',
 ]
+ 
