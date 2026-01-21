@@ -216,7 +216,7 @@ class Settings(BaseSettings):
     DRIVER_MATCHING_RETRY_DELAY_SECONDS: int = 30  # Retry after 30s
     
     # Generic task retry delay
-    TASK_RETRY_DELAY_SECONDS: int = 60  # 1 daqiqa default retry
+    TASK_RETRY_DELAY_SECONDS: int = 600  # 1 daqiqa default retry
     
     # ============================================
     # LOGGING SOZLAMALARI

@@ -87,7 +87,7 @@ class SystemSettings(Base):
 # HELPER FUNCTIONS
 # ============================================
 
-async def get_setting(session, key: str, default: str = None) -> Optional[str]:
+async def get_setting(session, key: str, default: Optional[str] = None) -> Optional[str]:
     """
     Sozlamani olish
     

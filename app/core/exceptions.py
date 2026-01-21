@@ -435,6 +435,16 @@ class ForbiddenException(HamrohBaseException):
 
 
 # ============================================
+# ALIASES (Compatibility)
+# ============================================
+
+ValidationError = ValidationException
+PermissionError = ForbiddenException
+DatabaseError = DatabaseException
+CacheError = RedisException
+
+
+# ============================================
 # UTILITY FUNCTIONS
 # ============================================
 

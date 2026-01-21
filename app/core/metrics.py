@@ -14,7 +14,7 @@ from prometheus_client import Counter, Histogram, Gauge, Info
 from functools import wraps
 import time
 from loguru import logger
-
+from typing import Optional
 # ============================================
 # COUNTERS (Increment only)
 # ============================================
@@ -190,8 +190,8 @@ APP_INFO.info({
 # ============================================
 # DECORATORS
 # ============================================
-
-def track_time(metric: Histogram, label: str = None):
+ 
+def track_time(metric: Histogram, label: Optional[str] = None):
     """
     Decorator to track function execution time
     

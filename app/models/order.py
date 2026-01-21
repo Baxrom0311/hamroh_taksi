@@ -121,16 +121,17 @@ class Order(Base):
         comment="Olish joyi (matn)"
     )
     
-    pickup_lat: Mapped[Decimal] = mapped_column(
+    # ✅ CRITICAL FIX: Made nullable to support text-only addresses
+    pickup_lat: Mapped[Optional[Decimal]] = mapped_column(
         Numeric(10, 8),
-        nullable=False,
-        comment="Olish joyi - Latitude"
+        nullable=True,  # ✅ Changed from False - text-only addresses have no GPS
+        comment="Olish joyi - Latitude (None for text-only)"
     )
     
-    pickup_lon: Mapped[Decimal] = mapped_column(
+    pickup_lon: Mapped[Optional[Decimal]] = mapped_column(
         Numeric(11, 8),
-        nullable=False,
-        comment="Olish joyi - Longitude"
+        nullable=True,  # ✅ Changed from False - text-only addresses have no GPS
+        comment="Olish joyi - Longitude (None for text-only)"
     )
     
     # ============================================
@@ -351,6 +352,19 @@ class Order(Base):
         return self.status == OrderStatus.CANCELLED
     
     @property
+    def is_active(self) -> bool:
+        """
+        Aktiv buyurtma (ACCEPTED yoki IN_PROGRESS)
+        
+        ✅ CODE QUALITY: Replaces duplicate checks like:
+            if order.status in [OrderStatus.ACCEPTED, OrderStatus.IN_PROGRESS]
+        
+        With cleaner:
+            if order.is_active
+        """
+        return self.status in (OrderStatus.ACCEPTED, OrderStatus.IN_PROGRESS)
+    
+    @property
     def duration_minutes(self) -> Optional[int]:
         """Safar davomiyligi (daqiqa)"""
         if self.completed_at and self.started_at:
@@ -366,8 +380,8 @@ class Order(Base):
             'driver_id': self.driver_id,
             'route_id': self.route_id,
             'pickup_location': self.pickup_location,
-            'pickup_lat': float(self.pickup_lat),
-            'pickup_lon': float(self.pickup_lon),
+            'pickup_lat': float(self.pickup_lat) if self.pickup_lat is not None else None,
+            'pickup_lon': float(self.pickup_lon) if self.pickup_lon is not None else None,
             'passenger_count': self.passenger_count,
             'has_luggage': self.has_luggage,
             'status': self.status.value,
@@ -397,6 +411,7 @@ async def get_order_by_id(
 ) -> Optional[Order]:
     stmt = (
         select(Order)
+        .execution_options(populate_existing=True)  # Force refresh even if instance is cached
         .options(selectinload(Order.passenger))
         .where(Order.order_id == order_id)
     )
@@ -409,8 +424,8 @@ async def create_order(
     passenger_id: int,
     route_id: int,
     pickup_location: str,
-    pickup_lat: float,
-    pickup_lon: float,
+    pickup_lat: Optional[float],  # ✅ FIXED: Optional for text-only
+    pickup_lon: Optional[float],  # ✅ FIXED: Optional for text-only
     passenger_count: int = 1,
     **kwargs
 ) -> Order:
@@ -563,15 +578,19 @@ async def get_driver_active_orders(
     """
     Haydovchining aktiv buyurtmalari
     
+    ✅ CODE QUALITY: Uses SQL WHERE for performance
+    After fetching, can use order.is_active property in Python
+    
     ISHLATISH:
         orders = await get_driver_active_orders(session, driver_id=1)
+        # Python tarafda: active = [o for o in all_orders if o.is_active]
     """
     from sqlalchemy import select
     
     result = await session.execute(
         select(Order)
         .where(Order.driver_id == driver_id)
-        .where(Order.status.in_([OrderStatus.ACCEPTED, OrderStatus.IN_PROGRESS]))
+        .where(Order.status.in_([OrderStatus.ACCEPTED, OrderStatus.IN_PROGRESS]))  # is_active equivalent
         .order_by(Order.created_at)
     )
     
