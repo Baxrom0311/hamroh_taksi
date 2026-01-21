@@ -87,7 +87,7 @@ async def passenger_settings(message: Message, session: AsyncSession, passenger:
 <b>Funksiyalar:</b>
 • Profil ma'lumotlarini o'zgartirish
     """
-    
+     
     keyboard = ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text="✏️ Ismni o'zgartirish")],
@@ -124,6 +124,10 @@ async def finish_edit_name(message: Message, session: AsyncSession, passenger: P
         await message.answer("⬅️ Asosiy menyu", reply_markup=get_passenger_main_menu())
         return
     
+    if not message.text:
+        await message.answer("⚠️ Iltimos, ism kiriting.")
+        return
+
     new_name = message.text.strip()
     if len(new_name) < 2:
         await message.answer("❌ Ism juda qisqa. Iltimos, to'liq ismingizni kiriting.")

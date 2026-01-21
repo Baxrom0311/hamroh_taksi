@@ -98,8 +98,8 @@ async def change_driver_handler(callback: CallbackQuery, session: AsyncSession, 
     
     keyboard = get_driver_selection_keyboard(available_drivers, order_id)
     
-    if callback.message:
-        await callback.message.edit_text( # type: ignore
+    if callback.message and isinstance(callback.message, Message):
+        await callback.message.edit_text(
             Messages.Passenger.SELECT_NEW_DRIVER.format(order_id=order_id),
             reply_markup=keyboard,
             parse_mode="HTML"
@@ -218,9 +218,9 @@ async def select_new_driver_handler(callback: CallbackQuery, session: AsyncSessi
         new_driver_id,
         order_id
     )
-    
+     
     # Xabarni yangilash
-    if callback.message:
+    if callback.message  and isinstance(callback.message, Message):
         await callback.message.edit_text(
             f"✅ <b>Yangi haydovchi tanlandi!</b>\n\n"
             f"📦 Buyurtma #{order_id}\n\n"
@@ -374,7 +374,7 @@ async def view_driver_info(callback: CallbackQuery, session: AsyncSession):
     
     keyboard = get_driver_action_keyboard(driver.user_id, order_id)
     
-    if callback.message:
+    if callback.message and isinstance(callback.message, Message):
         await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
     
     await callback.answer()
