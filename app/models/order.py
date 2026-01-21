@@ -468,6 +468,8 @@ async def create_order(
     )
     
     session.add(order)
+    await session.flush()
+    await session.refresh(order)
     return order
 
 
