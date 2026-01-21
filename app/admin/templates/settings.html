@@ -5,107 +5,215 @@
 
 {% block content %}
 <div class="p-8" x-data="settingsApp()" x-init="init()">
-    <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6 space-y-6">
-        <div class="flex items-center justify-between">
+    <!-- Tarif va Komissiya -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6 space-y-6 mb-6">
+        <div class="flex items-center justify-between border-b pb-4">
             <div>
-                <h2 class="text-lg font-bold">Tarif va komissiya</h2>
-                <p class="text-sm text-gray-500">Botni tekin/pullik rejimi va komissiya miqdori</p>
+                <h2 class="text-lg font-bold flex items-center gap-2">
+                    <svg class="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    Tarif va komissiya
+                </h2>
+                <p class="text-sm text-gray-500 mt-1">Botni tekin/pullik rejimi va komissiya miqdori</p>
             </div>
         </div>
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div class="space-y-2">
-                <label class="text-sm font-medium">Bot rejimi</label>
-                <div class="flex items-center gap-3">
-                    <label class="inline-flex items-center">
-                        <input type="radio" x-model="form.bot_is_free" value="true" class="text-blue-600 border-gray-300">
-                        <span class="ml-2 text-sm">Tekin</span>
+                <label class="text-sm font-medium text-gray-700">Bot rejimi</label>
+                <div class="flex items-center gap-4">
+                    <label class="inline-flex items-center cursor-pointer">
+                        <input type="radio" x-model="form.bot_is_free" value="true"
+                            class="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500">
+                        <span class="ml-2 text-sm font-medium text-gray-700">🆓 Tekin</span>
                     </label>
-                    <label class="inline-flex items-center">
-                        <input type="radio" x-model="form.bot_is_free" value="false" class="text-blue-600 border-gray-300">
-                        <span class="ml-2 text-sm">Pullik</span>
+                    <label class="inline-flex items-center cursor-pointer">
+                        <input type="radio" x-model="form.bot_is_free" value="false"
+                            class="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500">
+                        <span class="ml-2 text-sm font-medium text-gray-700">💰 Pullik</span>
                     </label>
                 </div>
-                <p class="text-xs text-gray-500">Pullik rejimda komissiya va to'lovlar qo'llanadi.</p>
+                <p class="text-xs text-gray-500">Pullik rejimda komissiya va to'lovlar qo'llanadi</p>
             </div>
 
             <div class="space-y-2">
-                <label class="text-sm font-medium">Komissiya miqdori (so'm)</label>
-                <input
-                    type="number"
-                    x-model.number="form.commission_amount"
-                    :disabled="form.bot_is_free === 'true'"
-                    class="w-full border rounded px-3 py-2 text-sm disabled:bg-gray-100 disabled:cursor-not-allowed"
-                />
-                <p class="text-xs text-gray-500">Har safar uchun komissiya miqdori.</p>
+                <label class="text-sm font-medium text-gray-700">Komissiya miqdori (so'm)</label>
+                <input type="number" x-model.number="form.commission_amount" :disabled="form.bot_is_free === 'true'"
+                    min="0" step="1000"
+                    class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed transition"
+                    placeholder="Masalan: 5000" />
+                <p class="text-xs text-gray-500">Har bir safar uchun haydovchidan olinadigan komissiya</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Ban va cheklovlar -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6 space-y-6 mb-6">
+        <div class="flex items-center justify-between border-b pb-4">
+            <div>
+                <h2 class="text-lg font-bold flex items-center gap-2">
+                    <svg class="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                    </svg>
+                    Ban va cheklovlar
+                </h2>
+                <p class="text-sm text-gray-500 mt-1">Haydovchilarni blocking uchun sozlamalar</p>
             </div>
         </div>
 
-        <div class="flex justify-end gap-2">
-            <button @click="loadSettings()" class="px-4 py-2 bg-gray-200 rounded">Bekor qilish</button>
-            <button @click="saveSettings()" class="px-4 py-2 bg-blue-600 text-white rounded">Saqlash</button>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div class="space-y-2">
+                <label class="text-sm font-medium text-gray-700">Ban foizi chegarasi (%)</label>
+                <input type="number" x-model.number="form.ban_percentage_threshold" min="0" max="100"
+                    class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+                    placeholder="Masalan: 50" />
+                <p class="text-xs text-gray-500">Rad etish foizi ushbu chegaradan oshsa ban</p>
+            </div>
+
+            <div class="space-y-2">
+                <label class="text-sm font-medium text-gray-700">Ban soni chegarasi</label>
+                <input type="number" x-model.number="form.ban_count_threshold" min="1"
+                    class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+                    placeholder="Masalan: 5" />
+                <p class="text-xs text-gray-500">Ushbu songa yetganda haydovchi muddatli ban qilinadi</p>
+            </div>
+
+            <div class="space-y-2">
+                <label class="text-sm font-medium text-gray-700">Soatlik o'zgartirish limiti</label>
+                <input type="number" x-model.number="form.max_driver_change_per_hour" min="1"
+                    class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+                    placeholder="Masalan: 3" />
+                <p class="text-xs text-gray-500">Yo'lovchi soatiga necha marta haydovchi almashtirishmumkin</p>
+            </div>
         </div>
+    </div>
+
+    <!-- Masofa va vaqt -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6 space-y-6 mb-6">
+        <div class="flex items-center justify-between border-b pb-4">
+            <div>
+                <h2 class="text-lg font-bold flex items-center gap-2">
+                    <svg class="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    Masofa va vaqt
+                </h2>
+                <p class="text-sm text-gray-500 mt-1">Geolokatsiya va tasdiqash sozlamalari</p>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div class="space-y-2">
+                <label class="text-sm font-medium text-gray-700">Maksimal pickup masofasi (km)</label>
+                <input type="number" x-model.number="form.max_pickup_distance_km" min="1" step="0.5"
+                    class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+                    placeholder="Masalan: 5" />
+                <p class="text-xs text-gray-500">Haydovchi yo'lovchidan qancha uzoqlikda bo'lishmumkin (km)</p>
+            </div>
+
+            <div class="space-y-2">
+                <label class="text-sm font-medium text-gray-700">Avtomatik tasdiqlash vaqti (soniya)</label>
+                <input type="number" x-model.number="form.auto_confirm_delay_seconds" min="30" step="30"
+                    class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+                    placeholder="Masalan: 120" />
+                <p class="text-xs text-gray-500">Haydovchi qabul qilmasa, ushbu vaqtda avtotasdiqlash</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tugmalar -->
+    <div class="flex justify-end gap-3">
+        <button @click="loadSettings()"
+            class="px-6 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium rounded-lg transition">
+            ↩️ Bekor qilish
+        </button>
+        <button @click="saveSettings()"
+            class="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition shadow-sm">
+            💾 Saqlash
+        </button>
     </div>
 </div>
 
 <script>
-function settingsApp() {
-    return {
-        form: {
-            bot_is_free: 'true',
-            commission_amount: 0
-        },
+    function settingsApp() {
+        return {
+            form: {
+                bot_is_free: 'true',
+                commission_amount: 0,
+                ban_percentage_threshold: 50,
+                ban_count_threshold: 5,
+                max_driver_change_per_hour: 3,
+                max_pickup_distance_km: 5,
+                auto_confirm_delay_seconds: 120
+            },
 
-        async init() {
-            await this.loadSettings();
-        },
+            async init() {
+                await this.loadSettings();
+            },
 
-        async loadSettings() {
-            const data = await this.apiCall('/api/settings/');
-            if (data?.settings) {
-                this.form.bot_is_free = String(data.settings.bot_is_free ?? 'true');
-                this.form.commission_amount = Number(data.settings.commission_amount ?? 0);
-            }
-        },
-
-        async saveSettings() {
-            if (this.form.bot_is_free === 'true') {
-                this.form.commission_amount = 0;
-            }
-            const payloads = [
-                { key: 'bot_is_free', value: String(this.form.bot_is_free) },
-                { key: 'commission_amount', value: String(this.form.commission_amount) }
-            ];
-
-            for (const item of payloads) {
-                const res = await this.apiCall(`/api/settings/${item.key}`, 'PUT', { value: item.value });
-                if (!res?.success) {
-                    alert(`Saqlashda xato: ${item.key}`);
-                    return;
+            async loadSettings() {
+                const data = await this.apiCall('/api/settings/');
+                if (data?.settings) {
+                    this.form.bot_is_free = String(data.settings.bot_is_free ?? 'true');
+                    this.form.commission_amount = Number(data.settings.commission_amount ?? 0);
+                    this.form.ban_percentage_threshold = Number(data.settings.ban_percentage_threshold ?? 50);
+                    this.form.ban_count_threshold = Number(data.settings.ban_count_threshold ?? 5);
+                    this.form.max_driver_change_per_hour = Number(data.settings.max_driver_change_per_hour ?? 3);
+                    this.form.max_pickup_distance_km = Number(data.settings.max_pickup_distance_km ?? 5);
+                    this.form.auto_confirm_delay_seconds = Number(data.settings.auto_confirm_delay_seconds ?? 120);
                 }
-            }
-            alert("Sozlamalar saqlandi");
-        },
+            },
 
-        async apiCall(url, method = 'GET', body = null) {
-            try {
-                const options = {
-                    method,
-                    headers: { 'Content-Type': 'application/json' }
-                };
-                if (body) options.body = JSON.stringify(body);
+            async saveSettings() {
+                // Tekin rejimda komissiya 0
+                if (this.form.bot_is_free === 'true') {
+                    this.form.commission_amount = 0;
+                }
 
-                const response = await fetch(url, options);
-                const data = await response.json();
+                const payloads = [
+                    { key: 'bot_is_free', value: String(this.form.bot_is_free) },
+                    { key: 'commission_amount', value: String(this.form.commission_amount) },
+                    { key: 'ban_percentage_threshold', value: String(this.form.ban_percentage_threshold) },
+                    { key: 'ban_count_threshold', value: String(this.form.ban_count_threshold) },
+                    { key: 'max_driver_change_per_hour', value: String(this.form.max_driver_change_per_hour) },
+                    { key: 'max_pickup_distance_km', value: String(this.form.max_pickup_distance_km) },
+                    { key: 'auto_confirm_delay_seconds', value: String(this.form.auto_confirm_delay_seconds) }
+                ];
 
-                if (!response.ok) throw new Error(data.detail || 'Xatolik yuz berdi');
-                return data;
-            } catch (e) {
-                alert(e.message);
-                return null;
+                for (const item of payloads) {
+                    const res = await this.apiCall(`/api/settings/${item.key}`, 'PUT', { value: item.value });
+                    if (!res?.success) {
+                        alert(`❌ Saqlashda xato: ${item.key}`);
+                        return;
+                    }
+                }
+                alert("✅ Barcha sozlamalar muvaffaqiyatli saqlandi!");
+                await this.loadSettings();
+            },
+
+            async apiCall(url, method = 'GET', body = null) {
+                try {
+                    const options = {
+                        method,
+                        headers: { 'Content-Type': 'application/json' }
+                    };
+                    if (body) options.body = JSON.stringify(body);
+
+                    const response = await fetch(url, options);
+                    const data = await response.json();
+
+                    if (!response.ok) throw new Error(data.detail || 'Xatolik yuz berdi');
+                    return data;
+                } catch (e) {
+                    alert(e.message);
+                    return null;
+                }
             }
         }
     }
-}
 </script>
 {% endblock %}
