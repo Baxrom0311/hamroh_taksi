@@ -1,18 +1,18 @@
-"""Initial full schema
+"""initial_schema
 
-Revision ID: d0de3df238a3
+Revision ID: f6f2cdffbcdc
 Revises: 
-Create Date: 2026-01-04 20:12:00.579281
+Create Date: 2026-01-22 01:57:06.006460
 
 """
 from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
-import geoalchemy2.types
+from geoalchemy2 import Geometry,geoalchemy2
 
 # revision identifiers, used by Alembic.
-revision: str = 'd0de3df238a3'
+revision: str = 'f6f2cdffbcdc'
 down_revision: Union[str, None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -36,6 +36,15 @@ def upgrade() -> None:
     op.create_index('idx_routes_active', 'routes', ['is_active'], unique=False)
     op.create_index('idx_routes_unique', 'routes', ['from_location', 'to_location'], unique=True)
     op.create_index(op.f('ix_routes_is_active'), 'routes', ['is_active'], unique=False)
+    op.create_table('system_settings',
+    sa.Column('setting_key', sa.String(length=100), nullable=False, comment='Sozlama kaliti (unique)'),
+    sa.Column('setting_value', sa.Text(), nullable=False, comment='Sozlama qiymati (JSON yoki text)'),
+    sa.Column('description', sa.Text(), nullable=True, comment='Sozlama tavsifi'),
+    sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
+    sa.Column('updated_at', sa.DateTime(timezone=True), nullable=True),
+    sa.PrimaryKeyConstraint('setting_key')
+    )
+    op.create_index('idx_settings_key', 'system_settings', ['setting_key'], unique=False)
     op.create_table('users',
     sa.Column('user_id', sa.BigInteger(), nullable=False, comment='Telegram user ID'),
     sa.Column('username', sa.String(length=255), nullable=True, comment='Telegram username (@username)'),
@@ -56,6 +65,7 @@ def upgrade() -> None:
     sa.Column('driver_id', sa.BigInteger(), autoincrement=True, nullable=False, comment='Driver ID (auto increment)'),
     sa.Column('user_id', sa.BigInteger(), nullable=False, comment='User ID (Telegram)'),
     sa.Column('full_name', sa.String(length=255), nullable=False, comment="To'liq ism"),
+    sa.Column('phone_number', sa.String(length=20), nullable=False, comment='Telefon raqam (+998901234567)'),
     sa.Column('car_model', sa.String(length=100), nullable=False, comment='Mashina markasi (Nexia, Cobalt, etc)'),
     sa.Column('car_color', sa.String(length=50), nullable=False, comment='Mashina rangi'),
     sa.Column('car_number', sa.String(length=20), nullable=False, comment='Mashina raqami (01 A 123 BC)'),
@@ -74,7 +84,7 @@ def upgrade() -> None:
     sa.Column('available_seats', sa.Integer(), nullable=False, comment="Bo'sh o'rinlar soni (0-8)"),
     sa.Column('last_location_lat', sa.Numeric(precision=10, scale=8), nullable=True, comment='Oxirgi lokatsiya - Latitude'),
     sa.Column('last_location_lon', sa.Numeric(precision=11, scale=8), nullable=True, comment='Oxirgi lokatsiya - Longitude'),
-    sa.Column('location', geoalchemy2.types.Geometry(geometry_type='POINT', srid=4326, dimension=2, from_text='ST_GeomFromEWKT', name='geometry'), nullable=True, comment='Lokatsiya (PostGIS geometry)'),
+    sa.Column('location', Geometry(geometry_type='POINT', srid=4326, dimension=2, spatial_index=False, from_text='ST_GeomFromEWKT', name='geometry'), nullable=True, comment='Lokatsiya (PostGIS geometry)'),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False, comment='Yaratilgan sana'),
     sa.Column('updated_at', sa.DateTime(timezone=True), nullable=True, comment='Yangilangan sana'),
     sa.Column('last_trip_at', sa.DateTime(timezone=True), nullable=True, comment='Oxirgi safar vaqti'),
@@ -87,14 +97,32 @@ def upgrade() -> None:
     )
     op.create_index('idx_drivers_active_blocked', 'drivers', ['is_active', 'is_blocked'], unique=False)
     op.create_index('idx_drivers_active_route', 'drivers', ['is_active', 'current_route_id'], unique=False)
-    # op.create_index('idx_drivers_location', 'drivers', ['location'], unique=False, postgresql_using='gist')
+    op.create_index('idx_drivers_location', 'drivers', ['location'], unique=False, postgresql_using='gist')
     op.create_index('idx_drivers_route_seats', 'drivers', ['current_route_id', 'available_seats'], unique=False)
     op.create_index(op.f('ix_drivers_car_number'), 'drivers', ['car_number'], unique=True)
     op.create_index(op.f('ix_drivers_current_route_id'), 'drivers', ['current_route_id'], unique=False)
     op.create_index(op.f('ix_drivers_is_active'), 'drivers', ['is_active'], unique=False)
     op.create_index(op.f('ix_drivers_is_blocked'), 'drivers', ['is_blocked'], unique=False)
     op.create_index(op.f('ix_drivers_is_on_trip'), 'drivers', ['is_on_trip'], unique=False)
+    op.create_index(op.f('ix_drivers_phone_number'), 'drivers', ['phone_number'], unique=False)
     op.create_index(op.f('ix_drivers_user_id'), 'drivers', ['user_id'], unique=True)
+    op.create_table('feedbacks',
+    sa.Column('feedback_id', sa.BigInteger(), autoincrement=True, nullable=False),
+    sa.Column('user_id', sa.BigInteger(), nullable=False),
+    sa.Column('resolved_by', sa.BigInteger(), nullable=True, comment='Kim tomonidan hal qilindi (Admin ID)'),
+    sa.Column('message', sa.Text(), nullable=False),
+    sa.Column('type', sa.Enum('COMPLAINT', 'SUGGESTION', name='feedback_type_enum'), nullable=False),
+    sa.Column('status', sa.Enum('OPEN', 'IN_PROGRESS', 'RESOLVED', 'IGNORED', name='feedback_status_enum'), nullable=False),
+    sa.Column('admin_reply', sa.Text(), nullable=True),
+    sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
+    sa.Column('updated_at', sa.DateTime(timezone=True), nullable=True),
+    sa.Column('resolved_at', sa.DateTime(timezone=True), nullable=True),
+    sa.ForeignKeyConstraint(['resolved_by'], ['users.user_id'], ondelete='SET NULL'),
+    sa.ForeignKeyConstraint(['user_id'], ['users.user_id'], ondelete='CASCADE'),
+    sa.PrimaryKeyConstraint('feedback_id')
+    )
+    op.create_index(op.f('ix_feedbacks_status'), 'feedbacks', ['status'], unique=False)
+    op.create_index(op.f('ix_feedbacks_user_id'), 'feedbacks', ['user_id'], unique=False)
     op.create_table('passengers',
     sa.Column('passenger_id', sa.BigInteger(), autoincrement=True, nullable=False),
     sa.Column('user_id', sa.BigInteger(), nullable=False),
@@ -111,44 +139,6 @@ def upgrade() -> None:
     )
     op.create_index(op.f('ix_passengers_phone_number'), 'passengers', ['phone_number'], unique=False)
     op.create_index(op.f('ix_passengers_user_id'), 'passengers', ['user_id'], unique=True)
-    op.create_table('orders',
-    sa.Column('order_id', sa.Integer(), autoincrement=True, nullable=False, comment='Buyurtma ID'),
-    sa.Column('passenger_id', sa.BigInteger(), nullable=False, comment="Yo'lovchi ID"),
-    sa.Column('driver_id', sa.BigInteger(), nullable=True, comment='Haydovchi ID (NULL = topilmagan)'),
-    sa.Column('route_id', sa.Integer(), nullable=False, comment='Marshrut ID'),
-    sa.Column('pickup_location', sa.Text(), nullable=False, comment='Olish joyi (matn)'),
-    sa.Column('pickup_lat', sa.Numeric(precision=10, scale=8), nullable=False, comment='Olish joyi - Latitude'),
-    sa.Column('pickup_lon', sa.Numeric(precision=11, scale=8), nullable=False, comment='Olish joyi - Longitude'),
-    sa.Column('passenger_count', sa.Integer(), nullable=False, comment="Yo'lovchilar soni"),
-    sa.Column('has_luggage', sa.Boolean(), nullable=False, comment="Pochta bor/yo'q"),
-    sa.Column('luggage_count', sa.Integer(), nullable=False, comment='Pochta soni'),
-    sa.Column('luggage_description', sa.Text(), nullable=True, comment='Pochta tavsifi'),
-    sa.Column('status', sa.Enum('PENDING', 'ACCEPTED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED', name='order_status'), nullable=False, comment='Buyurtma holati'),
-    sa.Column('commission_amount', sa.Numeric(precision=10, scale=2), nullable=True, comment="Komissiya miqdori (so'm)"),
-    sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False, comment='Buyurtma berilgan vaqt'),
-    sa.Column('accepted_at', sa.DateTime(timezone=True), nullable=True, comment='Haydovchi qabul qilgan vaqt'),
-    sa.Column('started_at', sa.DateTime(timezone=True), nullable=True, comment='Safar boshlangan vaqt'),
-    sa.Column('completed_at', sa.DateTime(timezone=True), nullable=True, comment='Safar yakunlangan vaqt'),
-    sa.Column('cancelled_at', sa.DateTime(timezone=True), nullable=True, comment='Bekor qilingan vaqt'),
-    sa.Column('cancellation_reason', sa.String(length=255), nullable=True, comment='Bekor qilish sababi'),
-    sa.Column('auto_confirmed', sa.Boolean(), nullable=False, comment='Avtomatik tasdiqlangan (2 daqiqadan keyin)'),
-    sa.Column('driver_arrived', sa.Boolean(), nullable=False, comment='Haydovchi yetib keldi'),
-    sa.CheckConstraint('luggage_count >= 0', name='check_luggage_count'),
-    sa.CheckConstraint('passenger_count >= 1 AND passenger_count <= 4', name='check_passenger_count'),
-    sa.ForeignKeyConstraint(['driver_id'], ['drivers.driver_id'], ondelete='SET NULL'),
-    sa.ForeignKeyConstraint(['passenger_id'], ['passengers.passenger_id'], ondelete='CASCADE'),
-    sa.ForeignKeyConstraint(['route_id'], ['routes.route_id'], ondelete='CASCADE'),
-    sa.PrimaryKeyConstraint('order_id')
-    )
-    op.create_index('idx_orders_driver_status', 'orders', ['driver_id', 'status'], unique=False)
-    op.create_index('idx_orders_passenger_status', 'orders', ['passenger_id', 'status'], unique=False)
-    op.create_index('idx_orders_route_status', 'orders', ['route_id', 'status'], unique=False)
-    op.create_index('idx_orders_status_created', 'orders', ['status', 'created_at'], unique=False)
-    op.create_index(op.f('ix_orders_created_at'), 'orders', ['created_at'], unique=False)
-    op.create_index(op.f('ix_orders_driver_id'), 'orders', ['driver_id'], unique=False)
-    op.create_index(op.f('ix_orders_passenger_id'), 'orders', ['passenger_id'], unique=False)
-    op.create_index(op.f('ix_orders_route_id'), 'orders', ['route_id'], unique=False)
-    op.create_index(op.f('ix_orders_status'), 'orders', ['status'], unique=False)
     op.create_table('transactions',
     sa.Column('transaction_id', sa.Integer(), autoincrement=True, nullable=False),
     sa.Column('driver_id', sa.BigInteger(), nullable=False),
@@ -171,6 +161,94 @@ def upgrade() -> None:
     op.create_index(op.f('ix_transactions_driver_id'), 'transactions', ['driver_id'], unique=False)
     op.create_index(op.f('ix_transactions_status'), 'transactions', ['status'], unique=False)
     op.create_index(op.f('ix_transactions_type'), 'transactions', ['type'], unique=False)
+    op.create_table('trips',
+    sa.Column('trip_id', sa.Integer(), autoincrement=True, nullable=False, comment='Trip ID'),
+    sa.Column('driver_id', sa.BigInteger(), nullable=False, comment='Haydovchi ID'),
+    sa.Column('route_id', sa.Integer(), nullable=False, comment='Marshrut ID'),
+    sa.Column('status', sa.Enum('ACTIVE', 'COMPLETED', 'CANCELLED', name='trip_status'), nullable=False, comment='Trip holati'),
+    sa.Column('total_seats', sa.Integer(), nullable=False, comment="Jami o'rindiqlar (mashina sig'imi)"),
+    sa.Column('available_seats', sa.Integer(), nullable=False, comment="Bo'sh o'rindiqlar"),
+    sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False, comment='Trip yaratilgan vaqt'),
+    sa.Column('started_at', sa.DateTime(timezone=True), nullable=True, comment="Safar boshlangan vaqt (yo'lga chiqqan)"),
+    sa.Column('completed_at', sa.DateTime(timezone=True), nullable=True, comment='Trip yakunlangan vaqt'),
+    sa.Column('current_lat', sa.Numeric(precision=10, scale=8), nullable=True, comment='Joriy lat (GPS tracking)'),
+    sa.Column('current_lon', sa.Numeric(precision=11, scale=8), nullable=True, comment='Joriy lon (GPS tracking)'),
+    sa.Column('last_location_update', sa.DateTime(timezone=True), nullable=True, comment='Oxirgi location update vaqti'),
+    sa.ForeignKeyConstraint(['driver_id'], ['drivers.driver_id'], ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['route_id'], ['routes.route_id'], ondelete='CASCADE'),
+    sa.PrimaryKeyConstraint('trip_id')
+    )
+    op.create_index('idx_trips_created', 'trips', ['created_at'], unique=False)
+    op.create_index('idx_trips_driver_status', 'trips', ['driver_id', 'status'], unique=False)
+    op.create_index('idx_trips_route_status', 'trips', ['route_id', 'status'], unique=False)
+    op.create_index(op.f('ix_trips_driver_id'), 'trips', ['driver_id'], unique=False)
+    op.create_index(op.f('ix_trips_route_id'), 'trips', ['route_id'], unique=False)
+    op.create_index(op.f('ix_trips_status'), 'trips', ['status'], unique=False)
+    op.create_table('orders',
+    sa.Column('order_id', sa.Integer(), autoincrement=True, nullable=False, comment='Buyurtma ID'),
+    sa.Column('passenger_id', sa.BigInteger(), nullable=False, comment="Yo'lovchi ID"),
+    sa.Column('driver_id', sa.BigInteger(), nullable=True, comment='Haydovchi ID (NULL = topilmagan)'),
+    sa.Column('route_id', sa.Integer(), nullable=False, comment='Marshrut ID'),
+    sa.Column('trip_id', sa.Integer(), nullable=True, comment="Trip ID (NULL = trip yo'q)"),
+    sa.Column('pickup_location', sa.Text(), nullable=False, comment='Olish joyi (matn)'),
+    sa.Column('pickup_lat', sa.Numeric(precision=10, scale=8), nullable=True, comment='Olish joyi - Latitude (None for text-only)'),
+    sa.Column('pickup_lon', sa.Numeric(precision=11, scale=8), nullable=True, comment='Olish joyi - Longitude (None for text-only)'),
+    sa.Column('passenger_count', sa.Integer(), nullable=False, comment="Yo'lovchilar soni"),
+    sa.Column('has_luggage', sa.Boolean(), nullable=False, comment="Pochta bor/yo'q"),
+    sa.Column('luggage_count', sa.Integer(), nullable=False, comment='Pochta soni'),
+    sa.Column('luggage_description', sa.Text(), nullable=True, comment='Pochta tavsifi'),
+    sa.Column('status', sa.Enum('PENDING', 'ACCEPTED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED', name='order_status'), nullable=False, comment='Buyurtma holati'),
+    sa.Column('commission_amount', sa.Numeric(precision=10, scale=2), nullable=True, comment="Komissiya miqdori (so'm)"),
+    sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False, comment='Buyurtma berilgan vaqt'),
+    sa.Column('accepted_at', sa.DateTime(timezone=True), nullable=True, comment='Haydovchi qabul qilgan vaqt'),
+    sa.Column('started_at', sa.DateTime(timezone=True), nullable=True, comment='Safar boshlangan vaqt'),
+    sa.Column('completed_at', sa.DateTime(timezone=True), nullable=True, comment='Safar yakunlangan vaqt'),
+    sa.Column('cancelled_at', sa.DateTime(timezone=True), nullable=True, comment='Bekor qilingan vaqt'),
+    sa.Column('cancellation_reason', sa.String(length=255), nullable=True, comment='Bekor qilish sababi'),
+    sa.Column('idempotency_key', sa.String(length=255), nullable=True, comment='Idempotency key to prevent duplicates'),
+    sa.Column('auto_confirmed', sa.Boolean(), nullable=False, comment='Avtomatik tasdiqlangan (2 daqiqadan keyin)'),
+    sa.Column('driver_arrived', sa.Boolean(), nullable=False, comment='Haydovchi yetib keldi'),
+    sa.CheckConstraint('(has_luggage = true AND passenger_count = 0) OR (has_luggage = false AND passenger_count >= 1 AND passenger_count <= 4)', name='check_passenger_count'),
+    sa.CheckConstraint('luggage_count >= 0', name='check_luggage_count'),
+    sa.ForeignKeyConstraint(['driver_id'], ['drivers.driver_id'], ondelete='SET NULL'),
+    sa.ForeignKeyConstraint(['passenger_id'], ['passengers.passenger_id'], ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['route_id'], ['routes.route_id'], ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['trip_id'], ['trips.trip_id'], ondelete='SET NULL'),
+    sa.PrimaryKeyConstraint('order_id')
+    )
+    op.create_index('idx_orders_driver_status', 'orders', ['driver_id', 'status'], unique=False)
+    op.create_index('idx_orders_passenger_status', 'orders', ['passenger_id', 'status'], unique=False)
+    op.create_index('idx_orders_route_status', 'orders', ['route_id', 'status'], unique=False)
+    op.create_index('idx_orders_status_created', 'orders', ['status', 'created_at'], unique=False)
+    op.create_index(op.f('ix_orders_created_at'), 'orders', ['created_at'], unique=False)
+    op.create_index(op.f('ix_orders_driver_id'), 'orders', ['driver_id'], unique=False)
+    op.create_index(op.f('ix_orders_idempotency_key'), 'orders', ['idempotency_key'], unique=True)
+    op.create_index(op.f('ix_orders_passenger_id'), 'orders', ['passenger_id'], unique=False)
+    op.create_index(op.f('ix_orders_route_id'), 'orders', ['route_id'], unique=False)
+    op.create_index(op.f('ix_orders_status'), 'orders', ['status'], unique=False)
+    op.create_index(op.f('ix_orders_trip_id'), 'orders', ['trip_id'], unique=False)
+    op.create_table('driver_ban_records',
+    sa.Column('ban_id', sa.Integer(), autoincrement=True, nullable=False),
+    sa.Column('driver_id', sa.BigInteger(), nullable=False, comment='Haydovchi ID'),
+    sa.Column('passenger_id', sa.BigInteger(), nullable=False, comment="Yo'lovchi ID (ban tashlagan)"),
+    sa.Column('order_id', sa.Integer(), nullable=True, comment='Buyurtma ID (qaysi safar uchun)'),
+    sa.Column('reason', sa.Text(), nullable=True, comment="Ban sababi (yo'lovchi yozgan)"),
+    sa.Column('reviewed_by_admin', sa.Boolean(), nullable=False, comment="Admin ko'rib chiqdimi?"),
+    sa.Column('admin_id', sa.BigInteger(), nullable=True, comment="Admin ID (ko'rib chiqqan)"),
+    sa.Column('reviewed_at', sa.DateTime(timezone=True), nullable=True, comment="Ko'rib chiqilgan vaqt"),
+    sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
+    sa.ForeignKeyConstraint(['admin_id'], ['users.user_id'], ondelete='SET NULL'),
+    sa.ForeignKeyConstraint(['driver_id'], ['drivers.driver_id'], ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['order_id'], ['orders.order_id'], ondelete='SET NULL'),
+    sa.ForeignKeyConstraint(['passenger_id'], ['passengers.passenger_id'], ondelete='CASCADE'),
+    sa.PrimaryKeyConstraint('ban_id')
+    )
+    op.create_index('idx_ban_driver_created', 'driver_ban_records', ['driver_id', 'created_at'], unique=False)
+    op.create_index('idx_ban_reviewed', 'driver_ban_records', ['reviewed_by_admin'], unique=False)
+    op.create_index(op.f('ix_driver_ban_records_created_at'), 'driver_ban_records', ['created_at'], unique=False)
+    op.create_index(op.f('ix_driver_ban_records_driver_id'), 'driver_ban_records', ['driver_id'], unique=False)
+    op.create_index(op.f('ix_driver_ban_records_order_id'), 'driver_ban_records', ['order_id'], unique=False)
+    op.create_index(op.f('ix_driver_ban_records_passenger_id'), 'driver_ban_records', ['passenger_id'], unique=False)
     op.create_table('transaction_logs',
     sa.Column('log_id', sa.Integer(), autoincrement=True, nullable=False),
     sa.Column('driver_id', sa.BigInteger(), nullable=False),
@@ -199,6 +277,32 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_transaction_logs_created_at'), table_name='transaction_logs')
     op.drop_index('idx_transaction_logs_driver_created', table_name='transaction_logs')
     op.drop_table('transaction_logs')
+    op.drop_index(op.f('ix_driver_ban_records_passenger_id'), table_name='driver_ban_records')
+    op.drop_index(op.f('ix_driver_ban_records_order_id'), table_name='driver_ban_records')
+    op.drop_index(op.f('ix_driver_ban_records_driver_id'), table_name='driver_ban_records')
+    op.drop_index(op.f('ix_driver_ban_records_created_at'), table_name='driver_ban_records')
+    op.drop_index('idx_ban_reviewed', table_name='driver_ban_records')
+    op.drop_index('idx_ban_driver_created', table_name='driver_ban_records')
+    op.drop_table('driver_ban_records')
+    op.drop_index(op.f('ix_orders_trip_id'), table_name='orders')
+    op.drop_index(op.f('ix_orders_status'), table_name='orders')
+    op.drop_index(op.f('ix_orders_route_id'), table_name='orders')
+    op.drop_index(op.f('ix_orders_passenger_id'), table_name='orders')
+    op.drop_index(op.f('ix_orders_idempotency_key'), table_name='orders')
+    op.drop_index(op.f('ix_orders_driver_id'), table_name='orders')
+    op.drop_index(op.f('ix_orders_created_at'), table_name='orders')
+    op.drop_index('idx_orders_status_created', table_name='orders')
+    op.drop_index('idx_orders_route_status', table_name='orders')
+    op.drop_index('idx_orders_passenger_status', table_name='orders')
+    op.drop_index('idx_orders_driver_status', table_name='orders')
+    op.drop_table('orders')
+    op.drop_index(op.f('ix_trips_status'), table_name='trips')
+    op.drop_index(op.f('ix_trips_route_id'), table_name='trips')
+    op.drop_index(op.f('ix_trips_driver_id'), table_name='trips')
+    op.drop_index('idx_trips_route_status', table_name='trips')
+    op.drop_index('idx_trips_driver_status', table_name='trips')
+    op.drop_index('idx_trips_created', table_name='trips')
+    op.drop_table('trips')
     op.drop_index(op.f('ix_transactions_type'), table_name='transactions')
     op.drop_index(op.f('ix_transactions_status'), table_name='transactions')
     op.drop_index(op.f('ix_transactions_driver_id'), table_name='transactions')
@@ -207,20 +311,14 @@ def downgrade() -> None:
     op.drop_index('idx_transactions_status_created', table_name='transactions')
     op.drop_index('idx_transactions_driver_status', table_name='transactions')
     op.drop_table('transactions')
-    op.drop_index(op.f('ix_orders_status'), table_name='orders')
-    op.drop_index(op.f('ix_orders_route_id'), table_name='orders')
-    op.drop_index(op.f('ix_orders_passenger_id'), table_name='orders')
-    op.drop_index(op.f('ix_orders_driver_id'), table_name='orders')
-    op.drop_index(op.f('ix_orders_created_at'), table_name='orders')
-    op.drop_index('idx_orders_status_created', table_name='orders')
-    op.drop_index('idx_orders_route_status', table_name='orders')
-    op.drop_index('idx_orders_passenger_status', table_name='orders')
-    op.drop_index('idx_orders_driver_status', table_name='orders')
-    op.drop_table('orders')
     op.drop_index(op.f('ix_passengers_user_id'), table_name='passengers')
     op.drop_index(op.f('ix_passengers_phone_number'), table_name='passengers')
     op.drop_table('passengers')
+    op.drop_index(op.f('ix_feedbacks_user_id'), table_name='feedbacks')
+    op.drop_index(op.f('ix_feedbacks_status'), table_name='feedbacks')
+    op.drop_table('feedbacks')
     op.drop_index(op.f('ix_drivers_user_id'), table_name='drivers')
+    op.drop_index(op.f('ix_drivers_phone_number'), table_name='drivers')
     op.drop_index(op.f('ix_drivers_is_on_trip'), table_name='drivers')
     op.drop_index(op.f('ix_drivers_is_blocked'), table_name='drivers')
     op.drop_index(op.f('ix_drivers_is_active'), table_name='drivers')
@@ -236,6 +334,8 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_users_is_blocked'), table_name='users')
     op.drop_index('idx_users_role_blocked', table_name='users')
     op.drop_table('users')
+    op.drop_index('idx_settings_key', table_name='system_settings')
+    op.drop_table('system_settings')
     op.drop_index(op.f('ix_routes_is_active'), table_name='routes')
     op.drop_index('idx_routes_unique', table_name='routes')
     op.drop_index('idx_routes_active', table_name='routes')
