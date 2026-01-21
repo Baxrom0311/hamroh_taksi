@@ -96,7 +96,7 @@ async def trip_in_progress_blocker(message: Message, state: FSMContext):
 
         # Agar ruxsat etilgan tugma bo'lsa, boshqa handlerlarga o'tkazamiz
         if message.text and message.text in allowed:
-            from aiogram.dispatcher.dispatcher import SkipHandler
+            from aiogram.dispatcher.event.bases import SkipHandler
             raise SkipHandler()
 
         # State'da order_id yo'q bo'lsa, saqlab qo'yamiz (blok xabari uchun)
@@ -170,8 +170,14 @@ async def start_accepting_orders(message: Message, session: AsyncSession, driver
         has_active_order = active_check.scalar_one_or_none()
         
         if has_active_order:
-            # ✅ Haqiqatan ham safarda - bloklash to'g'ri
-            await message.answer(Messages.Driver.ALREADY_ON_TRIP)
+            # ✅ Aktiv safar bor – yakunlashga yo'naltiramiz
+            await state.update_data(current_order_id=has_active_order)
+            await state.set_state(DriverStates.trip_in_progress)
+            await message.answer(
+                Messages.Driver.ALREADY_ON_TRIP,
+                reply_markup=get_trip_active_keyboard(has_active_order),
+                parse_mode="HTML"
+            )
             return
         else:
             # ❌ STUCK STATE: is_on_trip=True lekin order yo'q!
@@ -401,24 +407,19 @@ async def driver_settings(message: Message, session: AsyncSession, driver: Drive
 async def stop_accepting_orders_callback(callback: CallbackQuery, session: AsyncSession, driver: Driver, state: FSMContext):
     """
     Haydovchi deactive qilish (callback)
-    
     ✅ REFACTORED: Session va driver avtomatik
     """
     # Bazada haydovchini o'chirish
     from sqlalchemy import update
-    
     await session.execute(
         update(Driver)
         .where(Driver.driver_id == driver.driver_id)
-        .values(is_active=False, available_seats=0)
+        .values(is_on_trip=False, is_active=False, available_seats=0)
     )
-    
     # Celery task - Queue'dan o'chirish
     from app.tasks.matching import remove_driver_from_queue_task
     cast(Any, remove_driver_from_queue_task).delay(driver.driver_id)
-    
     await state.clear()
-    
     if callback.message and isinstance(callback.message, Message):
         # Inline tugmalarni o'chirib, xabarni yangilaymiz
         await callback.message.edit_text(Messages.Driver.STOPPED)
@@ -428,12 +429,8 @@ async def stop_accepting_orders_callback(callback: CallbackQuery, session: Async
             "Asosiy menyu:", 
             reply_markup=get_driver_main_menu() 
         )
-    
     # Telegramga "Tugma ishladi" degan javob qaytaramiz (loading aylanmasligi uchun)
     await callback.answer(Messages.Driver.OFFLINE)
-
-
-
 @router.callback_query(F.data == "driver_stats")
 @with_driver_session  # ✅ Decorator
 async def show_statistics_callback(callback: CallbackQuery, session: AsyncSession, driver: Driver):

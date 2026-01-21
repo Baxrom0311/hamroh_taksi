@@ -42,8 +42,9 @@ async def cmd_cancel(message: Message, state: FSMContext):
         )
         return
 
-    logger.info(f"Cancelling state {current_state} for user {message.from_user.id}")
-    
+    user_id = message.from_user.id if message.from_user else "Unknown"
+    logger.info(f"Cancelling state {current_state} for user {user_id}")
+     
     # State'ni tozalash
     await state.clear()
     
@@ -73,8 +74,9 @@ async def generic_fallback(message: Message, state: FSMContext):
     
     if current_state:
         # User biror jarayonda, lekin noto'g'ri narsa yubordi
+        user_id = message.from_user.id if message.from_user else "Unknown"
         logger.warning(
-            f"Invalid input from user {message.from_user.id} "
+            f"Invalid input from user {user_id} "
             f"in state {current_state}. Content type: {message.content_type}"
         )
         

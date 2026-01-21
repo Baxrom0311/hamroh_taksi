@@ -88,7 +88,7 @@ class Messages:
     class Passenger:
         NO_ROUTES = "❌ Hozirda aktiv marshrutlar yo'q"
         WHERE_TO = "📍 <b>Qayerga borasiz?</b>\n\nMarshrutni tanlang:"
-        WHERE_FROM = "📍 <b>Qayerga borishni xohlaysiz?</b>\nLokatsiyangizni yuboring yoki manzilni yozing:"
+        WHERE_FROM = "📍 <b>Qayerga borishni xohlaysiz?</b>\nLokatsiyangizni yuboring:"
         SEND_LOCATION = "📍 Lokatsiyangizni yuboring:"
         LOCATION_RECEIVED = (
             "✅ Lokatsiya qabul qilindi\n\n"
