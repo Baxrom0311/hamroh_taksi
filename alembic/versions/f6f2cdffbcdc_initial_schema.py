@@ -9,7 +9,7 @@ from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
-from geoalchemy2 import Geometry,geoalchemy2
+from geoalchemy2 import Geometry
 
 # revision identifiers, used by Alembic.
 revision: str = 'f6f2cdffbcdc'
