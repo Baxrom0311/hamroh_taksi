@@ -363,8 +363,6 @@ async def request_passenger_confirmation(order_id: int, driver_id: int):
                 parse_mode="HTML"
             )
             
-            # 30 daqiqa ichida "Ketdik" yoki bekor qilish kutiladi
-            # Agar 30 daqiqada hech narsa bo'lmasa, sessiya yopiladi
             # ✅ CONSTANTS: Auto-confirm timer from settings
             from config.settings import settings
             from app.core.celery_app import celery_app

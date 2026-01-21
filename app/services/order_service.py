@@ -62,8 +62,8 @@ async def create_new_order(
     passenger_id: int,
     route_id: int,
     pickup_location: str,
-    pickup_lat: float,  # ✅ Required
-    pickup_lon: float,  # ✅ Required
+    pickup_lat: Optional[float],  # ✅ Optional - matn lokatsiya uchun None bo'lishi mumkin
+    pickup_lon: Optional[float],  # ✅ Optional - matn lokatsiya uchun None bo'lishi mumkin
     passenger_count: int = 1,
     has_luggage: bool = False,
     luggage_count: int = 0,
@@ -778,7 +778,7 @@ async def complete_trip(order_id: int, driver_id: int) -> dict:
                 await session.execute(
                     update(Driver)
                     .where(Driver.driver_id == driver_id)
-                    .values(is_on_trip=False, is_active=True)
+                    .values(is_on_trip=False, is_active=False)
                 )
                 
                 # Trip holatini ham COMPLETED qilish

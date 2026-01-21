@@ -42,6 +42,7 @@ bot = Bot(
 # FSM Storage (Redis)
 dp: Dispatcher | None = None
 
+
 # ============================================
 # STARTUP / SHUTDOWN
 # ============================================

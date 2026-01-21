@@ -533,8 +533,8 @@ MIT License - see `LICENSE` file for details.
 ## 📞 Support
 
 - **Issues:** [GitHub Issues](https://github.com/Baxrom0311/hamroh_taksi/issues)
-- **Email:** support@hamrohtaksi.uz
-- **Telegram:** @hamroh_support
+- **Email:** bahromreyimberganov0311@gmail.com 
+- **Telegram:** @Bakhromdev
 
 ---
 
@@ -551,4 +551,4 @@ MIT License - see `LICENSE` file for details.
 
 ---
 
-**Made with ❤️ in Uzbekistan**
+**Made with ❤️ in Beruniy**

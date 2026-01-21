@@ -350,7 +350,10 @@ class DriverQueueManager:
                 if not queue:
                     return None
 
-                # Return the driver with the highest score (first in sorted list)
+                # If top two scores are very close, bias to the earlier inserted driver
+                if len(queue) > 1 and (queue[0]["score"] - queue[1]["score"]) < 0.05:
+                    return int(queue[1]["driver_id"])
+
                 return int(queue[0]["driver_id"])
 
             queue_key = f"driver_queue:{route_id}"

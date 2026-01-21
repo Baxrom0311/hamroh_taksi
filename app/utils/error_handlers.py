@@ -163,7 +163,6 @@ def retry_on_failure(
                     )
                     
                     await asyncio.sleep(current_delay)
-                    await asyncio.sleep(current_delay)
                     current_delay *= backoff
             
             # Should not happen if exceptions is (Exception,)
@@ -437,4 +436,3 @@ __all__ = [
     'safe_execute',
     'ValidationErrorCollector',
 ]
- 

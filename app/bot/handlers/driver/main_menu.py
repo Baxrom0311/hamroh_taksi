@@ -414,7 +414,7 @@ async def stop_accepting_orders_callback(callback: CallbackQuery, session: Async
     await session.execute(
         update(Driver)
         .where(Driver.driver_id == driver.driver_id)
-        .values(is_on_trip=False, is_active=False, available_seats=0)
+        .values(is_active=False, available_seats=0)
     )
     # Celery task - Queue'dan o'chirish
     from app.tasks.matching import remove_driver_from_queue_task

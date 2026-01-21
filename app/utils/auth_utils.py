@@ -438,4 +438,3 @@ __all__ = [
     'check_resource_ownership',
     'require_ownership',
 ]
- 
