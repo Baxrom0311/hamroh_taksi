@@ -228,6 +228,18 @@ class Order(Base):
         nullable=True,
         comment="Bekor qilish sababi"
     )
+
+    # ============================================
+    # IDEMPOTENCY
+    # ============================================
+    
+    idempotency_key: Mapped[Optional[str]] = mapped_column(
+        String(255),
+        nullable=True,
+        unique=True,
+        index=True,
+        comment="Idempotency key to prevent duplicates"
+    )
     
     # ============================================
     # ADDITIONAL FLAGS

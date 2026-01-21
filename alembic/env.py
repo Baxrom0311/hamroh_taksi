@@ -45,9 +45,20 @@ target_metadata = Base.metadata
 # ============================================
 
 def include_object(object, name, type_, reflected, compare_to):
-    # PostGIS tizim jadvallarini o'chirishga harakat qilmaslik uchun filter
-    if type_ == "table" and name in ("spatial_ref_sys", "spatial_ref_sys_pkey"):
+    # WHITELIST STRATEGY: Faqat bizning modellar va alembic
+    if type_ == "table":
+        # 1. Bizning modellar
+        if name in target_metadata.tables:
+            return True
+        
+        # 2. Alembic versiyasi
+        if name == "alembic_version":
+            return True
+            
+        # 3. Boshqa barcha jadvallar (PostGIS, system tables) -> IGNORE
+        # Ular bizning modelda yo'q, demak ularni o'chirishga urinma
         return False
+            
     return True
 
 # ============================================
