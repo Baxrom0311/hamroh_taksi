@@ -826,9 +826,11 @@ async def complete_trip(order_id: int, driver_id: int) -> dict:
 # HELPERS
 # ============================================
 
-async def _auto_start_trip_if_full(session: AsyncSession, trip_id: int, driver_id: int) -> None:
+async def _start_trip_sync(session: AsyncSession, trip_id: int, driver_id: int) -> None:
     """
-    Driver o'rinlari to'lganda tripni avtomatik boshlash:
+    Tripni boshlash logikasi (ichki funksiya)
+    
+    Bu funksiya:
     - Trip.started_at ni set qiladi
     - Tripdagi ACCEPTED orderlarni IN_PROGRESS qiladi
     - Driver.is_on_trip = True, is_active = False
@@ -937,6 +939,40 @@ async def _auto_start_trip_if_full(session: AsyncSession, trip_id: int, driver_i
 
     logger.info(f"Auto-started trip {trip_id} for driver {driver_id} (seats full) and sent notifications")
 
+
+async def _auto_start_trip_if_full(session: AsyncSession, trip_id: int, driver_id: int) -> None:
+    """
+    Driver o'rinlari to'lganda delayed task ni schedule qilish
+    
+    DELAY: admin paneldan boshqariladigan (default: 3 daqiqa)
+    
+    Bu funksiya:
+    - Darhol ishlamaydi, countdown bilan taskni chaqiradi
+    - User uchun vaqt boradi (bekor qilish/o'zgartirish)
+    """
+    from app.tasks.matching import auto_start_trip_task
+    from app.models.system_settings import get_setting_int
+    from typing import Any, cast
+    
+    # Admin paneldan delay vaqtini olish
+    delay_seconds = await get_setting_int(
+        session, 
+        'auto_start_trip_delay_seconds', 
+        default=settings.AUTO_START_TRIP_DELAY_SECONDS
+    )
+    
+    logger.info(
+        f"Scheduling auto-start for trip {trip_id} in {delay_seconds} seconds "
+        f"(driver {driver_id}, seats full)"
+    )
+    
+    # Delayed task
+    cast(Any, auto_start_trip_task).apply_async(
+        args=[trip_id, driver_id],
+        countdown=delay_seconds
+    )
+
+
 # ============================================
 # EXPORT
 # ============================================
@@ -948,4 +984,5 @@ __all__ = [
     'start_trip',
     'complete_trip',
     '_auto_start_trip_if_full',
+    '_start_trip_sync',  # For Celery task
 ]

@@ -215,6 +215,9 @@ class Settings(BaseSettings):
     DRIVER_MATCHING_MAX_RETRIES: int = 5
     DRIVER_MATCHING_RETRY_DELAY_SECONDS: int = 30  # Retry after 30s
     
+    # Auto-start trip delay (when seats are full)
+    AUTO_START_TRIP_DELAY_SECONDS: int = 180  # 3 daqiqa
+    
     # Generic task retry delay
     TASK_RETRY_DELAY_SECONDS: int = 600  # 1 daqiqa default retry
     

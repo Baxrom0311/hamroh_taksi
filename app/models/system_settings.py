@@ -360,6 +360,13 @@ DEFAULT_SETTINGS = [
         'value': '3600',
         'description': 'FSM state TTL (soniya)'
     },
+    
+    # Trip Auto-Start
+    {
+        'key': 'auto_start_trip_delay_seconds',
+        'value': '180',
+        'description': 'Trip avtomatik boshlash kechikishi (soniya)'
+    },
 ]
 
 

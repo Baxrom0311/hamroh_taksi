@@ -643,6 +643,34 @@ async def remove_driver_from_queue_task(driver_id: int, route_id: Optional[int] 
     logger.info(f"Driver {driver_id} removed from queue")
 
 
+# ============================================
+# AUTO-START TRIP (DELAYED)
+# ============================================
+
+@celery_app.task(bind=True)
+@async_to_sync
+async def auto_start_trip_task(self, trip_id: int, driver_id: int):
+    """
+    O'rinlar to'lganda tripni avtomatik boshlash (delayed)
+    
+    Bu task countdown bilan chaqiriladi:
+    - Default: 180 soniya (3 daqiqa)
+    - Admin paneldan o'zgartiriladi
+    """
+    from app.services.order_service import _start_trip_sync
+    
+    logger.info(f"Auto-starting trip {trip_id} for driver {driver_id} (delayed)")
+    
+    async with get_session() as session:
+        try:
+            await _start_trip_sync(session, trip_id, driver_id)
+            await session.commit()
+            logger.success(f"✅ Trip {trip_id} auto-started successfully")
+        except Exception as e:
+            logger.error(f"❌ Failed to auto-start trip {trip_id}: {e}")
+            raise
+
+
 __all__ = [
     'auto_complete_trip_task',
     'find_driver_for_order_task',
@@ -650,5 +678,6 @@ __all__ = [
     'auto_reject_order_task',
     'notify_passenger_no_driver_task',
     'add_driver_to_queue_task',
-    'remove_driver_from_queue_task'
+    'remove_driver_from_queue_task',
+    'auto_start_trip_task'  # NEW
 ]
