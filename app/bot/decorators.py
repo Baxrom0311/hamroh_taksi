@@ -23,8 +23,91 @@ from loguru import logger
 from app.core.database import get_session
 from app.models.driver import get_driver_by_user_id
 from app.models.passenger import get_passenger_by_user_id
+from app.models.user import UserRole
 from app.bot.keyboards.driver import get_driver_main_menu
 from app.bot.keyboards.passenger import get_passenger_main_menu
+
+
+# ============================================
+# GENERIC DECORATOR FACTORY (DRY Pattern)
+# ============================================
+
+def _create_role_session_decorator(
+    role: "UserRole",
+    entity_getter: Callable,
+    entity_name: str
+):
+    """
+    Generic decorator factory for role-based session management
+    
+    ✅ CODE QUALITY: Eliminates 70+ lines of duplicate code
+    
+    Args:
+        role: UserRole enum (DRIVER, PASSENGER, ADMIN)
+        entity_getter: Function to get entity (get_driver_by_user_id, etc.)
+        entity_name: Entity name for error messages ("haydovchi", "yo'lovchi")
+    
+    Returns:
+        Decorator function
+    """
+    def decorator(func: Callable):
+        @wraps(func)
+        async def wrapper(event: Message | CallbackQuery, *args, **kwargs):
+            user_id = event.from_user.id if event.from_user else None
+            
+            if not user_id:
+                logger.error("User ID not found in event")
+                raise SkipHandler()
+            
+            async with get_session() as session:
+                try:
+                    # 1. User va Role tekshirish
+                    from app.models.user import get_user_by_id, UserRole
+                    user = await get_user_by_id(session, user_id)
+                    
+                    if not user:
+                        # Ro'yxatdan o'tmagan -> Skip
+                        raise SkipHandler()
+                    
+                    if user.role != role:
+                        # Noto'g'ri role -> Skip to other handlers
+                        raise SkipHandler()
+                        
+                    # 2. Entity (driver/passenger) record olish
+                    entity = await entity_getter(session, user_id)
+                    
+                    if not entity:
+                        # DATA INTEGRITY ERROR: Role mavjud, profil yo'q
+                        logger.critical(
+                            f"Data integrity error: User {user_id} is {role.value} "
+                            f"but has no {entity_name} profile!"
+                        )
+                        error_msg = (
+                            f"❌ Tizim xatolik: {entity_name.capitalize()} profili topilmadi. "
+                            "Iltimos @bakhromdev ga murojaat qiling."
+                        )
+                        if isinstance(event, Message):
+                            await event.answer(error_msg)
+                        else:
+                            await event.answer(error_msg, show_alert=True)
+                        return  # Stop propagation (SkipHandler EMAS!)
+                    
+                    # Handler'ni chaqirish
+                    return await func(event, session, entity, *args, **kwargs)
+                
+                except SkipHandler:
+                    raise
+                except Exception as e:
+                    logger.error(f"Error in {entity_name} handler {func.__name__}: {e}")
+                    err_text = "⚠️ Xatolik yuz berdi. Iltimos, qayta urinib ko'ring."
+                    if isinstance(event, Message):
+                        await event.answer(err_text)
+                    else:
+                        await event.answer(err_text, show_alert=True)
+                    raise
+        
+        return wrapper
+    return decorator
 
 
 # ============================================
@@ -35,63 +118,20 @@ def with_driver_session(func: Callable):
     """
     Driver handler'lar uchun session va driver'ni avtomatik olish
     
+    ✅ REFACTORED: Uses generic factory to eliminate code duplication
+    
     STRICT MODE:
     1. User borligini tekshiradi
     2. User.role == DRIVER ekanligini tekshiradi
     3. Agar role != DRIVER -> SkipHandler (Passenger handlerlariga o'tkazish)
     4. Agar role == DRIVER va driver record yo'q -> ERROR (Stop propagation)
     """
-    
-    @wraps(func)
-    async def wrapper(event: Message | CallbackQuery, *args, **kwargs):
-        user_id = event.from_user.id if event.from_user else None
-        
-        if not user_id:
-            logger.error("User ID not found in event")
-            raise SkipHandler()
-        
-        async with get_session() as session:
-            try:
-                # 1. User va Role tekshirish
-                from app.models.user import get_user_by_id, UserRole
-                user = await get_user_by_id(session, user_id)
-                
-                if not user:
-                    # Ro'yxatdan o'tmagan -> Skip
-                    raise SkipHandler()
-                
-                if user.role != UserRole.DRIVER:
-                    # Haydovchi emas (demak passenger yoki admin) -> Skip
-                    raise SkipHandler()
-                    
-                # 2. Driver record olish
-                driver = await get_driver_by_user_id(session, user_id)
-                
-                if not driver:
-                    # DATA INTEGRITY ERROR: Role driver, lekin profil yo'q
-                    logger.critical(f"Data integrity error: User {user_id} is DRIVER but has no driver profile!")
-                    error_msg = "❌ Tizim xatoligi: Haydovchi profili topilmadi. Iltimos @support'ga murojaat qiling."
-                    if isinstance(event, Message):
-                        await event.answer(error_msg)
-                    else:
-                        await event.answer(error_msg, show_alert=True)
-                    return # Stop propagation (SkipHandler EMAS!)
-                
-                # Handler'ni chaqirish
-                return await func(event, session, driver, *args, **kwargs)
-            
-            except SkipHandler:
-                raise
-            except Exception as e:
-                logger.error(f"Error in driver handler {func.__name__}: {e}")
-                err_text = "⚠️ Xatolik yuz berdi. Iltimos, qayta urinib ko'ring."
-                if isinstance(event, Message):
-                    await event.answer(err_text)
-                else:
-                    await event.answer(err_text, show_alert=True)
-                raise
-    
-    return wrapper
+    from app.models.user import UserRole
+    return _create_role_session_decorator(
+        role=UserRole.DRIVER,
+        entity_getter=get_driver_by_user_id,
+        entity_name="haydovchi"
+    )(func)
 
 
 # ============================================
@@ -101,57 +141,15 @@ def with_driver_session(func: Callable):
 def with_passenger_session(func: Callable):
     """
     Passenger handler'lar uchun session va passenger'ni avtomatik olish
+    
+    ✅ REFACTORED: Uses generic factory to eliminate code duplication
     """
-    
-    @wraps(func)
-    async def wrapper(event: Message | CallbackQuery, *args, **kwargs):
-        user_id = event.from_user.id if event.from_user else None
-        
-        if not user_id:
-            logger.error("User ID not found in event")
-            raise SkipHandler()
-        
-        async with get_session() as session:
-            try:
-                # 1. User va Role tekshirish
-                from app.models.user import get_user_by_id, UserRole
-                user = await get_user_by_id(session, user_id)
-                
-                if not user:
-                    raise SkipHandler()
-                
-                if user.role != UserRole.PASSENGER:
-                    # Passenger emas -> Skip
-                    raise SkipHandler()
-
-                # 2. Passenger record olish
-                passenger = await get_passenger_by_user_id(session, user_id)
-                
-                if not passenger:
-                    # DATA INTEGRITY ERROR
-                    logger.critical(f"Data integrity error: User {user_id} is PASSENGER but has no profile!")
-                    error_msg = "❌ Tizim xatoligi: Yo'lovchi profili topilmadi. @support"
-                    if isinstance(event, Message):
-                        await event.answer(error_msg)
-                    else:
-                        await event.answer(error_msg, show_alert=True)
-                    return # Stop propagation
-                
-                # Handler'ni chaqirish
-                return await func(event, session, passenger, *args, **kwargs)
-            
-            except SkipHandler:
-                raise
-            except Exception as e:
-                logger.error(f"Error in passenger handler {func.__name__}: {e}")
-                err_text = "⚠️ Xatolik yuz berdi."
-                if isinstance(event, Message):
-                    await event.answer(err_text)
-                else:
-                    await event.answer(err_text, show_alert=True)
-                raise
-    
-    return wrapper
+    from app.models.user import UserRole
+    return _create_role_session_decorator(
+        role=UserRole.PASSENGER,
+        entity_getter=get_passenger_by_user_id,
+        entity_name="yo'lovchi"
+    )(func)
 
 
 # ============================================

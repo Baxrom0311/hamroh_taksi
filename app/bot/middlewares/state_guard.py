@@ -15,7 +15,7 @@ state'lar aralashib ketadi va bug'lar paydo bo'ladi.
 YECHIM:
 User rolini tekshirib, noto'g'ri state'ni tozalash
 """
-from typing import Callable, Dict, Any, Awaitable
+from typing import Callable, Dict, Any, Awaitable, Optional
 from aiogram import BaseMiddleware
 from aiogram.types import Message, CallbackQuery, TelegramObject
 from aiogram.fsm.context import FSMContext
@@ -61,7 +61,7 @@ class StateGuardMiddleware(BaseMiddleware):
             return await handler(event, data)
         
         # State context olish
-        state: FSMContext = data.get("state")
+        state: Optional[FSMContext] = data.get("state")  # type: ignore[assignment]
         if not state:
             # State yo'q - handler'ga o'tkazamiz
             return await handler(event, data)
@@ -125,11 +125,69 @@ class StateGuardMiddleware(BaseMiddleware):
                         )
         
         except Exception as e:
-            # Middleware xatosi handler'ni to'xtatmasligi kerak
-            logger.error(f"StateGuardMiddleware error: {e}")
+            # ✅ CRITICAL FIX: Fail-safe exception handling
+            # Don't silently swallow errors - clear state and notify user
+            logger.error(f"StateGuardMiddleware error: {e}", exc_info=True)
+            
+            # Clear potentially corrupted state
+            try:
+                await state.clear()
+            except Exception as clear_error:
+                logger.error(f"Failed to clear state after error: {clear_error}")
+            
+            # Notify user of the issue
+            if isinstance(event, Message):
+                try:
+                    await event.answer(
+                        "⚠️ Tizim xatosi yuz berdi. State tozalandi.\n"
+                        "Iltimos, /start dan qayta boshlang."
+                    )
+                except Exception:
+                    pass  # Can't notify, but we tried
+            
+            # Don't proceed to handler with corrupted state - return early
+            return
         
-        # Handler'ni chaqirish
-        return await handler(event, data)
+        try:
+            return await handler(event, data)
+        except Exception as exc:
+            # ✅ CRITICAL: Don't catch aiogram control flow exceptions
+            from aiogram.dispatcher.event.bases import SkipHandler
+            
+            # Note: CancelHandler doesn't exist in aiogram 3.x, only SkipHandler
+            if isinstance(exc, SkipHandler):
+                # This is intentional - let it propagate
+                raise
+            
+            # Now we have a real error - log it with full details
+            import traceback
+            exc_type = type(exc).__name__
+            exc_msg = str(exc)
+            tb_str = "".join(traceback.format_tb(exc.__traceback__, limit=10))
+            
+            logger.error(
+                f"StateGuardMiddleware handler error:\n"
+                f"  Type: {exc_type}\n"
+                f"  Message: {exc_msg}\n"
+                f"  Traceback:\n{tb_str}"
+            )
+
+            if state:
+                try:
+                    await state.clear()
+                    logger.info("State cleared after exception")
+                except Exception as clear_error:
+                    logger.error(f"Failed to clear state: {clear_error}")
+
+            if isinstance(event, Message):
+                try:
+                    await event.answer(
+                        "⚠️ Tizim xatosi yuz berdi. State tozalandi.\n"
+                        "Iltimos, /start dan qayta boshlang."
+                    )
+                except Exception:
+                    pass
+            return
 
 
 __all__ = ['StateGuardMiddleware']

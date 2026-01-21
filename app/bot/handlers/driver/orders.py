@@ -93,13 +93,26 @@ async def accept_order_handler(callback: CallbackQuery, session: AsyncSession, d
             order_type_text = order.type_text
             
             # Lokatsiya linklari
+            # ✅ CRITICAL FIX: Handle None coordinates for text-only addresses
             from app.utils.location_helpers import get_google_maps_link, get_telegram_location_link
             
-            google_maps_link = get_google_maps_link(float(order.pickup_lat), float(order.pickup_lon), order.pickup_location)
-            telegram_location_link = get_telegram_location_link(float(order.pickup_lat), float(order.pickup_lon))
+            # Convert to float only if not None
+            pickup_lat = float(order.pickup_lat) if order.pickup_lat is not None else None
+            pickup_lon = float(order.pickup_lon) if order.pickup_lon is not None else None
+            
+            google_maps_link = get_google_maps_link(pickup_lat, pickup_lon, order.pickup_location)
+            telegram_location_link = get_telegram_location_link(pickup_lat, pickup_lon)
+            
+            # If no GPS coordinates, use text-only location
+            if google_maps_link is None:
+                location_display = f"{order.pickup_location} (⚠️ Matn manzil - GPS yo'q)"
+                google_maps_link = "#"  # Placeholder for message template
+                telegram_location_link = "#"
+            else:
+                location_display = order.pickup_location
             
             passenger_info = Messages.Driver.PASSENGER_INFO.format(
-                pickup_location=order.pickup_location,
+                pickup_location=location_display,
                 google_maps_link=google_maps_link,
                 telegram_location_link=telegram_location_link,
                 order_type=order_type_text,
@@ -262,8 +275,15 @@ async def driver_started_trip(message: Message, session: AsyncSession, driver: D
             )
         
         # Avto-yakunlash task (10 daqiqa - aniq)
-        from app.tasks.matching import auto_complete_trip_task
-        auto_complete_trip_task.apply_async(args=[order_id], countdown=600)  # type: ignore
+        # ✅ CONSTANTS: Use settings instead of hardcoded 600
+        from config.settings import settings
+        from app.core.celery_app import celery_app
+        # Use Celery send_task to avoid mypy/pylance confusion around task wrapper
+        celery_app.send_task(
+            "app.tasks.matching.auto_complete_trip_task",
+            args=[order_id],
+            countdown=settings.AUTO_COMPLETE_TRIP_SECONDS,
+        )
             
         # Haydovchiga xabar (Safar menyusi)
         await message.answer(
@@ -312,14 +332,13 @@ async def manual_complete_trip(message: Message, session: AsyncSession, driver: 
     """
     Haydovchi o'zi safarni yakunlasa (timer ishlamagan holatlarga fallback).
     
-    ✅ CRITICAL FIX: State'ga bog'liq emas, database holatiga qarab ishlaydi!
-    Bu driver FSM state yo'qolsa ham safar yakunlash imkonini beradi.
+    ✅ SIMPLIFIED: Uses centralized cleanup utility, clearer flow
     """
-    # 1. Avval state'dan order_id olishga harakat
+    # 1. State'dan order_id olish
     data = await state.get_data()
     order_id = data.get('current_order_id')
     
-    # 2. Agar state'da yo'q bo'lsa, database'dan o'zining aktiv order'ini topamiz
+    # 2. Agar state'da yo'q bo'lsa, database'dan topish
     if not order_id:
         logger.warning(f"Driver {driver.driver_id} has no current_order_id in state, checking database...")
         
@@ -328,28 +347,17 @@ async def manual_complete_trip(message: Message, session: AsyncSession, driver: 
             select(Order)
             .where(Order.driver_id == driver.driver_id)
             .where(Order.status.in_([OrderStatus.ACCEPTED, OrderStatus.IN_PROGRESS]))
-            .order_by(Order.created_at.desc())  # Eng yangi birinchi
+            .order_by(Order.created_at.desc())
             .limit(1)
         )
         active_order = active_orders_result.scalar_one_or_none()
         
         if not active_order:
-            # ✅ CRITICAL FIX: Aktiv order yo'q, lekin driver safarda qolgan bo'lishi mumkin
-            # Buni avtomatik tozalash kerak!
-            logger.warning(
-                f"Driver {driver.driver_id} has no active orders but may be stuck in trip state. "
-                f"Auto-cleaning driver state..."
-            )
+            # ✅ SIMPLIFIED: Use centralized cleanup utility
+            logger.warning(f"No active orders for driver {driver.driver_id}, cleaning stuck state...")
+            from app.utils.driver_state_utils import cleanup_stuck_driver_state
             
-            # Driver holatini tozalash
-            await session.execute(
-                update(Driver)
-                .where(Driver.driver_id == driver.driver_id)
-                .values(is_on_trip=False, is_active=False)
-            )
-            await session.commit()
-            
-            # State'ni tozalash
+            await cleanup_stuck_driver_state(session, driver.driver_id, commit=False)
             await state.clear()
             
             await message.answer(
@@ -357,7 +365,6 @@ async def manual_complete_trip(message: Message, session: AsyncSession, driver: 
                 "Aktiv buyurtma topilmadi, siz endi yangi buyurtma qabul qilishingiz mumkin.",
                 reply_markup=get_driver_main_menu()
             )
-            logger.info(f"Driver {driver.driver_id} state auto-cleaned successfully")
             return
         
         order_id = active_order.order_id
@@ -365,18 +372,15 @@ async def manual_complete_trip(message: Message, session: AsyncSession, driver: 
 
     # 3. Safarni yakunlash
     result = await complete_trip(order_id, driver.driver_id)
+    
     if not result['success']:
         await message.answer(result['message'])
         return
 
-    # 4. Order ma'lumotlarini olish (yo'lovchiga reyting so'rash uchun)
-    updated_order_result = await session.execute(
-        select(Order)
-        .options(selectinload(Order.passenger).selectinload(Passenger.user))
-        .where(Order.order_id == order_id)
-    )
-    updated_order = updated_order_result.scalar_one_or_none()
+    # 4. State'ni tozalash - trip complete bo'lgach
+    await state.clear()
 
+    # 5. Haydovchiga tasdiq xabari
     await message.answer(
         f"✅ Safar yakunlandi!\n\n"
         f"📦 Buyurtma #{order_id}\n"
@@ -384,36 +388,41 @@ async def manual_complete_trip(message: Message, session: AsyncSession, driver: 
         reply_markup=get_driver_main_menu(),
         parse_mode="HTML"
     )
-    await state.clear()
 
-    # 5. Yo'lovchidan reyting so'rash
-    if updated_order and updated_order.passenger and updated_order.passenger.user:
-        from app.bot.main import bot
-        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-        rating_kb = InlineKeyboardMarkup(inline_keyboard=[
-            [
-                InlineKeyboardButton(text="⭐️ 1", callback_data=f"rate_driver:{order_id}:1"),
-                InlineKeyboardButton(text="⭐️ 2", callback_data=f"rate_driver:{order_id}:2"),
-                InlineKeyboardButton(text="⭐️ 3", callback_data=f"rate_driver:{order_id}:3"),
-            ],
-            [
-                InlineKeyboardButton(text="⭐️ 4", callback_data=f"rate_driver:{order_id}:4"),
-                InlineKeyboardButton(text="⭐️ 5", callback_data=f"rate_driver:{order_id}:5"),
-            ]
-        ])
-        try:
-            await bot.send_message(
-                chat_id=updated_order.passenger.user.user_id,
-                text=(
-                    f"✅ <b>Safar yakunlandi</b>\n\n"
-                    f"📦 Buyurtma #{order_id}\n"
-                    f"✨ <b>Haydovchiga baho bering:</b>"
-                ),
-                parse_mode="HTML",
-                reply_markup=rating_kb
-            )
-        except Exception as e:
-            logger.error(f"Failed to send rating prompt: {e}")
+    # 6. Yo'lovchidan reyting so'rash
+    # ✅ SIMPLIFIED: complete_trip already loads passenger data, use it
+    order_data = result.get('order')
+    if order_data:
+        passenger_user_id = order_data.get('passenger_user_id')
+        if passenger_user_id:
+            from app.bot.main import bot
+            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+            
+            rating_kb = InlineKeyboardMarkup(inline_keyboard=[
+                [
+                    InlineKeyboardButton(text="⭐️ 1", callback_data=f"rate_driver:{order_id}:1"),
+                    InlineKeyboardButton(text="⭐️ 2", callback_data=f"rate_driver:{order_id}:2"),
+                    InlineKeyboardButton(text="⭐️ 3", callback_data=f"rate_driver:{order_id}:3"),
+                ],
+                [
+                    InlineKeyboardButton(text="⭐️ 4", callback_data=f"rate_driver:{order_id}:4"),
+                    InlineKeyboardButton(text="⭐️ 5", callback_data=f"rate_driver:{order_id}:5"),
+                ]
+            ])
+            
+            try:
+                await bot.send_message(
+                    chat_id=passenger_user_id,
+                    text=(
+                        f"✅ <b>Safar yakunlandi</b>\n\n"
+                        f"📦 Buyurtma #{order_id}\n"
+                        f"✨ <b>Haydovchiga baho bering:</b>"
+                    ),
+                    parse_mode="HTML",
+                    reply_markup=rating_kb
+                )
+            except Exception as e:
+                logger.error(f"Failed to send rating prompt: {e}")
 
 
 # ============================================
@@ -434,90 +443,112 @@ async def contact_passenger_handler(message: Message, session: AsyncSession, dri
     
     ✅ REFACTORED: Session va driver avtomatik
     """
-    # Faqat joriy aktiv tripdagi buyurtmalarni ko'rsatamiz
-    trip_result = await session.execute(
-        select(Trip)
-        .options(
-            selectinload(Trip.orders)
+    try:
+        logger.info(f"📞 Contact passenger request from driver {driver.driver_id}")
+        
+        # Faqat joriy aktiv tripdagi buyurtmalarni ko'rsatamiz
+        trip_result = await session.execute(
+            select(Trip)
             .options(
-                selectinload(Order.passenger).selectinload(Passenger.user)
+                selectinload(Trip.orders)
+                .options(
+                    selectinload(Order.passenger).selectinload(Passenger.user)
+                )
             )
+            .where(Trip.driver_id == driver.driver_id)
+            .where(Trip.status == TripStatus.ACTIVE)
+            .order_by(Trip.created_at.desc())
+            .limit(1)
         )
-        .where(Trip.driver_id == driver.driver_id)
-        .where(Trip.status == TripStatus.ACTIVE)
-        .order_by(Trip.created_at.desc())
-        .limit(1)
-    )
-    active_trip = trip_result.scalar_one_or_none()
+        active_trip = trip_result.scalar_one_or_none()
 
-    if not active_trip:
-        await message.answer(Messages.Error.ACTIVE_ORDER_NOT_FOUND)
-        return
+        if not active_trip:
+            logger.warning(f"No active trip found for driver {driver.driver_id}")
+            await message.answer(Messages.Error.ACTIVE_ORDER_NOT_FOUND)
+            return
 
-    active_orders = [
-        order for order in active_trip.orders
-        if order.status in (OrderStatus.ACCEPTED, OrderStatus.IN_PROGRESS)
-    ]
+        active_orders = [
+            order for order in active_trip.orders
+            if order.status in (OrderStatus.ACCEPTED, OrderStatus.IN_PROGRESS)
+        ]
 
-    if not active_orders:
-        await message.answer(Messages.Error.ACTIVE_ORDER_NOT_FOUND)
-        return
-    
-    # Barcha yo'lovchilar ma'lumotlarini yig'ish
-    from app.utils.location_helpers import get_google_maps_link
-    
-    passengers_info = []
-    
-    for idx, order in enumerate(active_orders, 1):
-        if not order.passenger:
-            continue
+        if not active_orders:
+            logger.warning(f"No active orders in trip for driver {driver.driver_id}")
+            await message.answer(Messages.Error.ACTIVE_ORDER_NOT_FOUND)
+            return
+        
+        # Barcha yo'lovchilar ma'lumotlarini yig'ish
+        from app.utils.location_helpers import get_google_maps_link
+        
+        passengers_info = []
+        
+        for idx, order in enumerate(active_orders, 1):
+            if not order.passenger:
+                logger.warning(f"Order {order.order_id} has no passenger")
+                continue
+                
+            passenger = order.passenger
+            passenger_name = passenger.full_name
+            passenger_phone = passenger.user.phone_number if passenger.user else "N/A"
             
-        passenger = order.passenger
-        passenger_name = passenger.full_name
-        passenger_phone = passenger.user.phone_number if passenger.user else "N/A"
-        
-        # Google Maps link
-        google_maps_link = get_google_maps_link(
-            float(order.pickup_lat),
-            float(order.pickup_lon),
-            order.pickup_location
-        )
-        
-        # Buyurtma turi
-        order_type = ""
-        if order.passenger_count == 0 and order.has_luggage:
-            order_type = "📦 Pochta"
-            if order.luggage_count > 1:
-                order_type += f" ({order.luggage_count} dona)"
-            if order.luggage_description:
-                order_type += f"\n  📝 {order.luggage_description}"
-        elif order.has_luggage and order.passenger_count > 0:
-            order_type = f"👥 {order.passenger_count} kishi"
-            if order.luggage_count > 0:
-                order_type += f" + 📦 Pochta ({order.luggage_count} dona)"
+            logger.debug(f"Processing order {order.order_id}: lat={order.pickup_lat}, lon={order.pickup_lon}")
+            
+            # Google Maps link
+            google_maps_link = get_google_maps_link(
+                float(order.pickup_lat),
+                float(order.pickup_lon),
+                order.pickup_location
+            )
+            
+            # Buyurtma turi
+            order_type = ""
+            if order.passenger_count == 0 and order.has_luggage:
+                order_type = "📦 Pochta"
+                if order.luggage_count > 1:
+                    order_type += f" ({order.luggage_count} dona)"
                 if order.luggage_description:
-                    order_type += f"\n 📝 {order.luggage_description}"
-        else:
-            order_type = f"👥 {order.passenger_count} kishi"
-        
-        # Yo'lovchi ma'lumotlari
-        passenger_text = f"""
+                    order_type += f"\n  📝 {order.luggage_description}"
+            elif order.has_luggage and order.passenger_count > 0:
+                order_type = f"👥 {order.passenger_count} kishi"
+                if order.luggage_count > 0:
+                    order_type += f" + 📦 Pochta ({order.luggage_count} dona)"
+                    if order.luggage_description:
+                        order_type += f"\n 📝 {order.luggage_description}"
+            else:
+                order_type = f"👥 {order.passenger_count} kishi"
+            
+            # Yo'lovchi ma'lumotlari
+            location_display = f'<a href="{google_maps_link}">{order.pickup_location}</a>'
+            
+            passenger_text = f"""
 <b>{idx}-mijoz</b>
 👤 <b>Ism:</b> {passenger_name}
-📍 <b>Manzil:</b> <a href="{google_maps_link}">{order.pickup_location}</a>
+📍 <b>Manzil:</b> {location_display}
 📱 <b>Telefon:</b> {passenger_phone}
 {order_type}
-        """.strip()
+            """.strip()
+            
+            passengers_info.append(passenger_text)
         
-        passengers_info.append(passenger_text)
-    
-    # Barcha ma'lumotlarni birlashtirish
-    contact_text = f"📞 <b>Yo'lovchilar ma'lumotlari</b>\n\n" + chr(10).join(passengers_info)
+        # Barcha ma'lumotlarni birlashtirish
+        contact_text = f"📞 <b>Yo'lovchilar ma'lumotlari</b>\n\n" + chr(10).join(passengers_info)
+        
+        logger.info(f"Sending contact info to driver {driver.driver_id}: {len(passengers_info)} passengers")
 
-    await message.answer(
-        contact_text,
-        parse_mode="HTML",
-    )
+        await message.answer(
+            contact_text,
+            parse_mode="HTML",
+        )
+        
+        logger.success(f"✅ Contact info sent to driver {driver.driver_id}")
+        
+    except Exception as e:
+        logger.error(f"❌ CRITICAL ERROR in contact_passenger_handler: {type(e).__name__}: {e}", exc_info=True)
+        await message.answer(
+            "❌ Xatolik yuz berdi. Iltimos, qayta urinib ko'ring yoki /start bosing.",
+            parse_mode="HTML"
+        )
+        raise  # Re-raise to let StateGuard handle it
 
 
 @router.message(
