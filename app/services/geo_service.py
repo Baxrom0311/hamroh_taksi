@@ -118,6 +118,8 @@ class GeoService:
                 if not order:
                     raise OrderNotFoundException(order_id=order_id)
                 
+
+                
                 # Driver lokatsiyasi mavjudmi?
                 if not driver.last_location_lat or not driver.last_location_lon:
                     logger.warning(f"Driver {driver_id} location missing")
@@ -135,6 +137,7 @@ class GeoService:
                     }
                 
                 # Masofa hisoblash (Haversine)
+                # ✅ Now safe - we checked None above
                 distance_km = calculate_distance(
                     float(driver.last_location_lat),
                     float(driver.last_location_lon),

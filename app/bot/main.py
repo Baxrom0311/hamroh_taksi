@@ -43,13 +43,6 @@ bot = Bot(
 dp: Dispatcher | None = None
 
 # ============================================
-# HANDLER'LARNI RO'YXATGA OLISH
-# ============================================
-
-# Handlers are now registered via dispatcher.py
-
-
-# ============================================
 # STARTUP / SHUTDOWN
 # ============================================
 
