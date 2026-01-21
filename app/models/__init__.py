@@ -6,6 +6,7 @@ from .order import Order, OrderStatus
 from .trip import Trip, TripStatus
 from .transaction import Transaction, TransactionLog
 from .system_settings import SystemSettings
+from .feedback import Feedback, FeedbackType, FeedbackStatus # ✅ Yangi
 
 # Barcha modellarni bitta ro'yxatga yig'ish
 __all__ = [
@@ -14,7 +15,8 @@ __all__ = [
     "Passenger", 
     "Route", 
     "Order", "OrderStatus",
-    "Trip", "TripStatus",  # ✅ Yangi
+    "Trip", "TripStatus",
     "Transaction", "TransactionLog",
-    "SystemSettings"
+    "SystemSettings",
+    "Feedback", "FeedbackType", "FeedbackStatus" # ✅ Yangi
 ]
