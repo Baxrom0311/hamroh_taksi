@@ -58,16 +58,17 @@ async def find_driver_for_order_task(self, order_id: int):
         enforce_distance = pickup_location_text.startswith("lat:")
 
         # Eng yaxshi haydovchini topish
+        passenger_location = {
+            'lat': float(order.pickup_lat),
+            'lon': float(order.pickup_lon)
+        }
         driver_id = await driver_queue.get_next_driver(
             route_id=order.route_id,
-            passenger_location={
-                'lat': float(order.pickup_lat),
-                'lon': float(order.pickup_lon)
-            },
+            passenger_location=passenger_location,
             passenger_count=order.passenger_count,
             max_distance_km=50,
             order_id=order_id,  # ✅ Skip logic uchun
-            enforce_distance=enforce_distance
+            enforce_distance=enforce_distance and passenger_location is not None
         )
         
         if driver_id:
@@ -109,7 +110,9 @@ async def find_driver_for_order_task(self, order_id: int):
                 f"(attempt {current_attempt}/{self.max_retries}). Retrying in 30s..."
             )
             
-            raise self.retry(countdown=30)
+            # Retry after delay
+            from config.settings import settings
+            raise self.retry(countdown=settings.DRIVER_MATCHING_RETRY_DELAY_SECONDS)
 
 
 # ============================================
@@ -223,7 +226,12 @@ async def notify_driver_new_order_task(self, driver_id: int, order_id: int):
         
         # 3. Taymerni rejalashtirish
         from app.tasks.matching import auto_reject_order_task
-        cast(Any, auto_reject_order_task).apply_async(args=[driver_id, order_id], countdown=120)
+        # ✅ CONSTANTS: Auto-reject timer from settings
+        from config.settings import settings
+        cast(Any, auto_reject_order_task).apply_async(
+            args=[driver_id, order_id], 
+            countdown=settings.AUTO_REJECT_ORDER_SECONDS
+        )
         
         return {'success': True}
         
@@ -353,7 +361,7 @@ async def auto_confirm_trip_task(order_id: int):
     bind=True,
     name="app.tasks.matching.auto_complete_trip_task",
     max_retries=3,  # ✅ NEW: Max 3 marta retry
-    default_retry_delay=60  # ✅ NEW: 1 daqiqa oraliqda
+    default_retry_delay=600  # ✅ NEW: 1 daqiqa oraliqda
 )
 @async_to_sync
 async def auto_complete_trip_task(self, target_id: int):
@@ -410,6 +418,7 @@ async def auto_complete_trip_task(self, target_id: int):
             return
 
         # Yakunlash va xabar berish
+        driver_id: Optional[int] = None
         for order in orders_to_complete:
             driver_id = order.driver_id
             if not driver_id:
@@ -484,14 +493,17 @@ async def auto_complete_trip_task(self, target_id: int):
                 logger.error(f"Failed to update trip status: {e}")
                 # ✅ NEW: Retry on database errors
                 if hasattr(self, 'retry'):
-                    raise self.retry(exc=e, countdown=60)
+                    # Retry with delay
+                    from config.settings import settings
+                    raise self.retry(exc=e, countdown=settings.TASK_RETRY_DELAY_SECONDS)
 
-        await session.execute(
-            update(Driver)
-            .where(Driver.driver_id == driver_id)
-            .values(is_on_trip=False, is_active=False)
-        )
-        await session.commit()
+        if driver_id:
+            await session.execute(
+                update(Driver)
+                .where(Driver.driver_id == driver_id)
+                .values(is_on_trip=False, is_active=False)
+            )
+            await session.commit()
 
 
 

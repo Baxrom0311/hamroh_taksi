@@ -231,6 +231,13 @@ Haydovchi siz tomonga yo'lga chiqdi!
         
         keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
         
+        # ✅ PRODUCTION FIX: Specific exception handling
+        from aiogram.exceptions import (
+            TelegramForbiddenError,
+            TelegramBadRequest,
+            TelegramRetryAfter
+        )
+        
         try:
             await bot.send_message(
                 chat_id=passenger_user_id,
@@ -239,8 +246,22 @@ Haydovchi siz tomonga yo'lga chiqdi!
                 reply_markup=keyboard
             )
             logger.info(f"✅ Driver found notification sent to passenger {passenger_user_id}")
+        
+        except TelegramForbiddenError:
+            # Don't retry - user blocked bot
+            logger.warning(f"Passenger {passenger_user_id} has blocked the bot")
+        
+        except TelegramBadRequest as e:
+            # Chat not found or other bad request
+            logger.warning(f"Bad request for passenger {passenger_user_id}: {e}")
+        
+        except TelegramRetryAfter as e:
+            # Flood wait - just log, don't crash
+            logger.warning(f"Flood wait for passenger {passenger_user_id}: {e.retry_after}s")
+        
         except Exception as e:
-            logger.error(f"Failed to notify passenger: {e}")
+            # Other unexpected errors
+            logger.error(f"Failed to notify passenger {passenger_user_id}: {e}")
 
 
 
@@ -325,7 +346,14 @@ async def request_passenger_confirmation(order_id: int, driver_id: int):
 
 📍 Haydovchi siz tomonga yo'lga chiqdi!
         """
-
+        
+        # ✅ PRODUCTION FIX: Specific exception handling
+        from aiogram.exceptions import (
+            TelegramForbiddenError,
+            TelegramBadRequest,
+            TelegramRetryAfter
+        )
+        
         try:
             # order.passenger.user_id - endi xavfsiz olinadi!
             await bot.send_message(
@@ -337,8 +365,23 @@ async def request_passenger_confirmation(order_id: int, driver_id: int):
             
             # 30 daqiqa ichida "Ketdik" yoki bekor qilish kutiladi
             # Agar 30 daqiqada hech narsa bo'lmasa, sessiya yopiladi
-            from app.tasks.matching import auto_confirm_trip_task
-            auto_confirm_trip_task.apply_async(args=[order_id], countdown=1800)  # type: ignore
+            # ✅ CONSTANTS: Auto-confirm timer from settings
+            from config.settings import settings
+            from app.core.celery_app import celery_app
+            celery_app.send_task(
+                "app.tasks.matching.auto_confirm_trip_task",
+                args=[order_id],
+                countdown=settings.AUTO_CONFIRM_TRIP_SECONDS,
+            )
+        
+        except TelegramForbiddenError:
+            logger.warning(f"Passenger {order.passenger.user_id} blocked the bot")
+        
+        except TelegramBadRequest as e:
+            logger.warning(f"Bad request for passenger {order.passenger.user_id}: {e}")
+        
+        except TelegramRetryAfter as e:
+            logger.warning(f"Flood wait: {e.retry_after}s")
             
         except Exception as e:
             logger.error(f"Confirmation request failed: {e}")
