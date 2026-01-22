@@ -325,13 +325,16 @@ async def passenger_cancel_order(callback: CallbackQuery, session: AsyncSession,
                 await callback.answer("⚠️ Buyurtma holati o'zgargan, bekor qilib bo'lmaydi.", show_alert=True)
                 return
             
-            # Driver'ni bo'shatish
+            # Driver'ni bo'shatish (max 8 seats)
             if order.driver_id:
                 await cancel_session.execute(
                     update(Driver)
                     .where(Driver.driver_id == order.driver_id)
                     .values(
-                        available_seats=Driver.available_seats + order.passenger_count,
+                        available_seats=func.least(
+                            Driver.available_seats + order.passenger_count,
+                            8  # Maximum seats
+                        ),
                         is_on_trip=False
                     )
                 )
@@ -340,7 +343,8 @@ async def passenger_cancel_order(callback: CallbackQuery, session: AsyncSession,
     
     except Exception as e:
         logger.error(f"Failed to cancel order {order_id}: {e}")
-        await callback.answer(f"❌ Bekor qilishda xatolik: {str(e)}", show_alert=True)
+        error_msg = str(e)[:100]  # Truncate to prevent MESSAGE_TOO_LONG
+        await callback.answer(f"❌ Xatolik: {error_msg}", show_alert=True)
         return
     
     # Haydovchiga xabar

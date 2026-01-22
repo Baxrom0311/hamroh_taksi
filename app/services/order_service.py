@@ -761,14 +761,17 @@ async def complete_trip(order_id: int, driver_id: int) -> dict:
             other_active_orders = active_orders_result.scalars().all()
             has_other_active_orders = len(other_active_orders) > 0
             
-            # 5. Haydovchi statistikasini yangilash va o'rinlarni qaytarish
+            # 5. Haydovchi statistikasini yangilash va o'rinlarni qaytarish (max 8 seats)
             # available_seats har doim qaytarilishi kerak (order tugadi)
             await session.execute(
                 update(Driver)
                 .where(Driver.driver_id == driver_id)
                 .values(
                     total_trips=Driver.total_trips + 1,
-                    available_seats=Driver.available_seats + passenger_count,
+                    available_seats=func.least(
+                        Driver.available_seats + passenger_count,
+                        8  # Maximum seats
+                    ),
                     last_trip_at=func.now()
                 )
             )
