@@ -165,7 +165,7 @@ class Route(Base):
             'to_location': self.to_location,
             'route_name': self.route_name,
             'distance_km': float(self.distance_km) if self.distance_km else None,
-            'fare_amount': float(self.fare_amount) if self.fare_amount else None,
+            'fare_amount': float(self.fare_amount) if self.fare_amount is not None else None,
             'is_active': self.is_active
         }
     

@@ -208,7 +208,7 @@ async def get_routes_list(
                     'to_location_lat': float(route.to_location_lat) if route.to_location_lat else None,
                     'to_location_lon': float(route.to_location_lon) if route.to_location_lon else None,
                     'distance_km': float(route.distance_km) if route.distance_km else None,
-                    'fare_amount': float(route.fare_amount) if route.fare_amount else None,
+                    'fare_amount': float(route.fare_amount) if route.fare_amount is not None else None,
                     'is_active': route.is_active,
                     'created_at': route.created_at.isoformat()
                 }
