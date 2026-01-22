@@ -32,7 +32,7 @@
                             <div class="text-xs text-gray-500" x-text="route.from_location + ' → ' + route.to_location"></div>
                         </td>
                         <td class="px-6 py-4 text-sm text-gray-700" x-text="route.distance_km ? route.distance_km + ' km' : '-'"></td>
-                        <td class="px-6 py-4 text-sm text-gray-700" x-text="route.fare_amount !== null && route.fare_amount !== undefined ? route.fare_amount + ' so\\'m' : '-'"></td>
+                        <td class="px-6 py-4 text-sm text-gray-700" x-text="formatFare(route.fare_amount)"></td>
                         <td class="px-6 py-4">
                             <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full" :class="route.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-200 text-gray-600'" x-text="route.is_active ? 'Aktiv' : 'Nofaol'"></span>
                         </td>
@@ -162,6 +162,13 @@ function routesApp() {
             if (data?.routes) {
                 this.routes = data.routes;
             }
+        },
+        
+        formatFare(value) {
+            if (value === null || value === undefined) return '-';
+            const num = Number(value);
+            if (Number.isNaN(num)) return '-';
+            return `${num.toLocaleString('en-US')} so\\'m`;
         },
 
         openCreateModal() {
