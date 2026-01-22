@@ -243,8 +243,10 @@ async def passenger_started(callback: CallbackQuery, session: AsyncSession, pass
         from typing import Any, cast
         # ✅ CONSTANTS: Use settings instead of magic number
         from config.settings import settings
+        # If this order is part of a trip, auto-complete the whole trip
+        target_id = order.trip_id or order_id
         cast(Any, auto_complete_trip_task).apply_async(
-            args=[order_id], 
+            args=[target_id],
             countdown=settings.AUTO_COMPLETE_TRIP_SECONDS
         )
         

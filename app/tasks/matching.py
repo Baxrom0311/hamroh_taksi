@@ -58,10 +58,12 @@ async def find_driver_for_order_task(self, order_id: int):
         enforce_distance = pickup_location_text.startswith("lat:")
 
         # Eng yaxshi haydovchini topish
-        passenger_location = {
-            'lat': float(order.pickup_lat),
-            'lon': float(order.pickup_lon)
-        }
+        passenger_location = None
+        if order.pickup_lat and order.pickup_lon:
+            passenger_location = {
+                'lat': float(order.pickup_lat),
+                'lon': float(order.pickup_lon)
+            }
         driver_id = await driver_queue.get_next_driver(
             route_id=order.route_id,
             passenger_location=passenger_location,

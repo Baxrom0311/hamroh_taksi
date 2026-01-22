@@ -417,7 +417,7 @@ class DriverQueueManager:
                     
                     # 6. Geo-masofa tekshiruvi (ixtiyoriy)
                     distance_km = None
-                    if enforce_distance:
+                    if enforce_distance and passenger_location is not None:
                         distance_km = calculate_distance(
                             float(driver.last_location_lat),
                             float(driver.last_location_lon),

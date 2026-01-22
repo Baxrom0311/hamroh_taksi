@@ -279,9 +279,11 @@ async def driver_started_trip(message: Message, session: AsyncSession, driver: D
         from config.settings import settings
         from app.core.celery_app import celery_app
         # Use Celery send_task to avoid mypy/pylance confusion around task wrapper
+        # If this order is part of a trip, auto-complete the whole trip
+        target_id = order.trip_id or order_id
         celery_app.send_task(
             "app.tasks.matching.auto_complete_trip_task",
-            args=[order_id],
+            args=[target_id],
             countdown=settings.AUTO_COMPLETE_TRIP_SECONDS,
         )
             
@@ -493,12 +495,14 @@ async def contact_passenger_handler(message: Message, session: AsyncSession, dri
             
             logger.debug(f"Processing order {order.order_id}: lat={order.pickup_lat}, lon={order.pickup_lon}")
             
-            # Google Maps link
-            google_maps_link = get_google_maps_link(
-                float(order.pickup_lat),
-                float(order.pickup_lon),
-                order.pickup_location
-            )
+            # Google Maps link (location optional)
+            google_maps_link = None
+            if order.pickup_lat is not None and order.pickup_lon is not None:
+                google_maps_link = get_google_maps_link(
+                    float(order.pickup_lat),
+                    float(order.pickup_lon),
+                    order.pickup_location
+                )
             
             # Buyurtma turi
             order_type = ""
@@ -518,7 +522,10 @@ async def contact_passenger_handler(message: Message, session: AsyncSession, dri
                 order_type = f"👥 {order.passenger_count} kishi"
             
             # Yo'lovchi ma'lumotlari
-            location_display = f'<a href="{google_maps_link}">{order.pickup_location}</a>'
+            if google_maps_link:
+                location_display = f'<a href="{google_maps_link}">{order.pickup_location}</a>'
+            else:
+                location_display = order.pickup_location
             
             passenger_text = f"""
 <b>{idx}-mijoz</b>

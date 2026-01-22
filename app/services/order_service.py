@@ -105,8 +105,8 @@ async def create_new_order(
     """
     
     session_ctx = None
+    working_session: Optional[AsyncSession] = None
     try:
-        working_session: AsyncSession
         if session is not None:
             working_session = session
         else:
@@ -178,7 +178,7 @@ async def create_new_order(
         }
 
     except Exception as e:
-        if session is None and 'working_session' in locals():
+        if session is None and working_session is not None:
             await working_session.rollback()
         logger.error(f"Error creating order: {e}")
         return {
@@ -427,10 +427,20 @@ async def accept_order_by_driver(
                 
                 # 2.2.5. Safarda emasligini tekshirish
                 if driver.is_on_trip:
-                    return {
-                        'success': False,
-                        'message': '⚠️ Siz hozir safardasiz!\n\nAvval safarni yakunlang.'
-                    }
+                    # Safety: if driver is marked on_trip but has no active orders, clear the flag
+                    from app.utils.driver_state_utils import validate_driver_trip_state
+                    has_active_orders = await validate_driver_trip_state(session, driver_id)
+                    if has_active_orders:
+                        return {
+                            'success': False,
+                            'message': '⚠️ Siz hozir safardasiz!\n\nAvval safarni yakunlang.'
+                        }
+                    await session.execute(
+                        update(Driver)
+                        .where(Driver.driver_id == driver_id)
+                        .values(is_on_trip=False)
+                    )
+                    driver.is_on_trip = False
                 
                 # 2.3. Balans tekshirish (dynamic settings)
                 pricing = await get_pricing_settings(session)
@@ -670,11 +680,27 @@ async def start_trip(order_id: int, driver_id: int) -> dict:
             trip_id = order_result.scalar_one_or_none()
             
             if trip_id:
+                # Trip statusini active qilib qo'yamiz, started_at ni bir marta set qilamiz
+                await session.execute(
+                    update(Trip)
+                    .where(Trip.trip_id == trip_id)
+                    .values(status=TripStatus.ACTIVE)
+                )
                 await session.execute(
                     update(Trip)
                     .where(Trip.trip_id == trip_id)
                     .where(Trip.started_at.is_(None))  # Faqat boshlanmagan tripni
                     .values(started_at=func.now())
+                )
+                # Tripdagi barcha ACCEPTED buyurtmalarni IN_PROGRESS ga o'tkazamiz
+                await session.execute(
+                    update(Order)
+                    .where(Order.trip_id == trip_id)
+                    .where(Order.status == OrderStatus.ACCEPTED)
+                    .values(
+                        status=OrderStatus.IN_PROGRESS,
+                        started_at=func.now()
+                    )
                 )
             
             logger.info(f"✅ Trip started (atomic): order_id={order_id}, driver_id={driver_id}")
