@@ -345,6 +345,7 @@ async def manual_complete_trip(message: Message, session: AsyncSession, driver: 
     
     ✅ SIMPLIFIED: Uses centralized cleanup utility, clearer flow
     """
+    from sqlalchemy import select, update, func
     # 1. State'dan order_id olish
     data = await state.get_data()
     order_id = data.get('current_order_id')
@@ -381,59 +382,103 @@ async def manual_complete_trip(message: Message, session: AsyncSession, driver: 
         order_id = active_order.order_id
         logger.info(f"Found active order {order_id} from database for driver {driver.driver_id}")
 
-    # 3. Safarni yakunlash
-    result = await complete_trip(order_id, driver.driver_id)
-    
-    if not result['success']:
-        await message.answer(result['message'])
+    # 3. Safarni yakunlash (trip bo'lsa - hammasini yakunlash)
+    order_ids_to_complete = []
+    trip_id = None
+    if order_id:
+        order_result = await session.execute(
+            select(Order)
+            .where(Order.order_id == order_id)
+        )
+        current_order = order_result.scalar_one_or_none()
+        if current_order:
+            trip_id = current_order.trip_id
+    if trip_id:
+        # Tripdagi ACCEPTED orderlarni IN_PROGRESS ga o'tkazamiz
+        await session.execute(
+            update(Order)
+            .where(Order.trip_id == trip_id)
+            .where(Order.driver_id == driver.driver_id)
+            .where(Order.status == OrderStatus.ACCEPTED)
+            .values(
+                status=OrderStatus.IN_PROGRESS,
+                started_at=func.now()
+            )
+        )
+        await session.commit()
+        trip_orders_result = await session.execute(
+            select(Order.order_id)
+            .where(Order.trip_id == trip_id)
+            .where(Order.driver_id == driver.driver_id)
+            .where(Order.status == OrderStatus.IN_PROGRESS)
+        )
+        order_ids_to_complete = [row[0] for row in trip_orders_result.all()]
+    else:
+        order_ids_to_complete = [order_id]
+
+    if not order_ids_to_complete:
+        await message.answer(Messages.Error.ACTIVE_ORDER_NOT_FOUND)
+        return
+
+    results = []
+    for oid in order_ids_to_complete:
+        result = await complete_trip(oid, driver.driver_id)
+        results.append(result)
+        if not result.get('success'):
+            logger.warning(f"Manual trip complete failed for order {oid}: {result.get('message')}")
+
+    if not any(r.get('success') for r in results):
+        await message.answer(results[-1].get('message', Messages.Error.SOMETHING_WENT_WRONG))
         return
 
     # 4. State'ni tozalash - trip complete bo'lgach
     await state.clear()
 
     # 5. Haydovchiga tasdiq xabari
+    completed_count = sum(1 for r in results if r.get('success'))
     await message.answer(
         f"✅ Safar yakunlandi!\n\n"
-        f"📦 Buyurtma #{order_id}\n"
-        f"⏱ Davomiyligi: {result.get('duration_minutes', 'N/A')} daqiqa",
+        f"📦 Yakunlangan buyurtmalar: {completed_count} ta\n"
+        f"⏱ Davomiyligi: {results[-1].get('duration_minutes', 'N/A')} daqiqa",
         reply_markup=get_driver_main_menu(),
         parse_mode="HTML"
     )
 
     # 6. Yo'lovchidan reyting so'rash
     # ✅ SIMPLIFIED: complete_trip already loads passenger data, use it
-    order_data = result.get('order')
-    if order_data:
+    from app.bot.main import bot
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    for oid, res in zip(order_ids_to_complete, results):
+        order_data = res.get('order')
+        if not order_data:
+            continue
         passenger_user_id = order_data.get('passenger_user_id')
-        if passenger_user_id:
-            from app.bot.main import bot
-            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-            
-            rating_kb = InlineKeyboardMarkup(inline_keyboard=[
-                [
-                    InlineKeyboardButton(text="⭐️ 1", callback_data=f"rate_driver:{order_id}:1"),
-                    InlineKeyboardButton(text="⭐️ 2", callback_data=f"rate_driver:{order_id}:2"),
-                    InlineKeyboardButton(text="⭐️ 3", callback_data=f"rate_driver:{order_id}:3"),
-                ],
-                [
-                    InlineKeyboardButton(text="⭐️ 4", callback_data=f"rate_driver:{order_id}:4"),
-                    InlineKeyboardButton(text="⭐️ 5", callback_data=f"rate_driver:{order_id}:5"),
-                ]
-            ])
-            
-            try:
-                await bot.send_message(
-                    chat_id=passenger_user_id,
-                    text=(
-                        f"✅ <b>Safar yakunlandi</b>\n\n"
-                        f"📦 Buyurtma #{order_id}\n"
-                        f"✨ <b>Haydovchiga baho bering:</b>"
-                    ),
-                    parse_mode="HTML",
-                    reply_markup=rating_kb
-                )
-            except Exception as e:
-                logger.error(f"Failed to send rating prompt: {e}")
+        if not passenger_user_id:
+            continue
+        rating_kb = InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(text="⭐️ 1", callback_data=f"rate_driver:{oid}:1"),
+                InlineKeyboardButton(text="⭐️ 2", callback_data=f"rate_driver:{oid}:2"),
+                InlineKeyboardButton(text="⭐️ 3", callback_data=f"rate_driver:{oid}:3"),
+            ],
+            [
+                InlineKeyboardButton(text="⭐️ 4", callback_data=f"rate_driver:{oid}:4"),
+                InlineKeyboardButton(text="⭐️ 5", callback_data=f"rate_driver:{oid}:5"),
+            ]
+        ])
+        try:
+            await bot.send_message(
+                chat_id=passenger_user_id,
+                text=(
+                    f"✅ <b>Safar yakunlandi</b>\n\n"
+                    f"📦 Buyurtma #{oid}\n"
+                    f"✨ <b>Haydovchiga baho bering:</b>"
+                ),
+                parse_mode="HTML",
+                reply_markup=rating_kb
+            )
+        except Exception as e:
+            logger.error(f"Failed to send rating prompt: {e}")
 
 
 # ============================================
