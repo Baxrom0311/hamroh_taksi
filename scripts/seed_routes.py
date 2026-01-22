@@ -37,7 +37,8 @@ DEFAULT_ROUTES = [
         'from_location_lon': 60.4015,
         'to_location_lat': 41.3775,
         'to_location_lon': 60.3614,
-        'distance_km': 51.5
+        'distance_km': 51.5,
+        'fare_amount': 15000,
     },
     {
         'from_location': 'Vazir',
@@ -46,7 +47,8 @@ DEFAULT_ROUTES = [
         'from_location_lon': 60.3614,
         'to_location_lat': 41.8453,
         'to_location_lon': 60.4015,
-        'distance_km': 51.5
+        'distance_km': 51.5, 
+        'fare_amount': 15000,
     },
     {
         'from_location': 'Gurlan',
@@ -55,7 +57,8 @@ DEFAULT_ROUTES = [
         'from_location_lon': 60.4015,
         'to_location_lat': 41.6667,
         'to_location_lon': 60.3167,
-        'distance_km': 35.0
+        'distance_km': 35.0,    
+        'fare_amount': 10000,
     },
     {
         'from_location': 'Qoratol',
@@ -64,7 +67,8 @@ DEFAULT_ROUTES = [
         'from_location_lon': 60.3167,
         'to_location_lat': 41.8453,
         'to_location_lon': 60.4015,
-        'distance_km': 35.0
+        'distance_km': 35.0,
+        'fare_amount': 10000,
     },
     {
         'from_location': 'Vazir',
@@ -73,7 +77,8 @@ DEFAULT_ROUTES = [
         'from_location_lon': 60.3614,
         'to_location_lat': 41.5500,
         'to_location_lon': 60.6333,
-        'distance_km': 28.0
+        'distance_km': 28.0,
+        'fare_amount': 18000,
     },
     {
         'from_location': 'Urganch',
@@ -82,7 +87,8 @@ DEFAULT_ROUTES = [
         'from_location_lon': 60.6333,
         'to_location_lat': 41.3775,
         'to_location_lon': 60.3614,
-        'distance_km': 28.0
+        'distance_km': 28.0,
+        'fare_amount': 18000,
     },
 ]
 

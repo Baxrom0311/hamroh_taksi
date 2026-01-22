@@ -94,6 +94,13 @@ class Route(Base):
         nullable=True,
         comment="Masofa (km)"
     )
+
+    # YO'L HAQI (PUL)
+    fare_amount: Mapped[Optional[Decimal]] = mapped_column(
+        Numeric(12, 2),
+        nullable=True,
+        comment="Yo'l haqi (so'm)"
+    )
     
     # HOLAT
     is_active: Mapped[bool] = mapped_column(
@@ -158,6 +165,7 @@ class Route(Base):
             'to_location': self.to_location,
             'route_name': self.route_name,
             'distance_km': float(self.distance_km) if self.distance_km else None,
+            'fare_amount': float(self.fare_amount) if self.fare_amount else None,
             'is_active': self.is_active
         }
     
@@ -204,6 +212,7 @@ async def create_route(
     from_location: str,
     to_location: str,
     distance_km: Optional[float] = None,
+    fare_amount: Optional[float] = None,
     **kwargs
 ) -> Route:
     """
@@ -224,6 +233,7 @@ async def create_route(
         from_location=from_location,
         to_location=to_location,
         distance_km=distance_km,
+        fare_amount=fare_amount,
         **kwargs
     )
     
@@ -261,6 +271,7 @@ DEFAULT_ROUTES = [
         'from_location': 'Gurlan',
         'to_location': 'Vazir',
         'distance_km': 45.0,
+        'fare_amount': 0,
         'from_location_lat': 41.8453,
         'from_location_lon': 60.4015,
         'to_location_lat': 41.3775,
@@ -270,6 +281,7 @@ DEFAULT_ROUTES = [
         'from_location': 'Vazir',
         'to_location': 'Gurlan',
         'distance_km': 45.0,
+        'fare_amount': 0,
         'from_location_lat': 41.3775,
         'from_location_lon': 60.3614,
         'to_location_lat': 41.8453,
@@ -279,6 +291,7 @@ DEFAULT_ROUTES = [
         'from_location': 'Gurlan',
         'to_location': 'Qoratol',
         'distance_km': 35.0,
+        'fare_amount': 0,
         'from_location_lat': 41.8453,
         'from_location_lon': 60.4015,
         'to_location_lat': 41.6667,
@@ -288,6 +301,7 @@ DEFAULT_ROUTES = [
         'from_location': 'Qoratol',
         'to_location': 'Gurlan',
         'distance_km': 35.0,
+        'fare_amount': 0,
         'from_location_lat': 41.6667,
         'from_location_lon': 60.3167,
         'to_location_lat': 41.8453,

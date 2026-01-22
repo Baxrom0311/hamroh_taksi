@@ -172,7 +172,9 @@ async def notify_passenger_driver_found(passenger_user_id: int, driver_id: int, 
         
         # Order ma'lumotlarini olish
         order_result = await session.execute(
-            select(Order).where(Order.order_id == order_id)
+            select(Order)
+            .options(selectinload(Order.route))
+            .where(Order.order_id == order_id)
         )
         order = order_result.scalar_one_or_none()
         
@@ -199,6 +201,11 @@ async def notify_passenger_driver_found(passenger_user_id: int, driver_id: int, 
         phone_number = driver.phone_number or "N/A"
         phone_valid = phone_number and phone_number != "N/A" and phone_number != "UNKNOWN" and phone_number.strip()
         
+        fare_amount_value = None
+        if order.route and order.route.fare_amount is not None:
+            fare_amount_value = float(order.route.fare_amount)
+        fare_amount_display = f"{fare_amount_value:,.0f} so'm" if fare_amount_value is not None else "N/A"
+
         # Xabar matni (Telegram linki olib tashlandi)
         text = f"""
 ✅ <b>Haydovchi topildi!</b>
@@ -208,6 +215,7 @@ async def notify_passenger_driver_found(passenger_user_id: int, driver_id: int, 
 🎨 <b>Rang:</b> {driver.car_color}
 🔢 <b>Raqam:</b> <code>{driver.car_number}</code>
 📱 <b>Telefon:</b> {phone_number}
+🛣 <b>Yo'l haqi:</b> {fare_amount_display}
 
 Haydovchi siz tomonga yo'lga chiqdi!
         """

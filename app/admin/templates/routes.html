@@ -19,6 +19,7 @@
                 <tr>
                     <th class="px-6 py-3 text-left">Yo'nalish</th>
                     <th class="px-6 py-3 text-left">Masofa</th>
+                    <th class="px-6 py-3 text-left">Yo'l haqi</th>
                     <th class="px-6 py-3 text-left">Holat</th>
                     <th class="px-6 py-3 text-right">Amallar</th>
                 </tr>
@@ -31,10 +32,12 @@
                             <div class="text-xs text-gray-500" x-text="route.from_location + ' → ' + route.to_location"></div>
                         </td>
                         <td class="px-6 py-4 text-sm text-gray-700" x-text="route.distance_km ? route.distance_km + ' km' : '-'"></td>
+                        <td class="px-6 py-4 text-sm text-gray-700" x-text="route.fare_amount !== null && route.fare_amount !== undefined ? route.fare_amount + ' so\\'m' : '-'"></td>
                         <td class="px-6 py-4">
                             <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full" :class="route.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-200 text-gray-600'" x-text="route.is_active ? 'Aktiv' : 'Nofaol'"></span>
                         </td>
                         <td class="px-6 py-4 text-right text-sm space-x-2">
+                            <button @click="openEditModal(route)" class="px-3 py-1 rounded text-xs font-medium bg-blue-100 text-blue-800 hover:bg-blue-200">Tahrirlash</button>
                             <button @click="toggleRoute(route.route_id)" class="px-3 py-1 rounded text-xs font-medium mr-2" :class="route.is_active ? 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200' : 'bg-green-100 text-green-800 hover:bg-green-200'" x-text="route.is_active ? 'Nofaollashtirish' : 'Faollashtirish'"></button>
                             <button @click="deleteRoute(route.route_id)" class="text-red-600 hover:text-red-800 text-xs">O'chirish</button>
                         </td>
@@ -70,6 +73,10 @@
                         <label class="block text-sm font-medium">Masofa (km)</label>
                         <input type="number" step="0.01" class="w-full border rounded p-2 text-sm" x-model.number="form.distance_km" />
                     </div>
+                    <div>
+                        <label class="block text-sm font-medium">Yo'l haqi (so'm)</label>
+                        <input type="number" step="0.01" class="w-full border rounded p-2 text-sm" x-model.number="form.fare_amount" />
+                    </div>
                     <div class="grid grid-cols-2 gap-3">
                         <div>
                             <label class="block text-xs text-gray-500">From lat/lon</label>
@@ -91,21 +98,59 @@
             </div>
         </div>
     </div>
+
+    <!-- Edit Modal -->
+    <div x-show="modals.edit" class="fixed inset-0 z-50 overflow-y-auto" x-cloak>
+        <div class="flex items-center justify-center min-h-screen px-4">
+            <div class="fixed inset-0 bg-gray-500 bg-opacity-75"></div>
+            <div class="bg-white rounded-xl shadow-xl max-w-lg w-full p-6 relative">
+                <button @click="closeEditModal()" class="absolute top-3 right-3 text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
+                <h3 class="text-xl font-bold mb-4">Marshrutni tahrirlash</h3>
+
+                <div class="space-y-3">
+                    <div>
+                        <label class="block text-sm font-medium">Marshrut</label>
+                        <div class="text-sm text-gray-700" x-text="editForm.route_name"></div>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium">Yo'l haqi (so'm)</label>
+                        <input type="number" step="0.01" class="w-full border rounded p-2 text-sm" x-model.number="editForm.fare_amount" />
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium">Masofa (km)</label>
+                        <input type="number" step="0.01" class="w-full border rounded p-2 text-sm" x-model.number="editForm.distance_km" />
+                    </div>
+                </div>
+
+                <div class="flex justify-end gap-2 mt-6">
+                    <button @click="closeEditModal()" class="px-4 py-2 bg-gray-200 rounded">Bekor qilish</button>
+                    <button @click="submitEditRoute()" class="px-4 py-2 bg-blue-600 text-white rounded">Saqlash</button>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 
 <script>
 function routesApp() {
     return {
         routes: [],
-        modals: { create: false },
+        modals: { create: false, edit: false },
         form: {
             from_location: '',
             to_location: '',
             distance_km: '',
+            fare_amount: '',
             from_location_lat: '',
             from_location_lon: '',
             to_location_lat: '',
             to_location_lon: ''
+        },
+        editForm: {
+            route_id: null,
+            route_name: '',
+            distance_km: '',
+            fare_amount: ''
         },
 
         async init() {
@@ -124,6 +169,7 @@ function routesApp() {
                 from_location: '',
                 to_location: '',
                 distance_km: '',
+                fare_amount: '',
                 from_location_lat: '',
                 from_location_lon: '',
                 to_location_lat: '',
@@ -134,6 +180,20 @@ function routesApp() {
 
         closeCreateModal() {
             this.modals.create = false;
+        },
+        
+        openEditModal(route) {
+            this.editForm = {
+                route_id: route.route_id,
+                route_name: route.route_name,
+                distance_km: route.distance_km ?? '',
+                fare_amount: route.fare_amount ?? ''
+            };
+            this.modals.edit = true;
+        },
+
+        closeEditModal() {
+            this.modals.edit = false;
         },
 
         async submitRoute() {
@@ -147,6 +207,20 @@ function routesApp() {
                 this.modals.create = false;
                 await this.fetchRoutes();
                 alert('Marshrut saqlandi');
+            }
+        },
+        
+        async submitEditRoute() {
+            if (!this.editForm.route_id) return;
+            const payload = {
+                fare_amount: this.editForm.fare_amount === '' ? null : this.editForm.fare_amount,
+                distance_km: this.editForm.distance_km === '' ? null : this.editForm.distance_km
+            };
+            const res = await this.apiCall(`/api/settings/routes/${this.editForm.route_id}`, 'PUT', payload);
+            if (res?.success) {
+                this.modals.edit = false;
+                await this.fetchRoutes();
+                alert('Marshrut yangilandi');
             }
         },
 

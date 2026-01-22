@@ -54,6 +54,13 @@ class CreateRouteRequest(BaseModel):
     to_location_lat: Optional[float] = None
     to_location_lon: Optional[float] = None
     distance_km: Optional[float] = None
+    fare_amount: Optional[float] = None
+
+
+class UpdateRouteRequest(BaseModel):
+    """Marshrutni yangilash (faqat kerakli maydonlar)"""
+    distance_km: Optional[float] = None
+    fare_amount: Optional[float] = None
 
 
 # ============================================
@@ -201,6 +208,7 @@ async def get_routes_list(
                     'to_location_lat': float(route.to_location_lat) if route.to_location_lat else None,
                     'to_location_lon': float(route.to_location_lon) if route.to_location_lon else None,
                     'distance_km': float(route.distance_km) if route.distance_km else None,
+                    'fare_amount': float(route.fare_amount) if route.fare_amount else None,
                     'is_active': route.is_active,
                     'created_at': route.created_at.isoformat()
                 }
@@ -253,7 +261,8 @@ async def create_new_route(
                 from_location_lon=request.from_location_lon,
                 to_location_lat=request.to_location_lat,
                 to_location_lon=request.to_location_lon,
-                distance_km=request.distance_km
+                distance_km=request.distance_km,
+                fare_amount=request.fare_amount
             )
             
             await session.commit()
@@ -277,6 +286,50 @@ async def create_new_route(
     
     except Exception as e:
         logger.error(f"Failed to create route: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put("/routes/{route_id}")
+async def update_route(
+    route_id: int,
+    request: UpdateRouteRequest,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Marshrut ma'lumotlarini yangilash (masofa, yo'l haqi)
+    """
+    try:
+        async with get_session() as session:
+            from app.models.route import get_route_by_id
+            route = await get_route_by_id(session, route_id)
+            if not route:
+                raise HTTPException(status_code=404, detail="Marshrut topilmadi")
+
+            values = {}
+            if request.distance_km is not None:
+                values['distance_km'] = request.distance_km
+            if request.fare_amount is not None:
+                values['fare_amount'] = request.fare_amount
+
+            if not values:
+                return {'success': False, 'message': 'Yangilash uchun maʼlumot berilmagan'}
+
+            await session.execute(
+                update(Route)
+                .where(Route.route_id == route_id)
+                .values(**values)
+            )
+            await session.commit()
+
+            logger.info(
+                f"Route {route_id} updated by {current_user['username']}"
+            )
+            return {'success': True, 'message': 'Marshrut yangilandi'}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to update route: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

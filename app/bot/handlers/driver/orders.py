@@ -65,10 +65,17 @@ async def accept_order_handler(callback: CallbackQuery, session: AsyncSession, d
         # Order ma'lumotlarini olish (mijoz ma'lumotlari bilan)
         order_result = await session.execute(
             select(Order)
-            .options(selectinload(Order.passenger).selectinload(Passenger.user))
+            .options(
+                selectinload(Order.passenger).selectinload(Passenger.user),
+                selectinload(Order.route)
+            )
             .where(Order.order_id == order_id)
         )
         order = order_result.scalar_one_or_none()
+        fare_amount_value = None
+        if order and order.route and order.route.fare_amount is not None:
+            fare_amount_value = float(order.route.fare_amount)
+        fare_amount_display = f"{fare_amount_value:,.0f} so'm" if fare_amount_value is not None else "N/A"
         
         # 3. ESKI XABARNI TAHRIRLASH (Tugmalarni yo'qotish uchun)
         if isinstance(callback.message, Message):
@@ -76,6 +83,7 @@ async def accept_order_handler(callback: CallbackQuery, session: AsyncSession, d
                 Messages.Driver.ORDER_ACCEPTED.format(
                     order_id=order_id,
                     commission=commission_amount,
+                    fare_amount=fare_amount_display,
                     new_balance=driver.balance  # ✅ Fresh balance
                 ),
                 parse_mode="HTML"
@@ -184,7 +192,8 @@ async def accept_order_handler(callback: CallbackQuery, session: AsyncSession, d
                 phone_number=driver.phone_number or "N/A",
                 car_model=driver.car_model,
                 car_color=driver.car_color,
-                car_number=driver.car_number
+                car_number=driver.car_number,
+                fare_amount=fare_amount_display
             )
             if driver.last_location_lat and driver.last_location_lon:
                 driver_loc_link = get_google_maps_link(

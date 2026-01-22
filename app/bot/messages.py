@@ -55,6 +55,7 @@ class Messages:
         ORDER_ACCEPTED = (
             "✅ <b>Buyurtma #{order_id} qabul qilindi!</b>\n\n"
             "💰 Komissiya: <b>{commission:,} so'm</b>\n"
+            "🛣 Yo'l haqi: <b>{fare_amount}</b>\n"
             "📊 Yangi balans: <b>{new_balance:,} so'm</b>"
         )
         PASSENGER_INFO = (
@@ -114,6 +115,7 @@ class Messages:
             "🎨 <b>Rang:</b> {car_color}\n"
             "🚗 Mashina: {car_model} ({car_color})\n"
             "🔢 Raqam: {car_number}\n\n"
+            "🛣 Yo'l haqi: <b>{fare_amount}</b>\n\n"
             "Haydovchi siz tomonga yo'lga chiqdi!"
         )
         
