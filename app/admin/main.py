@@ -387,11 +387,12 @@ async def passengers_page(
 
         formatted_passengers = []
         for p in passengers_list:
+            gender_value = p.gender.value if hasattr(p.gender, "value") else p.gender
             formatted_passengers.append({
                 "passenger_id": p.passenger_id,  # ID qo'shildi
                 "full_name": p.full_name,
                 "phone_number": p.user.phone_number if p.user else "Noma'lum",
-                "gender": "Erkak" if p.gender == "MALE" else "Ayol",
+                "gender": "Erkak" if str(gender_value).upper() == "MALE" else "Ayol",
                 "age": p.age,
                 "total_trips": p.total_trips,
                 "is_blocked": p.user.is_blocked if p.user else False,
