@@ -156,6 +156,10 @@ async def create_admin(
                 )
                 existing_user = result.scalar_one_or_none()
             
+            # Password hash (truncate to 72 bytes for bcrypt)
+            password_to_hash = request.password[:72] if len(request.password.encode('utf-8')) > 72 else request.password
+            password_hash = get_password_hash(password_to_hash)
+
             # 2. Agar mavjud bo'lsa - role'ni o'zgartirish
             if existing_user:
                 async with transaction() as session:
@@ -170,7 +174,8 @@ async def create_admin(
                             is_blocked=False,
                             first_name=request.first_name,
                             last_name=request.last_name,
-                            username=request.username or existing_user.username
+                            username=request.username or existing_user.username,
+                            password_hash=password_hash
                         )
                     )
                     
@@ -197,10 +202,6 @@ async def create_admin(
                     detail="Yangi admin uchun user_id kerak (Telegram user ID)"
                 )
             
-            # Password hash (truncate to 72 bytes for bcrypt)
-            password_to_hash = request.password[:72] if len(request.password.encode('utf-8')) > 72 else request.password
-            password_hash = get_password_hash(password_to_hash)
-            
             # Role
             role = UserRole.ADMIN if request.role == "admin" else UserRole.GLAVNI_ADMIN
             
@@ -212,8 +213,8 @@ async def create_admin(
                     first_name=request.first_name,
                     last_name=request.last_name,
                     role=role,
-                    is_blocked=False
-                    # password_hash - hozircha User model'da yo'q, keyinroq qo'shiladi
+                    is_blocked=False,
+                    password_hash=password_hash
                 )
                 
                 session.add(new_user)

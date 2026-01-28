@@ -88,11 +88,11 @@ async def create_admin_user(
             phone_number=phone_number,
             first_name=first_name,
             username=username,
-            role=role
+            role=role,
+            password_hash=password_hash
         )
         
-        # TODO: Password'ni alohida jadvalda saqlash
-        # Hozircha faqat user yaratamiz
+        # Password hash user jadvalida saqlanadi
         
         await session.commit()
         

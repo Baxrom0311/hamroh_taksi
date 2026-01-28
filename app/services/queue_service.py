@@ -55,11 +55,12 @@ class DriverQueueManager:
         self.redis = redis_client
         # Test/CI fallback when Redis is not available
         self._memory_queue: Dict[int, List[Dict[str, Union[int, float]]]] = defaultdict(list)
+        self._memory_join_time: Dict[str, datetime] = {}
         self._memory_seq = 0
 
     def _use_memory(self) -> bool:
-        """Use in-memory queue when Redis client is unavailable or during tests."""
-        return os.environ.get("PYTEST_CURRENT_TEST") is not None or not getattr(self.redis, "client", None)
+        """Use in-memory queue when Redis client is unavailable (fallback mode)."""
+        return getattr(self.redis, "_client", None) is None
     
     # ========================================
     # PRIORITY SCORE
@@ -107,19 +108,27 @@ class DriverQueueManager:
             Soatlar (float)
         """
         join_time_key = f"driver_join_time:{driver_id}:{route_id}"
+
+        if self._use_memory():
+            join_time = self._memory_join_time.get(join_time_key)
+            if not join_time:
+                self._memory_join_time[join_time_key] = datetime.now()
+                return 0.0
+            waiting_delta = datetime.now() - join_time
+            return waiting_delta.total_seconds() / 3600
+
         join_time_str = await self.redis.get(join_time_key)
-        
         if not join_time_str:
             # Yangi haydovchi - hozirgi vaqtni saqlash
             now = datetime.now().isoformat()
             await self.redis.set(join_time_key, now, ex=86400)  # 24 soat
             return 0.0
-        
+
         # Kutish vaqtini hisoblash
         join_datetime = datetime.fromisoformat(join_time_str)
         waiting_delta = datetime.now() - join_datetime
         waiting_hours = waiting_delta.total_seconds() / 3600
-        
+
         return waiting_hours
     
     # ========================================
@@ -262,6 +271,25 @@ class DriverQueueManager:
         except Exception as e:
             logger.error(f"Failed to get queue position: {e}")
             return -1
+
+    async def get_queue_driver_ids(self, route_id: int) -> List[int]:
+        """
+        Navbatdagi haydovchilar ro'yxatini olish (priority bo'yicha)
+
+        Returns:
+            [driver_id, ...] (1-o'rin birinchi)
+        """
+        try:
+            if self._use_memory():
+                queue = self._memory_queue.get(route_id, [])
+                return [int(item["driver_id"]) for item in queue]
+
+            queue_key = f"driver_queue:{route_id}"
+            drivers = await self.redis.client.zrevrange(queue_key, 0, -1)
+            return [int(did) for did in drivers]
+        except Exception as e:
+            logger.error(f"Failed to get queue drivers: {e}")
+            return []
     
     async def get_queue_length(self, route_id: int) -> int:
         """Navbatdagi haydovchilar soni"""

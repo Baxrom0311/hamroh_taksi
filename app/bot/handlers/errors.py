@@ -62,8 +62,21 @@ async def global_error_handler(event: ErrorEvent):
         except TelegramAPIError:
             pass
     
-    # TODO: Notify Admins
-    # from config.settings import settings
-    # if settings.ADMIN_IDS: ...
+    # Notify admins (channel) if configured
+    try:
+        from config.settings import settings
+        if settings.ADMIN_CHANNEL_ID:
+            user_id = None
+            if event.update.message and event.update.message.from_user:
+                user_id = event.update.message.from_user.id
+            elif event.update.callback_query and event.update.callback_query.from_user:
+                user_id = event.update.callback_query.from_user.id
+
+            await event.bot.send_message(
+                settings.ADMIN_CHANNEL_ID,
+                f"❌ Error: {event.exception}\n\nUser: {user_id}"
+            )
+    except TelegramAPIError:
+        pass
     
     return True  # Xatolik "ushlandi", dastur qulamaydi.

@@ -233,7 +233,7 @@ async def get_pricing_settings(session) -> dict:
     """
     from config.settings import settings as config_settings
 
-    bot_is_free = await get_setting_bool(session, 'bot_is_free', default=True)
+    bot_is_free = await get_setting_bool(session, 'bot_is_free', default=False)
     commission_amount = await get_setting_int(
         session,
         'commission_amount',
@@ -262,7 +262,7 @@ DEFAULT_SETTINGS = [
     },
     {
         'key': 'bot_is_free',
-        'value': 'true',
+        'value': 'false',
         'description': 'Bot tekin/pullik (true/false)'
     },
     

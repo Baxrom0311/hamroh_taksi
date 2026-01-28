@@ -79,10 +79,13 @@ class TestOrderServiceEdgeCases:
         assert 'safardasiz' in result['message'].lower()
     
     
-    async def test_create_order_with_optional_coordinates(self, sample_passenger):
+    async def test_create_order_with_optional_coordinates(self, sample_passenger, test_route_with_id):
         """
         Location is required; missing coords should fail.
         """
+        # Setup route (proper fixture usage)
+        await test_route_with_id(route_id=1)
+        
         result = await create_new_order(
             passenger_id=sample_passenger.passenger_id,
             route_id=1,

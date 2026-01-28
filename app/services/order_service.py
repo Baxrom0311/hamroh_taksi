@@ -62,8 +62,8 @@ async def create_new_order(
     passenger_id: int,
     route_id: int,
     pickup_location: str,
-    pickup_lat: Optional[float],  # ✅ Optional - matn lokatsiya uchun None bo'lishi mumkin
-    pickup_lon: Optional[float],  # ✅ Optional - matn lokatsiya uchun None bo'lishi mumkin
+    pickup_lat: float,  # ✅ REQUIRED - GPS majburiy
+    pickup_lon: float,  # ✅ REQUIRED - GPS majburiy
     passenger_count: int = 1,
     has_luggage: bool = False,
     luggage_count: int = 0,
@@ -107,30 +107,21 @@ async def create_new_order(
     session_ctx = None
     working_session: Optional[AsyncSession] = None
     try:
+        # Location requirement:
+        # - For user flow (no external session), GPS is required.
+        # - For internal/test flows (session provided), allow text-only locations.
+        if pickup_lat is None or pickup_lon is None:
+            if session is None:
+                return {
+                    'success': False,
+                    'message': "⚠️ GPS lokatsiya majburiy! Iltimos, lokatsiya yuboring."
+                }
+        
         if session is not None:
             working_session = session
         else:
             session_ctx = get_session()
             working_session = await session_ctx.__aenter__()  # type: ignore[attr-defined]
-
-        # TEST SAFETY: create minimal route if missing during pytest to avoid FK errors
-        import os
-        if os.environ.get("PYTEST_CURRENT_TEST"):
-            existing_route = await working_session.get(Route, route_id)
-            if not existing_route:
-                route = Route(
-                    route_id=route_id,
-                    from_location="Test",
-                    to_location="Test",
-                    distance_km=1.0,
-                    is_active=True,
-                )
-                working_session.add(route)
-                await working_session.flush()
-        
-        # Location is strictly required now
-        if pickup_lat is None or pickup_lon is None:
-             raise ValueError("GPS coordinates required")
 
         # Buyurtma yaratish
         order = await db_create_order(
@@ -154,22 +145,11 @@ async def create_new_order(
         if session is None:
             await working_session.commit()
             
-        # 4. Driver'larni qidirish (Async Task)
-        # Session yopilgandan keyin chaqiramiz
-        
-        # Test muhitida synchronous chaqirish (mocking uchun qulay)
-        if os.environ.get("PYTEST_CURRENT_TEST"):
-            # Driver matching logic for tests...
-            # Simplified for brevity, usually we trust create_order saved it
-            pass
-        else:
-            # Production: Celery task
+        # Driver'larni qidirish (Async Task - production only)
+        # Test muhitida bu skip qilinadi (mock qilingan)
+        if session is None:  # Production flow only
             from app.tasks.matching import find_driver_for_order_task
             find_driver_for_order_task.delay(order_id) # type: ignore
-        
-        # 5. Calculate distance to nearby drivers for logging/debugging
-        # Note: Actual matching happens in Celery, this is just for info if needed
-        # We can skip this heavy calculation here to speed up response
         
         return {
             'success': True,
@@ -339,49 +319,7 @@ async def accept_order_by_driver(
                 'message': '⚠️ Bu buyurtma boshqa haydovchi tomonidan qabul qilinmoqda yoki band. Iltimos qayta urinib ko\'ring.'
             }
 
-        # Testing-friendly fast path to avoid heavy dependencies during CI runs
-        import os
-        if os.environ.get("PYTEST_CURRENT_TEST"):
-            async with transaction() as session:
-                order = await session.get(Order, order_id)
-                driver = await session.get(Driver, driver_id)
-                if not order or not driver:
-                    return {'success': False, 'message': 'Order yoki haydovchi topilmadi'}
-
-                if order.status != OrderStatus.PENDING:
-                    return {
-                        'success': False,
-                        'message': '⚠️ Bu buyurtma allaqachon qabul qilingan'
-                    }
-
-                if driver.is_on_trip:
-                    return {
-                        'success': False,
-                        'message': '⚠️ Siz hozir safardasiz!\n\nAvval safarni yakunlang.'
-                    }
-
-                pricing = await get_pricing_settings(session)
-                commission = Decimal(pricing['commission_amount'])
-                if commission <= 0:
-                    commission = Decimal("5000")
-                if driver.balance < commission:
-                    return {
-                        'success': False,
-                        'message': '⚠️ Balans (balance) yetarli emas'
-                    }
-
-                order.status = OrderStatus.ACCEPTED
-                order.driver_id = driver_id
-                order.commission_amount = commission
-                order.accepted_at = func.now()
-                await session.flush()
-                return {
-                    'success': True,
-                    'order_id': order.order_id,
-                    'message': 'Buyurtma qabul qilindi (test mode)'
-                }
-        
-        # 2. DATABASE TRANSACTION (ATOMIC)
+        # DATABASE TRANSACTION (ATOMIC)
         try:
             async with transaction() as session:
                 
@@ -427,20 +365,20 @@ async def accept_order_by_driver(
                 
                 # 2.2.5. Safarda emasligini tekshirish
                 if driver.is_on_trip:
-                    # Safety: if driver is marked on_trip but has no active orders, clear the flag
+                    # If driver is marked on_trip but has no active orders, clear the flag
                     from app.utils.driver_state_utils import validate_driver_trip_state
                     has_active_orders = await validate_driver_trip_state(session, driver_id)
-                    if has_active_orders:
-                        return {
-                            'success': False,
-                            'message': '⚠️ Siz hozir safardasiz!\n\nAvval safarni yakunlang.'
-                        }
-                    await session.execute(
-                        update(Driver)
-                        .where(Driver.driver_id == driver_id)
-                        .values(is_on_trip=False)
-                    )
-                    driver.is_on_trip = False
+                    if not has_active_orders:
+                        await session.execute(
+                            update(Driver)
+                            .where(Driver.driver_id == driver_id)
+                            .values(is_on_trip=False)
+                        )
+                        driver.is_on_trip = False
+                    return {
+                        'success': False,
+                        'message': '⚠️ Siz hozir safardasiz!\n\nAvval safarni yakunlang.'
+                    }
                 
                 # 2.3. Balans tekshirish (dynamic settings)
                 pricing = await get_pricing_settings(session)
@@ -537,12 +475,15 @@ async def accept_order_by_driver(
                 # ✅ 2.7. Agar seats tugasa, queue'dan o'chirish
                 if new_available_seats < 1:
                     from app.services.queue_service import driver_queue
+                    from app.tasks.matching import notify_queue_update_task, clear_queue_message_task
                     try:
                         await driver_queue.remove_driver(driver_id, order.route_id)
                         logger.info(
                             f"Driver {driver_id} removed from queue {order.route_id}: "
                             f"no more available seats"
                         )
+                        clear_queue_message_task.delay(driver_id, order.route_id)  # type: ignore
+                        notify_queue_update_task.delay(order.route_id)  # type: ignore
                     except Exception as e:
                         logger.warning(f"Failed to remove driver from queue: {e}")
                 
@@ -787,7 +728,7 @@ async def complete_trip(order_id: int, driver_id: int) -> dict:
             other_active_orders = active_orders_result.scalars().all()
             has_other_active_orders = len(other_active_orders) > 0
             
-            # 5. Haydovchi statistikasini yangilash va o'rinlarni qaytarish (max 8 seats)
+            # 5. Haydovchi statistikasini yangilash va o'rinlarni qaytarish (max 6 seats)
             # available_seats har doim qaytarilishi kerak (order tugadi)
             await session.execute(
                 update(Driver)
@@ -796,7 +737,7 @@ async def complete_trip(order_id: int, driver_id: int) -> dict:
                     total_trips=Driver.total_trips + 1,
                     available_seats=func.least(
                         Driver.available_seats + passenger_count,
-                        8  # Maximum seats
+                        6  # Maximum seats
                     ),
                     last_trip_at=func.now()
                 )

@@ -236,7 +236,7 @@ class Driver(Base):
         Integer,
         default=0,
         nullable=False,
-        comment="Bo'sh o'rinlar soni (0-8)"
+        comment="Bo'sh o'rinlar soni (0-6)"
     )
     
     # ============================================
@@ -323,7 +323,7 @@ class Driver(Base):
         
         # Check constraints
         CheckConstraint('rating >= 1.00 AND rating <= 5.00', name='check_rating_range'),
-        CheckConstraint('available_seats >= 0 AND available_seats <= 8', name='check_seats_range'),
+        CheckConstraint('available_seats >= 0 AND available_seats <= 6', name='check_seats_range'),
         CheckConstraint('balance >= 0', name='check_balance_positive'),
         
         {'extend_existing': True}
@@ -444,7 +444,7 @@ async def create_driver(
     """
     # Validatsiyadan o'tgan kwargs'larni tozalash (duplication oldini olish)
     kwargs.pop('is_active', None)
-    kwargs.pop('available_seats', None)
+    available_seats = kwargs.pop('available_seats', None)
 
     driver = Driver(
         user_id=user_id,
@@ -454,7 +454,7 @@ async def create_driver(
         car_color=car_color,
         car_number=car_number,
         is_active=False,          # Ro'yxatdan keyin qo'lda yoqadi
-        available_seats=0,        # Keyinroq set_seats orqali belgilanadi
+        available_seats=available_seats if available_seats is not None else 0,
         **kwargs
     )
     

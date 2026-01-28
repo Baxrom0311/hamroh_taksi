@@ -16,7 +16,7 @@ from datetime import datetime
 from sqlalchemy import (
     Integer, String, Numeric, Boolean, DateTime, func, Index, select
 )
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship, synonym
 
 from app.core.database import Base
 
@@ -101,6 +101,9 @@ class Route(Base):
         nullable=True,
         comment="Yo'l haqi (so'm)"
     )
+
+    # Alias: test/legacy code uses base_price
+    base_price: Mapped[Optional[Decimal]] = synonym("fare_amount")
     
     # HOLAT
     is_active: Mapped[bool] = mapped_column(
@@ -152,6 +155,21 @@ class Route(Base):
     def route_name(self) -> str:
         """Marshrut nomi"""
         return f"{self.from_location} → {self.to_location}"
+
+    @route_name.setter
+    def route_name(self, value: str) -> None:
+        """Setter to accept legacy/test inputs without breaking constructor."""
+        if not value:
+            return
+        if "→" in value:
+            parts = [p.strip() for p in value.split("→", 1)]
+        elif "->" in value:
+            parts = [p.strip() for p in value.split("->", 1)]
+        else:
+            return
+        if len(parts) == 2 and parts[0] and parts[1]:
+            self.from_location = parts[0]
+            self.to_location = parts[1]
     
     @property
     def reverse_route_name(self) -> str:

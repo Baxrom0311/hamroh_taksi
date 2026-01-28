@@ -29,7 +29,7 @@ ISHLATISH:
 import uuid
 import asyncio
 from contextlib import asynccontextmanager
-from typing import Optional, AsyncGenerator
+from typing import Optional, AsyncGenerator, Dict, Tuple
 from loguru import logger
 
 from app.core.redis_client import redis_client
@@ -57,6 +57,28 @@ end
 # Script SHA (Redis'da cache qilish uchun)
 # Har safar yubormaslik uchun birinchi marta load qilamiz
 _script_sha: Optional[str] = None
+_memory_locks: Dict[str, asyncio.Lock] = {}
+
+
+def _redis_ready() -> bool:
+    """Redis client mavjudmi (ulanmagan bo'lsa in-memory fallback ishlatiladi)."""
+    return getattr(redis_client, "_client", None) is not None
+
+
+async def _acquire_memory_lock(
+    lock_key: str,
+    retry_delay: float,
+    max_retries: int
+) -> Tuple[bool, asyncio.Lock]:
+    """In-memory lock acquisition with retry (test/CI fallback)."""
+    lock = _memory_locks.setdefault(lock_key, asyncio.Lock())
+    for attempt in range(max_retries):
+        if not lock.locked():
+            await lock.acquire()
+            return True, lock
+        if attempt < max_retries - 1:
+            await asyncio.sleep(retry_delay)
+    return False, lock
 
 
 async def _load_lua_script():
@@ -67,6 +89,9 @@ async def _load_lua_script():
     Har safar script yubormaslik, faqat SHA hash yuborish (tezroq)
     """
     global _script_sha
+
+    if not _redis_ready():
+        return
     
     if _script_sha is None:
         try:
@@ -155,6 +180,20 @@ async def acquire_order_lock(
     lock_key = f"lock:order:{order_id}"
     token = str(uuid.uuid4())  # Unique token
     lock_acquired = False
+
+    # In-memory fallback if Redis is unavailable
+    if not _redis_ready():
+        mem_acquired, mem_lock = await _acquire_memory_lock(
+            lock_key,
+            retry_delay=retry_delay,
+            max_retries=max_retries
+        )
+        try:
+            yield mem_acquired
+        finally:
+            if mem_acquired and mem_lock.locked():
+                mem_lock.release()
+        return
     
     # Lua script'ni yuklash (birinchi marta)
     await _load_lua_script()
@@ -252,6 +291,20 @@ async def acquire_lock(
     lock_key = f"lock:{resource}"
     token = str(uuid.uuid4())
     lock_acquired = False
+
+    # In-memory fallback if Redis is unavailable
+    if not _redis_ready():
+        mem_acquired, mem_lock = await _acquire_memory_lock(
+            lock_key,
+            retry_delay=retry_delay,
+            max_retries=max_retries
+        )
+        try:
+            yield mem_acquired
+        finally:
+            if mem_acquired and mem_lock.locked():
+                mem_lock.release()
+        return
     
     await _load_lua_script()
     

@@ -272,20 +272,20 @@ async def login(request: LoginRequest):
                 detail="Admin huquqi yo'q"
             )
         
-        # Parolni tekshirish (hash yo'q, shuning uchun mavjud hash bo'lmasa skip)
-        password_checked = True
-        if hasattr(user, "password_hash") and getattr(user, "password_hash"):
-            if not verify_password(request.password, user.password_hash):  # type: ignore[attr-defined]
-                logger.warning(f"❌ Login failed: wrong password - {request.username}")
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Noto'g'ri login yoki parol"
-                )
-            password_checked = True
+        # Parolni tekshirish (hash majburiy)
+        if not getattr(user, "password_hash", None):
+            logger.warning(f"❌ Login failed: password hash missing - {request.username}")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Parol sozlanmagan. Admin bilan bog'laning."
+            )
 
-        if not password_checked:
-            # Hash yo'q: dev qulayligi uchun parolni tekshirmaymiz
-            logger.warning(f"⚠️ Password check skipped for {request.username} (no hash field)")
+        if not verify_password(request.password, user.password_hash):  # type: ignore[attr-defined]
+            logger.warning(f"❌ Login failed: wrong password - {request.username}")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Noto'g'ri login yoki parol"
+            )
         
         # Token yaratish
         access_token = create_access_token(
@@ -347,14 +347,70 @@ async def change_password(
     """
     Parolni o'zgartirish
     
-    TODO: Production'da implement qilish
-    """
-    # TODO: Implement password change
+    Args:
+        request: old_password va new_password
     
-    return {
-        'success': True,
-        'message': 'Password changed (not implemented yet)'
-    }
+    Returns:
+        success: bool
+    """
+    try:
+        async with get_session() as session:
+            # User'ni olish
+            result = await session.execute(
+                select(User).where(User.user_id == current_user['user_id'])
+            )
+            user = result.scalar_one_or_none()
+            
+            if not user:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Foydalanuvchi topilmadi"
+                )
+            
+            # Old password check (agar password_hash mavjud bo'lsa)
+            if hasattr(user, "password_hash") and user.password_hash:
+                if not verify_password(request.old_password, user.password_hash):
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Eski parol noto'g'ri"
+                    )
+            
+            # New password validation
+            if len(request.new_password) < 6:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Yangi parol kamida 6 ta belgidan iborat bo'lishi kerak"
+                )
+            
+            # Hash new password
+            new_password_hash = get_password_hash(request.new_password)
+            
+            # Update password in database
+            # Note: User model'da password_hash field bo'lishi kerak
+            if hasattr(user, "password_hash"):
+                user.password_hash = new_password_hash  # type: ignore[attr-defined]
+                await session.commit()
+                
+                logger.success(f"✅ Password changed for user: {current_user['username']}")
+                
+                return {
+                    'success': True,
+                    'message': 'Parol muvaffaqiyatli o\'zgartirildi'
+                }
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_501_NOT_IMPLEMENTED,
+                    detail="User model'da password_hash field yo'q. Migration kerak."
+                )
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Password change error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Parol o'zgartirishda xatolik"
+        )
 
 
 # ============================================

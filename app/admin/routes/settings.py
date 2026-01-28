@@ -90,7 +90,7 @@ async def get_system_settings(
                 'settings': {
                     # Tarif va Komissiya
                     'commission_amount': settings_dict.get('commission_amount', config_settings.COMMISSION_AMOUNT),
-                    'bot_is_free': settings_dict.get('bot_is_free', 'true'),
+                    'bot_is_free': settings_dict.get('bot_is_free', 'false'),
                     
                     # Ban va Cheklovlar
                     'ban_percentage_threshold': settings_dict.get('ban_percentage_threshold', '50'),

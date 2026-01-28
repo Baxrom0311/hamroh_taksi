@@ -436,8 +436,8 @@ async def create_order(
     passenger_id: int,
     route_id: int,
     pickup_location: str,
-    pickup_lat: Optional[float],  # ✅ FIXED: Optional for text-only
-    pickup_lon: Optional[float],  # ✅ FIXED: Optional for text-only
+    pickup_lat: float,  # ✅ REQUIRED - GPS majburiy
+    pickup_lon: float,  # ✅ REQUIRED - GPS majburiy
     passenger_count: int = 1,
     **kwargs
 ) -> Order:

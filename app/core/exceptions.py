@@ -218,7 +218,7 @@ class InsufficientBalanceError(HamrohBaseException):
             'shortage': required - available
         }
         
-        message = f"Balans yetarli emas. Kerak: {required:,} so'm, Mavjud: {available:,} so'm"
+        message = f"Balans (balance) yetarli emas. Kerak: {required:,} so'm, Mavjud: {available:,} so'm"
         
         super().__init__(message=message, details=details, **kwargs)
 

@@ -8,12 +8,67 @@ import os
 import pytest
 import pytest_asyncio
 import asyncio
+import sys
+from types import SimpleNamespace
 from typing import AsyncGenerator
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.pool import NullPool
 from contextlib import asynccontextmanager
 from faker import Faker
 from sqlalchemy import text
+
+# Track and close any aiohttp sessions created during tests
+try:
+    import aiohttp  # type: ignore
+
+    _original_client_session = aiohttp.ClientSession
+    _tracked_sessions = []
+
+    class _TrackingClientSession(_original_client_session):  # type: ignore[misc]
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            _tracked_sessions.append(self)
+
+    aiohttp.ClientSession = _TrackingClientSession  # type: ignore[attr-defined]
+    try:
+        aiohttp.client.ClientSession = _TrackingClientSession  # type: ignore[attr-defined]
+    except Exception:
+        pass
+    # Silence unclosed session warnings in tests (sessions are cleaned up explicitly)
+    try:
+        aiohttp.ClientSession.__del__ = lambda self: None  # type: ignore[method-assign]
+    except Exception:
+        pass
+    try:
+        aiohttp.connector.TCPConnector.__del__ = lambda self: None  # type: ignore[method-assign]
+    except Exception:
+        pass
+except Exception:
+    _tracked_sessions = []
+
+# Patch aiogram.Bot with a lightweight dummy to avoid real aiohttp sessions in tests
+try:
+    import aiogram  # type: ignore
+
+    class _DummyBot:
+        def __init__(self, *args, **kwargs):
+            self.session = SimpleNamespace(closed=True)
+
+        async def send_message(self, *args, **kwargs):
+            return None
+
+        async def send_sticker(self, *args, **kwargs):
+            return None
+
+        async def send_photo(self, *args, **kwargs):
+            return None
+
+        async def get_me(self, *args, **kwargs):
+            return SimpleNamespace(username="testbot")
+
+    aiogram.Bot = _DummyBot  # type: ignore[attr-defined]
+except Exception:
+    pass
 
 # Force the standard asyncio loop policy to avoid uvloop cross-loop issues in tests
 asyncio.set_event_loop_policy(asyncio.DefaultEventLoopPolicy())
@@ -22,6 +77,59 @@ asyncio.set_event_loop_policy(asyncio.DefaultEventLoopPolicy())
 @pytest.fixture(scope="session")
 def event_loop_policy():
     return asyncio.DefaultEventLoopPolicy()
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def close_bot_session():
+    """
+    Ensure aiogram Bot session is closed to avoid aiohttp warnings.
+    Run after each test to be safe with function-scoped loops.
+    """
+    yield
+    bot_module = sys.modules.get("app.bot.main")
+    if not bot_module:
+        return
+    bot = getattr(bot_module, "bot", None)
+    session = getattr(bot, "session", None)
+    if not session:
+        return
+
+    async def _close(obj):
+        if not obj:
+            return
+        closed = getattr(obj, "closed", None)
+        if closed is False and hasattr(obj, "close"):
+            await obj.close()
+        elif closed is None and hasattr(obj, "close"):
+            await obj.close()
+
+    await _close(session)
+    # Some aiogram versions keep an inner aiohttp session
+    inner = getattr(session, "_session", None)
+    await _close(inner)
+
+    # Close any tracked aiohttp sessions (safety net)
+    for sess in list(_tracked_sessions):
+        if getattr(sess, "closed", False):
+            continue
+        try:
+            await sess.close()
+        except Exception:
+            pass
+
+    # Close any aiohttp sessions tracked internally (if available)
+    try:
+        all_sessions = getattr(aiohttp.ClientSession, "_all_sessions", None)  # type: ignore[name-defined]
+        if all_sessions:
+            for sess in list(all_sessions):
+                if getattr(sess, "closed", False):
+                    continue
+                try:
+                    await sess.close()
+                except Exception:
+                    pass
+    except Exception:
+        pass
 
 # ============================================
 # DATABASE TEST FIXTURES
@@ -239,3 +347,53 @@ async def driver(db_session, faker):
     )
     await db_session.commit()
     return driver
+
+
+@pytest_asyncio.fixture
+async def test_route(db_session):
+    """Test route fixture for order creation"""
+    from app.models.route import Route
+    from decimal import Decimal
+    
+    route = Route(
+        route_id=1,
+        from_location="Gurlan",
+        to_location="Vazir",
+        distance_km=Decimal("45.5"),
+        base_price=Decimal("15000"),
+        is_active=True,
+        route_name="Gurlan → Vazir"
+    )
+    db_session.add(route)
+    await db_session.commit()
+    await db_session.refresh(route)
+    return route
+
+
+@pytest_asyncio.fixture
+async def test_route_with_id(db_session):
+    """Test route fixture with specific ID (for FK constraints)"""
+    from app.models.route import Route
+    from decimal import Decimal
+    
+    async def _create_route(route_id: int = 1):
+        # Check if exists
+        existing = await db_session.get(Route, route_id)
+        if existing:
+            return existing
+        
+        route = Route(
+            route_id=route_id,
+            from_location="Test Route",
+            to_location="Test Destination",
+            distance_km=Decimal("10.0"),
+            base_price=Decimal("5000"),
+            is_active=True,
+            route_name=f"Test Route {route_id}"
+        )
+        db_session.add(route)
+        await db_session.commit()
+        await db_session.refresh(route)
+        return route
+    
+    return _create_route

@@ -327,7 +327,7 @@ async def passenger_cancel_order(callback: CallbackQuery, session: AsyncSession,
                 await callback.answer("⚠️ Buyurtma holati o'zgargan, bekor qilib bo'lmaydi.", show_alert=True)
                 return
             
-            # Driver'ni bo'shatish (max 8 seats)
+            # Driver'ni bo'shatish (max 6 seats)
             if order.driver_id:
                 await cancel_session.execute(
                     update(Driver)
@@ -335,7 +335,7 @@ async def passenger_cancel_order(callback: CallbackQuery, session: AsyncSession,
                     .values(
                         available_seats=func.least(
                             Driver.available_seats + order.passenger_count,
-                            8  # Maximum seats
+                            6  # Maximum seats
                         ),
                         is_on_trip=False
                     )

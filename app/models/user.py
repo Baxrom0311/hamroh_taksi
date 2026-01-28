@@ -122,6 +122,13 @@ class User(Base):
         comment="Telefon raqam (+998901234567)"
     )
     
+    # Password hash (admin users uchun)
+    password_hash: Mapped[Optional[str]] = mapped_column(
+        String(255),
+        nullable=True,
+        comment="Hashed password (admin/driver uchun)"
+    )
+    
     # Rol
     role: Mapped[UserRole] = mapped_column(
         SQLEnum(UserRole, name="user_role"),

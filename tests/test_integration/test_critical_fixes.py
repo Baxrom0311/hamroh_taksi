@@ -186,6 +186,7 @@ class TestMiddlewareExceptionHandling:
         from app.bot.middlewares.state_guard import StateGuardMiddleware
         from aiogram.types import Message
         from aiogram.fsm.context import FSMContext
+        from app.models.user import UserRole
         
         middleware = StateGuardMiddleware()
         
@@ -200,7 +201,9 @@ class TestMiddlewareExceptionHandling:
         
         state = Mock(spec=FSMContext)
         state.clear = AsyncMock()
+        state.get_data = AsyncMock(return_value={"role": UserRole.PASSENGER})
         state.get_state = AsyncMock(return_value="SomeState:active")
+        state.update_data = AsyncMock()
         
         data = {'handler': failing_handler, 'event': event, 'state': state}
         
@@ -216,10 +219,10 @@ class TestMiddlewareExceptionHandling:
             assert mock_logger.error.called
             
             # Verify state was cleared
-            state.clear.assert_called_once()
+            state.clear.assert_awaited_once()
             
             # Verify user was notified
-            event.answer.assert_called()
+            event.answer.assert_awaited()
             call_args = event.answer.call_args[0][0]
             assert "/start" in call_args
 

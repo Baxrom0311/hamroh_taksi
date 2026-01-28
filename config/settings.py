@@ -39,7 +39,10 @@ class Settings(BaseSettings):
     BOT_ADMIN_IDS: str = ""  # Admin user ID'lar (vergul bilan)
     # MISOL: "123456789,987654321"
     # QANDAY TOPISH: @userinfobot ga /start yuboring
-    
+
+    # Navbat kelganda yuboriladigan quvnoq sticker (Telegram file_id)
+    QUEUE_TURN_STICKER_ID: str = ""  # Optional
+
     @property
     def admin_ids_list(self) -> List[int]:
         """Admin ID'larni list'ga aylantirish"""
@@ -126,15 +129,18 @@ class Settings(BaseSettings):
     # Terminal: openssl rand -hex 32
     
     JWT_ALGORITHM: str = "HS256"  # Shifrlash algoritmi
-    JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 480  # 8 soat
+    JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 120  # 2 soat (security best practice)
     
     # ============================================
     # ADMIN PANEL SOZLAMALARI
     # ============================================
     
-    ADMIN_ALLOWED_IPS: str = "127.0.0.1"  # IP whitelist (vergul bilan)
+    ADMIN_ALLOWED_IPS: str = "*"  # IP whitelist (vergul bilan)
     # MISOL: "127.0.0.1,192.168.1.100,10.0.0.5"
     # Bo'sh bo'lsa = barcha IP'larga ruxsat
+
+    # Bot xatoliklarini yuborish uchun admin kanal ID (ixtiyoriy)
+    ADMIN_CHANNEL_ID: Optional[int] = None
     
     @property
     def admin_allowed_ips_list(self) -> List[str]:

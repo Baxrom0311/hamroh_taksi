@@ -130,6 +130,7 @@ async def notify_driver_new_order_task(self, driver_id: int, order_id: int):
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     from aiogram.enums import ParseMode
     from config.settings import settings
+    from app.bot.messages import Messages
     
     # 1. Ma'lumotlarni yig'ish (Sessiya faqat shu yerda kerak)
     order_data = None
@@ -171,6 +172,7 @@ async def notify_driver_new_order_task(self, driver_id: int, order_id: int):
             "passenger_phone": passenger_phone,
             "passenger_gender": passenger_gender
         }
+        order_route_id = order.route_id
 
 
     # 2. Telegramga xabar yuborish (Sessiyadan TASHQARIDA)
@@ -217,6 +219,29 @@ async def notify_driver_new_order_task(self, driver_id: int, order_id: int):
     """
     
     try:
+        # Navbat xabarini tozalash (navbat keldi)
+        await _clear_queue_message_for_driver(driver_id, order_route_id)
+
+        # Quvnoq sticker + navbat keldi xabari
+        sticker_id = getattr(settings, "QUEUE_TURN_STICKER_ID", "") or ""
+        if sticker_id:
+            try:
+                await bot.send_sticker(
+                    chat_id=driver_tg_id,
+                    sticker=sticker_id
+                )
+            except Exception as e:
+                logger.debug(f"Failed to send queue sticker to driver {driver_id}: {e}")
+
+        try:
+            await bot.send_message(
+                chat_id=driver_tg_id,
+                text=Messages.Driver.QUEUE_TURN,
+                parse_mode=ParseMode.HTML
+            )
+        except Exception as e:
+            logger.debug(f"Failed to send queue turn message to driver {driver_id}: {e}")
+
         await bot.send_message(
             chat_id=driver_tg_id,
             text=message_text,
@@ -608,6 +633,7 @@ async def add_driver_to_queue_task(driver_id: int, route_id: int):
             f"Driver {driver_id} added to queue: "
             f"route={route_id}, position={result['position']}"
         )
+        await _notify_queue_positions(route_id)
     
     return result
 
@@ -630,19 +656,161 @@ async def remove_driver_from_queue_task(driver_id: int, route_id: Optional[int] 
     if route_id:
         # Faqat bitta route'dan
         await driver_queue.remove_driver(driver_id, route_id)
+        await _clear_queue_message_for_driver(driver_id, route_id)
+        await _notify_queue_positions(route_id)
     else:
         # Barcha route'lardan (driver deactivate bo'lganda)
         from app.core.redis_client import redis_client
         
         # Barcha driver_queue:* key'larni topish
+        route_ids: list[int] = []
         async for key in redis_client.client.scan_iter(match="driver_queue:*"):
             await redis_client.client.zrem(key, str(driver_id))
+            try:
+                route_ids.append(int(str(key).split(":")[1]))
+            except Exception:
+                continue
         
         # Join time'larni tozalash
         async for key in redis_client.client.scan_iter(match=f"driver_join_time:{driver_id}:*"):
             await redis_client.delete(key)
+
+        for rid in set(route_ids):
+            await _clear_queue_message_for_driver(driver_id, rid)
+            await _notify_queue_positions(rid)
     
     logger.info(f"Driver {driver_id} removed from queue")
+
+
+# ============================================
+# QUEUE POSITION NOTIFICATIONS
+# ============================================
+
+QUEUE_MESSAGE_TTL_SECONDS = 86400  # 24 soat
+
+
+def _queue_message_key(driver_id: int, route_id: int) -> str:
+    return f"driver_queue_msg:{driver_id}:{route_id}"
+
+
+async def _clear_queue_message_for_driver(driver_id: int, route_id: int) -> None:
+    """
+    Haydovchining navbat xabarini o'chirish
+    """
+    try:
+
+        from app.core.redis_client import redis_client
+        from app.core.database import get_session
+        from app.models.driver import Driver
+        from app.bot.main import bot
+
+        key = _queue_message_key(driver_id, route_id)
+        prev = await redis_client.get(key)
+        if not prev or not isinstance(prev, dict) or "message_id" not in prev:
+            return
+
+        async with get_session() as session:
+            result = await session.execute(
+                select(Driver.user_id).where(Driver.driver_id == driver_id)
+            )
+            user_id = result.scalar_one_or_none()
+
+        if not user_id:
+            return
+
+        try:
+            await bot.delete_message(
+                chat_id=user_id,
+                message_id=prev["message_id"]
+            )
+        except Exception:
+            pass
+
+        await redis_client.delete(key)
+    except Exception as e:
+        logger.debug(f"Queue message cleanup failed: {e}")
+
+
+async def _notify_queue_positions(route_id: int) -> None:
+    """
+    Navbatdagi haydovchilarga pozitsiyalarini yuborish (xabarni yangilab turish)
+    """
+    try:
+
+        from app.core.redis_client import redis_client
+        from app.core.database import get_session
+        from app.models.driver import Driver
+        from app.models.route import get_route_by_id
+        from app.bot.main import bot
+        from app.bot.messages import Messages
+
+        driver_ids = await driver_queue.get_queue_driver_ids(route_id)
+        if not driver_ids:
+            return
+
+        async with get_session() as session:
+            route = await get_route_by_id(session, route_id)
+            route_name = route.route_name if route else "Noma'lum"
+
+            result = await session.execute(
+                select(Driver.driver_id, Driver.user_id)
+                .where(Driver.driver_id.in_(driver_ids))
+            )
+            rows = result.all()
+
+        user_map = {int(did): uid for did, uid in rows if uid}
+        total = len(driver_ids)
+
+        for idx, driver_id in enumerate(driver_ids, start=1):
+            user_id = user_map.get(driver_id)
+            if not user_id:
+                continue
+
+            key = _queue_message_key(driver_id, route_id)
+            prev = await redis_client.get(key)
+            if isinstance(prev, dict) and "message_id" in prev:
+                try:
+                    await bot.delete_message(
+                        chat_id=user_id,
+                        message_id=prev["message_id"]
+                    )
+                except Exception:
+                    pass
+
+            text = Messages.Driver.QUEUE_POSITION.format(
+                position=idx,
+                total=total,
+                route_name=route_name
+            )
+
+            try:
+                sent = await bot.send_message(
+                    chat_id=user_id,
+                    text=text,
+                    parse_mode="HTML"
+                )
+                await redis_client.set(
+                    key,
+                    {"message_id": sent.message_id},
+                    ex=QUEUE_MESSAGE_TTL_SECONDS
+                )
+            except Exception as e:
+                logger.warning(f"Failed to notify driver {driver_id} queue position: {e}")
+
+    except Exception as e:
+        logger.debug(f"Queue notify failed: {e}")
+
+
+@celery_app.task(name="app.tasks.matching.notify_queue_update_task")
+@async_to_sync
+async def notify_queue_update_task(route_id: int):
+    await _notify_queue_positions(route_id)
+
+
+@celery_app.task(name="app.tasks.matching.clear_queue_message_task")
+@async_to_sync
+async def clear_queue_message_task(driver_id: int, route_id: int):
+    await _clear_queue_message_for_driver(driver_id, route_id)
 
 
 # ============================================
@@ -681,5 +849,7 @@ __all__ = [
     'notify_passenger_no_driver_task',
     'add_driver_to_queue_task',
     'remove_driver_from_queue_task',
+    'notify_queue_update_task',
+    'clear_queue_message_task',
     'auto_start_trip_task'  # NEW
 ]

@@ -48,6 +48,13 @@ class Messages:
             "⏳ Buyurtma kelishini kutmoqdasiz...\n\n"
             "💡 Buyurtma kelganda sizga xabar beramiz!"
         )
+        QUEUE_POSITION = (
+            "📢 <b>Navbat yangilandi!</b>\n\n"
+            "📍 Marshrut: <b>{route_name}</b>\n"
+            "🔢 Sizning navbatingiz: <b>{position}/{total}</b>\n\n"
+            "⏳ Buyurtma kelishini kutmoqdasiz..."
+        )
+        QUEUE_TURN = "🎉 <b>Navbatingiz keldi!</b> 🚖"
         STOPPED = "✅ Buyurtma qabul qilish to'xtatildi"
         OFFLINE = "Siz oflayn holatga o'tdingiz"
         

@@ -135,7 +135,7 @@ class DriverStatusUpdate(BaseModel):
     available_seats: Optional[int] = Field(
         None,
         ge=0,
-        le=8
+        le=6
     )
 
 

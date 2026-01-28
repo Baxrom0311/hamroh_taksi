@@ -175,6 +175,9 @@ async def accept_order_handler(callback: CallbackQuery, session: AsyncSession, d
                 f"Driver {driver.driver_id} removed from queue: "
                 f"no more seats available"
             )
+            from app.tasks.matching import notify_queue_update_task, clear_queue_message_task
+            clear_queue_message_task.delay(driver.driver_id, order.route_id)  # type: ignore
+            notify_queue_update_task.delay(order.route_id)  # type: ignore
         
         # 5. State va Tasklar
         await state.update_data(current_order_id=order_id)
@@ -282,6 +285,9 @@ async def driver_started_trip(message: Message, session: AsyncSession, driver: D
                 f"Driver {driver.driver_id} removed from queue: "
                 f"no more seats available after trip started"
             )
+            from app.tasks.matching import notify_queue_update_task, clear_queue_message_task
+            clear_queue_message_task.delay(driver.driver_id, order.route_id)  # type: ignore
+            notify_queue_update_task.delay(order.route_id)  # type: ignore
         
         # Avto-yakunlash task (10 daqiqa - aniq)
         # ✅ CONSTANTS: Use settings instead of hardcoded 600
