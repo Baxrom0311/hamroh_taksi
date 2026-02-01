@@ -76,6 +76,7 @@ def _create_role_session_decorator(
                     # 2. Entity (driver/passenger) record olish
                     entity = await entity_getter(session, user_id)
                     
+                    if not entity:
                         # DATA INTEGRITY ERROR: Role mavjud, profil yo'q
                         logger.warning(
                             f"Data integrity error: User {user_id} is {role.value} "
