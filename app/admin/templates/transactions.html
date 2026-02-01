@@ -65,6 +65,8 @@
                             Izoh</th>
                         <th class="px-6 py-4 text-left text-xs font-medium text-dark-muted uppercase tracking-wider">
                             Sana</th>
+                        <th class="px-6 py-4 text-right text-xs font-medium text-dark-muted uppercase tracking-wider">
+                            Amallar</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-dark-border">
@@ -89,6 +91,36 @@
                             <td class="px-6 py-4 text-sm text-dark-muted truncate max-w-xs" x-text="t.description"></td>
                             <td class="px-6 py-4 whitespace-nowrap text-sm text-dark-muted"
                                 x-text="formatDate(t.created_at)"></td>
+                            <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                <div class="flex items-center justify-end gap-2">
+                                    <template x-if="t.receipt_file_id">
+                                        <button @click="openReceiptModal('/api/files/' + t.receipt_file_id)"
+                                            class="text-blue-400 hover:text-blue-300" title="Chekni ko'rish">
+                                            📄
+                                        </button>
+                                    </template>
+
+                                    <template x-if="t.status === 'pending'">
+                                        <div class="flex gap-2">
+                                            <button @click="openApproveModal(t.transaction_id, t.amount)"
+                                                class="text-green-400 hover:text-green-300" title="Tasdiqlash">
+                                                ✅
+                                            </button>
+                                            <button @click="openRejectModal(t.transaction_id)"
+                                                class="text-red-400 hover:text-red-300" title="Rad etish">
+                                                ❌
+                                            </button>
+                                        </div>
+                                    </template>
+
+                                    <template x-if="t.status !== 'pending'">
+                                        <span class="text-xs" :class="{
+                                            'text-green-500': t.status === 'approved',
+                                            'text-red-500': t.status === 'rejected'
+                                        }" x-text="t.status === 'approved' ? 'Tasdiqlangan' : 'Rad etilgan'"></span>
+                                    </template>
+                                </div>
+                            </td>
                         </tr>
                     </template>
                     <template x-if="transactions.length === 0">
@@ -118,7 +150,154 @@
     </div>
 </div>
 
+<!-- Receipt Modal -->
+<div id="receiptModal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
+    <div class="bg-white rounded-xl p-6 max-w-2xl w-full mx-4">
+        <div class="flex items-center justify-between mb-4">
+            <h3 class="text-lg font-bold">Chek rasmi</h3>
+            <a id="receiptNewTab" href="#" target="_blank" class="text-blue-600 text-sm hover:underline">Yangi oynada
+                ochish ↗</a>
+        </div>
+        <div class="mb-4 max-h-[70vh]">
+            <img id="receiptImage" src="" alt="Chek rasmi"
+                class="w-full max-h-[70vh] object-contain rounded-lg border" />
+        </div>
+        <div class="flex justify-end">
+            <button onclick="closeReceiptModal()"
+                class="bg-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-400">Yopish</button>
+        </div>
+    </div>
+</div>
+
+<!-- Approve Transaction Modal -->
+<div id="approveModal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
+    <div class="bg-white rounded-xl p-6 max-w-md w-full mx-4">
+        <h3 class="text-lg font-bold mb-4">To'lovni tasdiqlash</h3>
+        <form id="approveForm" onsubmit="confirmApprove(event)">
+            <input type="hidden" id="approveTransactionId" />
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-700 mb-1">Chekdagi summa (so'm)</label>
+                <input type="number" id="approveAmount" class="w-full px-3 py-2 border rounded-lg" min="0" step="1000"
+                    required />
+                <p class="text-xs text-gray-500 mt-1">Haydovchi kiritgan summa: <span id="originalAmount"
+                        class="font-bold"></span> so'm</p>
+            </div>
+            <div class="flex space-x-2">
+                <button type="submit"
+                    class="flex-1 bg-green-500 text-white py-2 rounded-lg hover:bg-green-600">Tasdiqlash</button>
+                <button type="button" onclick="closeApproveModal()"
+                    class="flex-1 bg-gray-300 text-gray-700 py-2 rounded-lg hover:bg-gray-400">Bekor qilish</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Reject Transaction Modal -->
+<div id="rejectModal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
+    <div class="bg-white rounded-xl p-6 max-w-md w-full mx-4">
+        <h3 class="text-lg font-bold mb-4">To'lovni rad etish</h3>
+        <form id="rejectForm" onsubmit="confirmReject(event)">
+            <input type="hidden" id="rejectTransactionId" />
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-700 mb-1">Rad etish sababi</label>
+                <textarea id="rejectReason" class="w-full px-3 py-2 border rounded-lg" rows="3" required></textarea>
+            </div>
+            <div class="flex space-x-2">
+                <button type="submit" class="flex-1 bg-red-500 text-white py-2 rounded-lg hover:bg-red-600">Rad
+                    etish</button>
+                <button type="button" onclick="closeRejectModal()"
+                    class="flex-1 bg-gray-300 text-gray-700 py-2 rounded-lg hover:bg-gray-400">Bekor qilish</button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <script>
+    // Global Modal Functions
+    function openReceiptModal(url) {
+        if (!url) return alert("Chek rasmi yo'q");
+        document.getElementById('receiptImage').src = url;
+        document.getElementById('receiptNewTab').href = url;
+        document.getElementById('receiptModal').classList.remove('hidden');
+    }
+
+    function closeReceiptModal() {
+        document.getElementById('receiptModal').classList.add('hidden');
+    }
+
+    function openApproveModal(id, amount) {
+        document.getElementById('approveTransactionId').value = id;
+        document.getElementById('originalAmount').innerText = new Intl.NumberFormat('uz-UZ').format(amount);
+        document.getElementById('approveAmount').value = amount;
+        document.getElementById('approveModal').classList.remove('hidden');
+    }
+
+    function closeApproveModal() {
+        document.getElementById('approveModal').classList.add('hidden');
+    }
+
+    async function confirmApprove(e) {
+        e.preventDefault();
+        const id = document.getElementById('approveTransactionId').value;
+        const amount = document.getElementById('approveAmount').value;
+
+        if (!confirm("Haqiqatan ham tasdiqlaysizmi?")) return;
+
+        try {
+            const res = await fetch(`/api/transactions/${id}/approve`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ amount: parseInt(amount) })
+            });
+            const data = await res.json();
+            if (data.success) {
+                closeApproveModal();
+                window.location.reload();
+            } else {
+                alert(data.detail || data.message || "Xatolik yuz berdi");
+            }
+        } catch (err) {
+            console.error(err);
+            alert("Server xatosi");
+        }
+    }
+
+    function openRejectModal(id) {
+        document.getElementById('rejectTransactionId').value = id;
+        document.getElementById('rejectReason').value = '';
+        document.getElementById('rejectModal').classList.remove('hidden');
+    }
+
+    function closeRejectModal() {
+        document.getElementById('rejectModal').classList.add('hidden');
+    }
+
+    async function confirmReject(e) {
+        e.preventDefault();
+        const id = document.getElementById('rejectTransactionId').value;
+        const reason = document.getElementById('rejectReason').value;
+
+        if (!confirm("Haqiqatan ham rad etasizmi?")) return;
+
+        try {
+            const res = await fetch(`/api/transactions/${id}/reject`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ reason: reason })
+            });
+            const data = await res.json();
+            if (data.success) {
+                closeRejectModal();
+                window.location.reload();
+            } else {
+                alert(data.detail || data.message || "Xatolik yuz berdi");
+            }
+        } catch (err) {
+            console.error(err);
+            alert("Server xatosi");
+        }
+    }
+
     function transactionsApp() {
         return {
             transactions: [],

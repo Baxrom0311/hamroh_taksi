@@ -170,7 +170,7 @@ app.include_router(auth_router)
 # Dashboard routes
 from app.admin.routes import dashboard, drivers, passengers, transactions
 from app.admin.routes import settings as settings_routes
-from app.admin.routes import admins, broadcast, feedback as feedback_api
+from app.admin.routes import admins, broadcast, feedback as feedback_api, files
 
 app.include_router(dashboard.router, prefix="/api")
 app.include_router(drivers.router, prefix="/api")
@@ -180,6 +180,7 @@ app.include_router(settings_routes.router, prefix="/api")
 app.include_router(admins.router, prefix="/api")
 app.include_router(broadcast.router, prefix="/api")
 app.include_router(feedback_api.router, prefix="/api")
+app.include_router(files.router, prefix="/api")
 
 
 # ============================================
@@ -689,11 +690,6 @@ async def general_exception_handler(request: Request, exc: Exception):
             "detail": str(exc) if settings.is_development else None
         }
     )
-
-
-# ============================================
-# STARTUP / SHUTDOWN (handled by lifespan above)
-# ============================================
 
 
 # ============================================

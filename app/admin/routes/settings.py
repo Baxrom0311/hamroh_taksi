@@ -399,22 +399,21 @@ async def delete_route(
     """
     try:
         async with get_session() as session:
-            # Deactivate (delete emas, is_active = false)
+            # Hard Delete (Databazadan butunlay o'chirish)
             await session.execute(
-                update(Route)
+                delete(Route)
                 .where(Route.route_id == route_id)
-                .values(is_active=False)
             )
             
             await session.commit()
             
             logger.info(
-                f"Route {route_id} deactivated by {current_user['username']}"
+                f"Route {route_id} PERMANENTLY deleted by {current_user['username']}"
             )
             
             return {
                 'success': True,
-                'message': 'Marshrut o\'chirildi'
+                'message': 'Marshrut butunlay o\'chirildi'
             }
     
     except Exception as e:

@@ -39,17 +39,43 @@
                     <label class="flex items-center gap-2 cursor-pointer">
                         <input type="radio" name="type" value="photo" x-model="form.type"
                             class="w-4 h-4 text-blue-600 bg-dark-bg border-dark-border focus:ring-blue-500">
-                        <span class="text-white text-sm">Rasm bilan</span>
+                        <span class="text-white text-sm">Rasm</span>
+                    </label>
+                    <label class="flex items-center gap-2 cursor-pointer">
+                        <input type="radio" name="type" value="video" x-model="form.type"
+                            class="w-4 h-4 text-blue-600 bg-dark-bg border-dark-border focus:ring-blue-500">
+                        <span class="text-white text-sm">Video</span>
                     </label>
                 </div>
             </div>
 
-            <!-- Image URL -->
-            <div x-show="form.type === 'photo'" x-transition>
-                <label class="block text-sm font-medium text-dark-muted mb-2">Rasm havolasi (URL)</label>
-                <input type="text" x-model="form.photo_url"
-                    class="w-full bg-dark-bg border border-dark-border rounded-xl p-3 text-white focus:ring-2 focus:ring-blue-500 outline-none"
-                    placeholder="https://...">
+            <!-- File Upload -->
+            <div x-show="form.type === 'photo' || form.type === 'video'" x-transition>
+                <label class="block text-sm font-medium text-dark-muted mb-2">
+                    <span x-text="form.type === 'photo' ? 'Rasm yuklash' : 'Video yuklash'"></span>
+                </label>
+
+                <!-- File Input -->
+                <div class="relative group">
+                    <input type="file" id="broadcastFile" @change="handleFileChange"
+                        :accept="form.type === 'photo' ? 'image/*' : 'video/*'" class="hidden">
+                    <label for="broadcastFile"
+                        class="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-dark-border rounded-xl cursor-pointer hover:border-blue-500 hover:bg-dark-bg/50 transition-all">
+                        <div class="flex flex-col items-center justify-center pt-5 pb-6">
+                            <p class="text-2xl mb-2" x-show="!fileName">📂</p>
+                            <p class="text-sm text-dark-muted" x-show="!fileName">Faylni tanlash uchun bosing</p>
+                            <p class="text-sm text-blue-400 font-medium" x-show="fileName" x-text="fileName"></p>
+                        </div>
+                    </label>
+                </div>
+
+                <!-- URL Option (Optional for photos) -->
+                <div class="mt-4" x-show="form.type === 'photo'">
+                    <p class="text-xs text-dark-muted mb-1">Yoki havolani kiriting (ixtiyoriy):</p>
+                    <input type="text" x-model="form.photo_url"
+                        class="w-full bg-dark-bg border border-dark-border rounded-xl p-3 text-white focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                        placeholder="https://...">
+                </div>
             </div>
 
             <!-- Message Text -->
@@ -68,7 +94,7 @@
                     class="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold py-3 px-6 rounded-xl shadow-lg shadow-blue-500/30 transition-all transform hover:scale-[1.02] flex justify-center items-center gap-2"
                     :disabled="sending">
                     <span x-show="!sending">Yuborish 🚀</span>
-                    <span x-show="sending">Yuborilmoqda...</span>
+                    <span x-show="sending">Yuborilmoqda... (Barchaga yuborish biroz vaqt olishi mumkin)</span>
                 </button>
             </div>
         </div>
@@ -82,55 +108,74 @@
                 target: 'all',
                 type: 'text',
                 photo_url: '',
-                text: ''
+                text: '',
+                file: null
             },
+            fileName: '',
             count: null,
             sending: false,
 
             async init() {
-                await this.fetchCount();
+                // await this.fetchCount();
+            },
+
+            handleFileChange(e) {
+                const file = e.target.files[0];
+                if (file) {
+                    this.form.file = file;
+                    this.fileName = file.name;
+                } else {
+                    this.form.file = null;
+                    this.fileName = '';
+                }
             },
 
             async fetchCount() {
-                // Mock or Real endpoint to get count
-                // Assuming endpoint exists or just hiding count if fails.
-                try {
-                    // If API supports counting target audience
-                    // const res = await fetch(`/api/broadcast/count?target=${this.form.target}`);
-                    // const data = await res.json();
-                    // this.count = data.count;
-                } catch (e) {
-                    console.log("Count API not available");
-                }
+                // ... logic ...
             },
 
             async sendBroadcast() {
                 if (!this.form.text) return alert("Xabar matnini kiriting");
 
+                // File check
+                if ((this.form.type === 'photo' || this.form.type === 'video') && !this.form.file && !this.form.photo_url) {
+                    return alert("Rasm yoki video yuklang!");
+                }
+
                 if (!confirm("Xabarni barcha foydalanuvchilarga yuborishni tasdiqlaysizmi?")) return;
 
                 this.sending = true;
                 try {
-                    const payload = {
-                        message: this.form.text,
-                        target: this.form.target
-                    };
+                    const formData = new FormData();
+                    formData.append('message', this.form.text);
+                    formData.append('target', this.form.target);
+                    formData.append('file_type', this.form.type);
+
+                    if (this.form.file) {
+                        formData.append('file', this.form.file);
+                    }
+                    if (this.form.photo_url) {
+                        formData.append('photo_url', this.form.photo_url);
+                    }
 
                     const res = await fetch('/api/broadcast/send', {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(payload)
+                        body: formData
                     });
                     const data = await res.json();
 
                     if (data.success) {
-                        alert("Xabar yuborish boshlandi!");
+                        alert(`Muvaffaqiyatli! \nJami: ${data.stats.total}\nYuborildi: ${data.stats.success}\nXato: ${data.stats.failed}`);
                         this.form.text = '';
                         this.form.photo_url = '';
+                        this.form.file = null;
+                        this.fileName = '';
+                        document.getElementById('broadcastFile').value = '';
                     } else {
-                        alert("Xatolik: " + data.detail);
+                        alert("Xatolik: " + (data.detail || data.message));
                     }
                 } catch (e) {
+                    console.error(e);
                     alert("Server xatosi");
                 } finally {
                     this.sending = false;

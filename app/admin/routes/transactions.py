@@ -159,6 +159,7 @@ async def get_transactions(
                     'amount': float(trans.amount),
                     'type': trans.type.value,
                     'status': trans.status.value,
+                    'receipt_file_id': trans.receipt_file_id,
                     'description': trans.description,
                     'created_at': trans.created_at.isoformat(),
                     'processed_at': trans.processed_at.isoformat() if trans.processed_at else None

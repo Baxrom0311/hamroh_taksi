@@ -108,6 +108,35 @@
                                 </button>
                             </template>
                         </div>
+
+                        <!-- Reply Form -->
+                        <div class="mt-6 border-t border-dark-border pt-4">
+                            <h4 class="text-white font-bold mb-3">Javob yozish</h4>
+                            <div class="space-y-3">
+                                <textarea x-model="replyText" rows="3"
+                                    class="w-full bg-dark-bg border border-dark-border rounded-xl p-3 text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                                    placeholder="Javob matnini yozing..."></textarea>
+                                <div class="flex justify-end">
+                                    <button @click="sendReply()"
+                                        class="bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-2 rounded-xl text-sm font-medium transition-colors shadow-lg shadow-indigo-500/20 flex items-center gap-2">
+                                        <span>📨</span> Javob yuborish
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Previous Admin Reply -->
+                        <template x-if="selectedItem.admin_reply">
+                            <div class="mt-6 border-t border-dark-border pt-4">
+                                <h4 class="text-dark-muted font-bold text-sm mb-2">Yuborilgan javob:</h4>
+                                <div class="bg-dark-bg/50 p-3 rounded-lg border border-dark-border">
+                                    <p class="text-gray-300 italic" x-text="selectedItem.admin_reply"></p>
+                                    <p class="text-xs text-dark-muted mt-2 text-right"
+                                        x-text="'Yuborildi: ' + formatDate(selectedItem.resolved_at)"></p>
+                                </div>
+                            </div>
+                        </template>
+
                     </div>
                 </template>
             </div>
@@ -136,11 +165,44 @@
             },
             hasMore: true,
             selectedItem: null,
+            replyText: '',
             modals: { details: false },
 
             async init() {
                 await this.fetchStats();
                 await this.fetchFeedback();
+            },
+
+            async sendReply() {
+                if (!this.replyText.trim()) return alert("Javob matnini kiriting!");
+
+                if (!confirm("Javobni yuborishni tasdiqlaysizmi?")) return;
+
+                const formData = new FormData();
+                formData.append('feedback_id', this.selectedItem.id);
+                formData.append('reply_text', this.replyText);
+
+                try {
+                    const res = await fetch('/api/feedback/reply', {
+                        method: 'POST',
+                        body: formData
+                    });
+                    const data = await res.json();
+
+                    if (data.success) {
+                        alert("Javob yuborildi!");
+                        this.selectedItem.status = 'resolved';
+                        this.selectedItem.is_read = true;
+                        this.selectedItem.admin_reply = this.replyText;
+                        this.replyText = '';
+                        this.fetchStats();
+                    } else {
+                        alert("Xatolik: " + (data.detail || "Server xatosi"));
+                    }
+                } catch (e) {
+                    console.error(e);
+                    alert("Server xatosi");
+                }
             },
 
             async fetchStats() {
