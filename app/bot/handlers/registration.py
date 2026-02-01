@@ -6,7 +6,7 @@ from typing import Optional
 
 from .base import *
 from sqlalchemy.exc import IntegrityError
-from app.models.user import create_user, UserRole, get_user_by_phone
+from app.models.user import create_user, UserRole, get_user_by_phone, get_user_by_id
 from app.models.driver import create_driver
 from app.models.passenger import Gender, create_passenger
 from app.core.database import get_session
