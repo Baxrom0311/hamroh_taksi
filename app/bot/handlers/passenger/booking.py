@@ -54,8 +54,10 @@ async def start_booking(message: Message, session: AsyncSession, passenger: Pass
 )
 @with_session
 async def route_selected(callback: CallbackQuery, session: AsyncSession, state: FSMContext):
-    """Marshrut tanlandi"""
-    route_id = int(callback.data.split(":")[1]) # type: ignore
+    route_id = parse_callback_data(callback.data, "select_route")
+    if route_id is None:
+        await callback.answer("❌ Marshrut ma'lumoti topilmadi", show_alert=True)
+        return
     route = await get_route_by_id(session, route_id)
     if not route:
         await callback.answer("❌ Marshrut topilmadi", show_alert=True)
@@ -107,8 +109,10 @@ async def location_description_received(message: Message, state: FSMContext):
 )
 @with_session
 async def passenger_count_selected(callback: CallbackQuery, session: AsyncSession, state: FSMContext):
-    """Yo'lovchilar soni yoki pochtani tanlandi"""
-    count = int(callback.data.split(":")[1]) # type: ignore
+    count = parse_callback_data(callback.data, "passenger_count")
+    if count is None:
+        await callback.answer("❌ Ma'lumot topilmadi", show_alert=True)
+        return
     if count == 0:
         # Pochta tanlandi
         await state.update_data(
@@ -173,7 +177,14 @@ async def finalize_order(message, session: AsyncSession, state: FSMContext):
             "🔝 Asosiy menyu:",
             reply_markup=get_passenger_main_menu()
         )
-        logger.success(f"Order created: {result['order_id']} with idempotency_key={idempotency_key}")
+        # ✅ EXPLICIT COMMIT & TASK TRIGGER
+        # Transaction commit qilinishi shart, shunda worker orderni ko'radi
+        await session.commit()
+        
+        # Matching task'ni ishga tushirish
+        find_driver_for_order_task.delay(result['order_id']) # type: ignore
+        
+        logger.success(f"Order created & matching started: {result['order_id']} with idempotency_key={idempotency_key}")
     else:
         # ✅ SECURITY FIX: Error sanitization
         from app.utils.error_sanitizer import sanitize_error_for_user
@@ -197,9 +208,9 @@ async def passenger_started(callback: CallbackQuery, session: AsyncSession, pass
     current_state = await state.get_state()
     if current_state and current_state.startswith(DriverStates.__name__):
         await state.clear()
-    if callback.data is None:
+    order_id = parse_callback_data(callback.data, "passenger_started")
+    if order_id is None:
         return
-    order_id = int(callback.data.split(":")[1])
     # Order'ni olish
     order = await get_order_or_error(session, order_id, callback)
     if not order:
@@ -214,26 +225,39 @@ async def passenger_started(callback: CallbackQuery, session: AsyncSession, pass
         return
     result = await start_trip(order_id, order.driver_id)
     if result['success']:
+        # ✅ DYNAMIC MESSAGES
+        from app.models.system_settings import get_setting
+        
+        # 1. Passenger message
+        msg_passenger = await get_setting(
+            session, 
+            "msg_trip_started_passenger", 
+            default="✅ <b>Safar boshlandi!</b>\n\n🚗 Xavfsiz yo'l!\n\nSafar yakunlangach haydovchi sizga xabar beradi.\n\n⏱ Safar 10 daqiqadan keyin avtomatik yakunlanadi."
+        )
+        
         if callback.message and isinstance(callback.message, Message):
             await callback.message.edit_text(
-                "✅ <b>Safar boshlandi!</b>\n\n"
-                "🚗 Xavfsiz yo'l!\n\n"
-                "Safar yakunlangach haydovchi sizga xabar beradi.\n\n"
-                "⏱ Safar 10 daqiqadan keyin avtomatik yakunlanadi.",
+                msg_passenger,
                 parse_mode="HTML"
             )
-        # Haydovchiga xabar
+            
+        # 2. Driver message
         from app.models.driver import get_driver_by_id
         driver = await get_driver_by_id(session, order.driver_id)
         if driver:
             from app.bot.main import bot
             try:
+                msg_driver_template = await get_setting(
+                    session,
+                    "msg_trip_started_driver",
+                    default="✅ <b>Yo'lovchi ketdi!</b>\n\n Xavfsiz yo'l!\n\n⏱ Safar 10 daqiqadan keyin avtomatik yakunlanadi."
+                )
+                # Format message
+                msg_driver = msg_driver_template.format(order_id=order_id)
+                
                 await bot.send_message(
                     chat_id=driver.user_id,
-                    text=f"✅ <b>Yo'lovchi ketdi!</b>\n\n"
-                         f"📦 Buyurtma #{order_id}\n\n"
-                         f"🚗 Xavfsiz yo'l!\n\n"
-                         f"⏱ Safar 10 daqiqadan keyin avtomatik yakunlanadi.",
+                    text=msg_driver,
                     parse_mode="HTML"
                 )
             except Exception as e:
@@ -267,10 +291,9 @@ async def passenger_cancel_order(callback: CallbackQuery, session: AsyncSession,
     
     ✅ SECURITY FIX: Ownership validation qo'shildi
     """
-    if callback.data is None:
+    order_id = parse_callback_data(callback.data, "passenger_cancel")
+    if order_id is None:
         return
-    
-    order_id = int(callback.data.split(":")[1])
     
     # Order'ni olish
     order = await get_order_or_error(session, order_id, callback)
@@ -364,7 +387,6 @@ async def passenger_cancel_order(callback: CallbackQuery, session: AsyncSession,
                 await bot.send_message(
                     chat_id=driver.user_id,
                     text=f"❌ <b>Buyurtma bekor qilindi</b>\n\n"
-                         f"📦 Buyurtma #{order_id}\n\n"
                          f"Yo'lovchi buyurtmani bekor qildi.",
                     parse_mode="HTML"
                 )
@@ -392,11 +414,10 @@ async def reject_trip(callback: CallbackQuery, session: AsyncSession, passenger:
     
     Bu haydovchi firibgarlik qilganini anglatadi!
     """
-    if callback.data is None:
+    order_id = parse_callback_data(callback.data, "reject_trip")
+    if order_id is None:
         await callback.answer("Xatolik: data mavjud emas")
         return
-    
-    order_id = int(callback.data.split(":")[1])
     
     order = await get_order_or_error(session, order_id, callback)
     if not order:

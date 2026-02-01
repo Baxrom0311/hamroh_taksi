@@ -57,22 +57,47 @@ async def find_driver_for_order_task(self, order_id: int):
         pickup_location_text = (order.pickup_location or "").strip().lower()
         enforce_distance = pickup_location_text.startswith("lat:")
 
-        # Eng yaxshi haydovchini topish
+        # Eng yaxshi haydovchini topish (Loop bilan - lock uchun)
         passenger_location = None
         if order.pickup_lat and order.pickup_lon:
             passenger_location = {
                 'lat': float(order.pickup_lat),
                 'lon': float(order.pickup_lon)
             }
-        driver_id = await driver_queue.get_next_driver(
-            route_id=order.route_id,
-            passenger_location=passenger_location,
-            passenger_count=order.passenger_count,
-            max_distance_km=50,
-            order_id=order_id,  # ✅ Skip logic uchun
-            enforce_distance=enforce_distance and passenger_location is not None
-        )
+            
+        driver_id = None
         
+        # Try finding a driver (Retry count = 3 times internally to handle race condition)
+        for _ in range(3):
+            candidate_id = await driver_queue.get_next_driver(
+                route_id=order.route_id,
+                passenger_location=passenger_location,
+                passenger_count=order.passenger_count,
+                max_distance_km=50,
+                order_id=order_id,
+                enforce_distance=enforce_distance and passenger_location is not None
+            )
+            
+            if not candidate_id:
+                break
+                
+            # ✅ TOPILDI - Try to atomic lock
+            locked = await driver_queue.lock_driver_for_offer(candidate_id, order_id)
+            
+            if locked:
+                driver_id = candidate_id
+                
+                await session.execute(
+                    update(Order)
+                    .where(Order.order_id == order_id)
+                    .values(driver_id=driver_id)
+                )
+                break
+            else:
+                logger.warning(f"Driver {candidate_id} was grabbed by another process. Retrying match...")
+                # Continue loop to find next driver
+                continue
+
         if driver_id:
             # ✅ Haydovchi topildi!
             logger.success(f"✅ Driver {driver_id} found for order {order_id}")
@@ -113,8 +138,15 @@ async def find_driver_for_order_task(self, order_id: int):
             )
             
             # Retry after delay
+            from app.models.system_settings import get_setting_int
             from config.settings import settings
-            raise self.retry(countdown=settings.DRIVER_MATCHING_RETRY_DELAY_SECONDS)
+            
+            retry_delay = await get_setting_int(
+                session, 
+                "driver_matching_retry_delay_seconds", 
+                default=settings.DRIVER_MATCHING_RETRY_DELAY_SECONDS
+            )
+            raise self.retry(countdown=retry_delay)
 
 
 # ============================================
@@ -173,6 +205,14 @@ async def notify_driver_new_order_task(self, driver_id: int, order_id: int):
             "passenger_gender": passenger_gender
         }
         order_route_id = order.route_id
+        
+        # Dynamic settings fetch
+        from app.models.system_settings import get_setting_int
+        auto_reject_seconds = await get_setting_int(
+            session,
+            "auto_reject_order_seconds",
+            default=settings.AUTO_REJECT_ORDER_SECONDS
+        )
 
 
     # 2. Telegramga xabar yuborish (Sessiyadan TASHQARIDA)
@@ -207,7 +247,6 @@ async def notify_driver_new_order_task(self, driver_id: int, order_id: int):
     message_text = f"""
 🔔 <b>Yangi buyurtma!</b>
 
-📦 Buyurtma #{order_id}
 📍 <b>Olish joyi:</b> {order_data['pickup']}
 {location_links_html}
 {order_type_text}
@@ -257,7 +296,7 @@ async def notify_driver_new_order_task(self, driver_id: int, order_id: int):
         from config.settings import settings
         cast(Any, auto_reject_order_task).apply_async(
             args=[driver_id, order_id], 
-            countdown=settings.AUTO_REJECT_ORDER_SECONDS
+            countdown=auto_reject_seconds
         )
         
         return {'success': True}
@@ -280,16 +319,61 @@ async def notify_driver_new_order_task(self, driver_id: int, order_id: int):
 @celery_app.task(name="app.tasks.matching.auto_reject_order_task")
 @async_to_sync
 async def auto_reject_order_task(driver_id: int, order_id: int):
+    """
+    Haydovchi 2 daqiqa ichida javob bermasa.
+    
+    2-STRIKE RULE:
+    - 1-marta: counter oshadi, keyingi driver izlanadi
+    - 2-marta: navbatdan chiqariladi, xabar yuboriladi
+    """
     async with get_session() as session:
         order = await get_order_by_id(session, order_id)
         
         if order and order.status == OrderStatus.PENDING:
-            logger.warning(f"Driver {driver_id} didn't respond to order {order_id} - removing from queue")
+            # 1. Inactivity count'ni oshirish
+            inactivity_count = await driver_queue.track_driver_inactivity(
+                driver_id, order.route_id
+            )
             
-            # 1. Haydovchini navbatdan chiqaramiz (javob bermagani uchun)
-            await driver_queue.remove_driver(driver_id, order.route_id)
+            # Threshold'ni olish (Start dynamic setting)
+            from app.models.system_settings import get_setting_int
+            from config.settings import settings
             
-            # 2. Keyingi haydovchini qidirishni boshlaymiz
+            threshold = await get_setting_int(
+                session, 
+                "driver_inactivity_threshold", 
+                default=settings.DRIVER_INACTIVITY_THRESHOLD
+            )
+            
+            logger.warning(
+                f"Driver {driver_id} didn't respond to order {order_id} "
+                f"(inactivity: {inactivity_count}/{threshold})"
+            )
+            
+            # 2. Agar threshold ga yetgan bo'lsa - navbatdan chiqarish
+            if inactivity_count >= threshold:
+                await driver_queue.remove_driver(driver_id, order.route_id)
+                logger.warning(f"🚨 Driver {driver_id} removed from queue ({threshold} strikes)")
+                
+                # Driver'ga xabar yuborish
+                driver = await get_driver_by_id(session, driver_id)
+                if driver:
+                    from app.bot.main import bot
+                    try:
+                        await bot.send_message(
+                            chat_id=driver.user_id,
+                            text="⚠️ <b>Navbatdan chiqarildingiz</b>\n\n"
+                                 f"Sabab: {threshold} marta buyurtmaga javob bermagansiz.\n\n"
+                                 "Qayta navbatga qo'shilish uchun '🚗 Buyurtma qabul qilish' bosing.",
+                            parse_mode="HTML"
+                        )
+                    except Exception as e:
+                        logger.error(f"Failed to notify driver {driver_id}: {e}")
+            
+            # 3. Bu buyurtma uchun skip qilish
+            await driver_queue.skip_driver_for_order(driver_id, order_id)
+            
+            # 4. Keyingi haydovchini qidirish
             cast(Any, find_driver_for_order_task).delay(order_id)
     
 
@@ -352,7 +436,6 @@ async def auto_confirm_trip_task(order_id: int):
                         await bot.send_message(
                             chat_id=driver.user_id,
                             text=f"⏱ <b>Vaqt tugadi</b>\n\n"
-                                 f"📦 Buyurtma #{order_id}\n\n"
                                  f"30 daqiqa ichida yo'lovchi javob bermadi.\n"
                                  f"Buyurtma bekor qilindi.",
                             parse_mode="HTML"
@@ -367,7 +450,6 @@ async def auto_confirm_trip_task(order_id: int):
                     await bot.send_message(
                         chat_id=order.passenger.user.user_id,
                         text=f"⏱ <b>Vaqt tugadi</b>\n\n"
-                             f"📦 Buyurtma #{order_id}\n\n"
                              f"30 daqiqa ichida javob berilmadi.\n"
                              f"Buyurtma bekor qilindi.\n\n"
                              f"Yangi buyurtma berish uchun menyudan 'Taksi chaqirish'ni tanlang.",
@@ -467,7 +549,6 @@ async def auto_complete_trip_task(self, target_id: int):
                         chat_id=driver.user_id,
                         text=(
                             f"✅ <b>Safar avtomatik yakunlandi</b>\n\n"
-                            f"📦 Buyurtma #{order.order_id}\n"
                             f"⏱ Davomiyligi: {result.get('duration_minutes', 10)} daqiqa\n\n"
                             f"✨ Rahmat!"
                         ),
@@ -494,7 +575,6 @@ async def auto_complete_trip_task(self, target_id: int):
                         chat_id=order.passenger.user.user_id,
                         text=(
                             f"✅ <b>Safar yakunlandi (avtomatik)</b>\n\n"
-                            f"📦 Buyurtma #{order.order_id}\n"
                             f"⏱ Davomiyligi: {result.get('duration_minutes', 10)} daqiqa\n\n"
                             f"✨ <b>Haydovchiga baho bering:</b>"
                         ),
@@ -521,8 +601,15 @@ async def auto_complete_trip_task(self, target_id: int):
                 # ✅ NEW: Retry on database errors
                 if hasattr(self, 'retry'):
                     # Retry with delay
+                    from app.models.system_settings import get_setting_int
                     from config.settings import settings
-                    raise self.retry(exc=e, countdown=settings.TASK_RETRY_DELAY_SECONDS)
+                    
+                    retry_delay = await get_setting_int(
+                        session, 
+                        "task_retry_delay_seconds", 
+                        default=settings.TASK_RETRY_DELAY_SECONDS
+                    )
+                    raise self.retry(exc=e, countdown=retry_delay)
 
         if driver_id:
             await session.execute(
@@ -777,11 +864,20 @@ async def _notify_queue_positions(route_id: int) -> None:
                 except Exception:
                     pass
 
-            text = Messages.Driver.QUEUE_POSITION.format(
-                position=idx,
-                total=total,
-                route_name=route_name
-            )
+            if idx == 1:
+                # 1-o'rin uchun maxsus xabar
+                text = (
+                    f"{Messages.Driver.QUEUE_TURN}\n\n"
+                    f"📍 Marshrut: <b>{route_name}</b>\n"
+                    f"🔢 Sizning navbatingiz: <b>1</b>\n\n"
+                    f"✅ Teyyor turing, keyingi buyurtma sizniki!"
+                )
+            else:
+                text = Messages.Driver.QUEUE_POSITION.format(
+                    position=idx,
+                    total=total,
+                    route_name=route_name
+                )
 
             try:
                 sent = await bot.send_message(
@@ -831,6 +927,9 @@ async def auto_start_trip_task(self, trip_id: int, driver_id: int):
     
     logger.info(f"Auto-starting trip {trip_id} for driver {driver_id} (delayed)")
     
+    # Unlock driver
+    await driver_queue.unlock_driver_offer(driver_id)
+
     async with get_session() as session:
         try:
             await _start_trip_sync(session, trip_id, driver_id)

@@ -39,8 +39,19 @@ async def support_menu(message: Message, session: AsyncSession, passenger: Passe
         resize_keyboard=True
     )
     
+    from app.models.system_settings import get_setting
+    from config.settings import settings as config
+    
+    username = await get_setting(session, "support_username", config.SUPPORT_USERNAME)
+    phone = await get_setting(session, "support_phone", config.SUPPORT_PHONE)
+    hours = await get_setting(session, "working_hours", config.WORKING_HOURS)
+    
     await message.answer(
-        Messages.Error.SUPPORT_INFO,
+        Messages.Error.SUPPORT_INFO.format(
+            username=username,
+            phone=phone,
+            working_hours=hours
+        ),
         reply_markup=keyboard,
         parse_mode="HTML"
     )

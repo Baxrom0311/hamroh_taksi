@@ -415,4 +415,50 @@ async def get_passengers_statistics(
     
 
 
-all = ['router']
+@router.delete("/{passenger_id}")
+async def delete_passenger(
+    passenger_id: int,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Yo'lovchini o'chirish
+    """
+    try:
+        async with get_session() as session:
+            passenger = await get_passenger_by_id(session, passenger_id)
+            if not passenger:
+                raise HTTPException(status_code=404, detail="Passenger topilmadi")
+
+            # Delete associated orders first to avoid FK violations
+            from sqlalchemy import delete
+            from app.models.order import Order
+            
+            # Note: Orders might have other dependencies (Trips, Payments).
+            # If we delete Order, we might need to handle those.
+            # But Order -> Passenger is simple FK.
+            # Order -> Trip (FK trip_id). Trip stays.
+            # Order -> Driver (FK driver_id). Driver stays.
+            
+            await session.execute(
+                delete(Order).where(Order.passenger_id == passenger_id)
+            )
+            
+            await session.delete(passenger)
+            await session.commit()
+            
+            logger.warning(f"Passenger {passenger_id} and their orders deleted by admin {current_user['username']}")
+            
+            return {
+                'success': True,
+                'message': 'Yo\'lovchi va uning barcha buyurtmalari o\'chirildi'
+            }
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to delete passenger: {e}")
+        error_msg = str(e)
+        raise HTTPException(status_code=500, detail=f"O'chirishda xatolik: {error_msg}")
+
+
+__all__ = ['router']

@@ -4,125 +4,160 @@
 {% block header_title %}Tizim Statistikasi{% endblock %}
 
 {% block content %}
-<div class="p-8" x-data="dashboardApp()" x-init="init()">
-    
+<div x-data="dashboardApp()" x-init="init()" class="space-y-6">
+
     <!-- Stats Cards Grid -->
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <!-- Aktiv Haydovchilar -->
-        <div class="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
+        <div
+            class="bg-dark-card rounded-2xl p-6 border border-dark-border shadow-lg hover:shadow-brand-500/10 transition-shadow">
             <div class="flex items-center justify-between">
                 <div>
-                    <p class="text-sm text-gray-500 font-medium">Aktiv Haydovchilar</p>
-                    <p class="text-3xl font-bold text-gray-800 mt-1" x-text="stats.drivers?.active || 0"></p>
+                    <p class="text-sm text-dark-muted font-medium">Aktiv Haydovchilar</p>
+                    <p class="text-3xl font-bold text-white mt-1" x-text="stats.drivers?.active || 0"></p>
                 </div>
-                <div class="w-12 h-12 bg-blue-50 text-blue-500 rounded-lg flex items-center justify-center text-2xl">🚗</div>
+                <div
+                    class="w-12 h-12 bg-blue-500/10 text-blue-500 rounded-xl flex items-center justify-center text-2xl">
+                    🚗</div>
             </div>
-            <div class="mt-4 flex items-center text-xs text-gray-400">
-                <span>Jami: <b x-text="stats.drivers?.total || 0"></b></span>
+            <div class="mt-4 flex items-center text-xs text-dark-muted">
+                <span>Jami ro'yxatdan o'tgan: <b class="text-white" x-text="stats.drivers?.total || 0"></b></span>
             </div>
         </div>
 
         <!-- Bugungi Safarlar -->
-        <div class="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
+        <div
+            class="bg-dark-card rounded-2xl p-6 border border-dark-border shadow-lg hover:shadow-green-500/10 transition-shadow">
             <div class="flex items-center justify-between">
                 <div>
-                    <p class="text-sm text-gray-500 font-medium">Bugungi Safarlar</p>
-                    <p class="text-3xl font-bold text-gray-800 mt-1" x-text="stats.trips?.today || 0"></p>
+                    <p class="text-sm text-dark-muted font-medium">Bugungi Safarlar</p>
+                    <p class="text-3xl font-bold text-white mt-1" x-text="stats.trips?.today || 0"></p>
                 </div>
-                <div class="w-12 h-12 bg-green-50 text-green-500 rounded-lg flex items-center justify-center text-2xl">📍</div>
+                <div
+                    class="w-12 h-12 bg-green-500/10 text-green-500 rounded-xl flex items-center justify-center text-2xl">
+                    📍</div>
             </div>
             <div class="mt-4 flex items-center text-xs">
                 <span :class="stats.trips?.growth >= 0 ? 'text-green-500' : 'text-red-500'" class="font-bold">
                     <span x-text="stats.trips?.growth >= 0 ? '↑' : '↓'"></span>
                     <span x-text="Math.abs(stats.trips?.growth || 0)"></span>%
                 </span>
-                <span class="text-gray-400 ml-1">kechaga nisbatan</span>
+                <span class="text-dark-muted ml-1">kechaga nisbatan</span>
             </div>
         </div>
 
         <!-- Bugungi Daromad -->
-        <div class="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
+        <div
+            class="bg-dark-card rounded-2xl p-6 border border-dark-border shadow-lg hover:shadow-yellow-500/10 transition-shadow">
             <div class="flex items-center justify-between">
                 <div>
-                    <p class="text-sm text-gray-500 font-medium">Bugungi Daromad</p>
-                    <p class="text-3xl font-bold text-gray-800 mt-1" x-text="formatMoney(stats.revenue?.today || 0)"></p>
+                    <p class="text-sm text-dark-muted font-medium">Bugungi Daromad</p>
+                    <p class="text-3xl font-bold text-white mt-1" x-text="formatMoney(stats.revenue?.today || 0)"></p>
                 </div>
-                <div class="w-12 h-12 bg-yellow-50 text-yellow-600 rounded-lg flex items-center justify-center text-2xl">💰</div>
+                <div
+                    class="w-12 h-12 bg-yellow-500/10 text-yellow-500 rounded-xl flex items-center justify-center text-2xl">
+                    💰</div>
             </div>
-            <div class="mt-4 text-xs text-gray-400">
-                Haftalik: <b x-text="formatMoney(stats.revenue?.week || 0)"></b>
+            <div class="mt-4 text-xs text-dark-muted">
+                Haftalik: <b class="text-white" x-text="formatMoney(stats.revenue?.week || 0)"></b>
             </div>
         </div>
 
         <!-- Kutayotgan To'lovlar -->
-        <div class="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
+        <div
+            class="bg-dark-card rounded-2xl p-6 border border-dark-border shadow-lg hover:shadow-red-500/10 transition-shadow">
             <div class="flex items-center justify-between">
                 <div>
-                    <p class="text-sm text-gray-500 font-medium">Kutayotgan To'lovlar</p>
-                    <p class="text-3xl font-bold text-gray-800 mt-1" x-text="stats.transactions?.pending || 0"></p>
+                    <p class="text-sm text-dark-muted font-medium">Kutayotgan To'lovlar</p>
+                    <p class="text-3xl font-bold text-white mt-1" x-text="stats.transactions?.pending || 0"></p>
                 </div>
-                <div class="w-12 h-12 bg-red-50 text-red-500 rounded-lg flex items-center justify-center text-2xl">⏳</div>
+                <div class="w-12 h-12 bg-red-500/10 text-red-500 rounded-xl flex items-center justify-center text-2xl">⏳
+                </div>
             </div>
-            <a href="/transactions" class="mt-4 block text-xs text-blue-500 hover:underline font-medium">Ko'rib chiqish →</a>
+            <a href="/transactions" class="mt-4 block text-xs text-blue-400 hover:text-blue-300 font-medium">Ko'rib
+                chiqish →</a>
         </div>
     </div>
 
     <!-- Extended Stats -->
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        <div class="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
-            <p class="text-sm text-gray-500 font-medium">Bloklangan haydovchilar</p>
-            <p class="text-3xl font-bold text-gray-800 mt-1" x-text="stats.drivers?.blocked || 0"></p>
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div class="bg-dark-card rounded-2xl p-5 border border-dark-border">
+            <p class="text-sm text-dark-muted font-medium">Bloklangan haydovchilar</p>
+            <p class="text-2xl font-bold text-white mt-1" x-text="stats.drivers?.blocked || 0"></p>
         </div>
-        <div class="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
-            <p class="text-sm text-gray-500 font-medium">Bloklangan yo'lovchilar</p>
-            <p class="text-3xl font-bold text-gray-800 mt-1" x-text="stats.passengers?.blocked || 0"></p>
+        <div class="bg-dark-card rounded-2xl p-5 border border-dark-border">
+            <p class="text-sm text-dark-muted font-medium">Bloklangan yo'lovchilar</p>
+            <p class="text-2xl font-bold text-white mt-1" x-text="stats.passengers?.blocked || 0"></p>
         </div>
-        <div class="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
-            <p class="text-sm text-gray-500 font-medium">Jami haydovchilar</p>
-            <p class="text-3xl font-bold text-gray-800 mt-1" x-text="stats.drivers?.total || 0"></p>
+        <div class="bg-dark-card rounded-2xl p-5 border border-dark-border">
+            <p class="text-sm text-dark-muted font-medium">Jami haydovchilar</p>
+            <p class="text-2xl font-bold text-white mt-1" x-text="stats.drivers?.total || 0"></p>
         </div>
-        <div class="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
-            <p class="text-sm text-gray-500 font-medium">Aktiv marshrutlar</p>
-            <p class="text-3xl font-bold text-gray-800 mt-1" x-text="stats.routes?.total || 0"></p>
+        <div class="bg-dark-card rounded-2xl p-5 border border-dark-border">
+            <p class="text-sm text-dark-muted font-medium">Aktiv marshrutlar</p>
+            <p class="text-2xl font-bold text-white mt-1" x-text="stats.routes?.total || 0"></p>
         </div>
     </div>
 
     <!-- Charts Section -->
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-        <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-            <h3 class="text-lg font-bold text-gray-800 mb-4">Safarlar Dinamikasi</h3>
-            <canvas id="tripsChart" height="100"></canvas>
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <!-- Trips Chart -->
+        <div class="bg-dark-card p-6 rounded-2xl border border-dark-border shadow-lg">
+            <h3 class="text-lg font-bold text-white mb-6 flex items-center gap-2">
+                <span class="w-2 h-6 bg-blue-500 rounded-full"></span>
+                Safarlar Dinamikasi
+            </h3>
+            <div class="relative h-64">
+                <canvas id="tripsChart"></canvas>
+            </div>
         </div>
-        <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-            <h3 class="text-lg font-bold text-gray-800 mb-4">Daromad (7 kun)</h3>
-            <canvas id="revenueChart" height="100"></canvas>
+
+        <!-- Revenue Chart -->
+        <div class="bg-dark-card p-6 rounded-2xl border border-dark-border shadow-lg">
+            <h3 class="text-lg font-bold text-white mb-6 flex items-center gap-2">
+                <span class="w-2 h-6 bg-yellow-500 rounded-full"></span>
+                Daromad (7 kun)
+            </h3>
+            <div class="relative h-64">
+                <canvas id="revenueChart"></canvas>
+            </div>
         </div>
     </div>
 
     <!-- Real-time Status -->
     <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
         <!-- PostgreSQL -->
-        <div class="p-4 bg-gray-50 rounded-lg flex items-center justify-between">
-            <span class="text-gray-600 font-medium">PostgreSQL</span>
-            <span :class="realtime.health?.services?.database === 'ok' ? 'text-green-500' : 'text-red-500'" 
-                class="font-bold text-sm" 
-                x-text="realtime.health?.services?.database === 'ok' ? '✅ Ishlamoqda' : '❌ Xato'">
+        <div class="p-4 bg-dark-bg border border-dark-border rounded-xl flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="w-2 h-2 rounded-full" :class="realtime.health?.database ? 'bg-green-500' : 'bg-red-500'">
+                </div>
+                <span class="text-dark-muted font-medium">PostgreSQL</span>
+            </div>
+            <span :class="realtime.health?.database ? 'text-green-500' : 'text-red-500'"
+                class="font-bold text-sm bg-dark-card px-2 py-1 rounded border border-dark-border"
+                x-text="realtime.health?.database ? 'ONLINE' : 'ERROR'">
             </span>
         </div>
-        
+
         <!-- Redis -->
-        <div class="p-4 bg-gray-50 rounded-lg flex items-center justify-between">
-            <span class="text-gray-600 font-medium">Redis Cache</span>
-            <span :class="realtime.health?.services?.redis === 'ok' ? 'text-green-500' : 'text-red-500'" 
-                class="font-bold text-sm" 
-                x-text="realtime.health?.services?.redis === 'ok' ? '✅ Ishlamoqda' : '❌ Xato'">
+        <div class="p-4 bg-dark-bg border border-dark-border rounded-xl flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="w-2 h-2 rounded-full" :class="realtime.health?.redis ? 'bg-green-500' : 'bg-red-500'"></div>
+                <span class="text-dark-muted font-medium">Redis Cache</span>
+            </div>
+            <span :class="realtime.health?.redis ? 'text-green-500' : 'text-red-500'"
+                class="font-bold text-sm bg-dark-card px-2 py-1 rounded border border-dark-border"
+                x-text="realtime.health?.redis ? 'ONLINE' : 'ERROR'">
             </span>
         </div>
-        
+
         <!-- Celery -->
-        <div class="p-4 bg-gray-50 rounded-lg flex items-center justify-between">
-            <span class="text-gray-600 font-medium">Celery Workers</span>
-            <span class="font-bold text-sm text-blue-500" 
+        <div class="p-4 bg-dark-bg border border-dark-border rounded-xl flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></div>
+                <span class="text-dark-muted font-medium">Celery Workers</span>
+            </div>
+            <span class="font-bold text-sm text-blue-400 bg-dark-card px-2 py-1 rounded border border-dark-border"
                 x-text="(realtime.celery?.worker_count || 0) + ' active'">
             </span>
         </div>
@@ -131,90 +166,139 @@
 
 <!-- Dashboard Logic -->
 <script>
-function dashboardApp() {
-    return {
-        stats: {},
-        realtime: {},
-        tripsChart: null,
-        revenueChart: null,
+    function dashboardApp() {
+        return {
+            stats: {},
+            realtime: {},
+            tripsChart: null,
+            revenueChart: null,
 
-        async init() {
-            await this.refreshData();
-            // Ma'lumotlarni avtomatik yangilab turish
-            setInterval(() => this.refreshData(), 30000); 
-        },
+            async init() {
+                // Chart defaults for dark theme
+                Chart.defaults.color = '#94a3b8';
+                Chart.defaults.borderColor = '#334155';
 
-        async refreshData() {
-            const [statsRes, healthRes, tripsChartRes, revenueChartRes] = await Promise.all([
-                this.apiCall('/api/dashboard/stats'),
-                this.apiCall('/api/dashboard/realtime'),
-                this.apiCall('/api/dashboard/charts/trips?days=7'),
-                this.apiCall('/api/dashboard/charts/revenue?days=7')
-            ]);
+                await this.refreshData();
+                setInterval(() => this.refreshData(), 30000);
+            },
 
-            if (statsRes) this.stats = statsRes.stats;
-            if (healthRes) this.realtime = healthRes.realtime;
-            
-            if (tripsChartRes) this.renderTripsChart(tripsChartRes.chart_data);
-            if (revenueChartRes) this.renderRevenueChart(revenueChartRes.chart_data);
-        },
+            async refreshData() {
+                const [statsRes, healthRes, tripsChartRes, revenueChartRes] = await Promise.all([
+                    this.apiCall('/api/dashboard/stats'),
+                    this.apiCall('/api/dashboard/realtime'),
+                    this.apiCall('/api/dashboard/charts/trips?days=7'),
+                    this.apiCall('/api/dashboard/charts/revenue?days=7')
+                ]);
 
-        async apiCall(url) {
-            try {
-                const response = await fetch(url);
-                if (response.status === 401 || response.status === 403) {
-                    window.location.href = '/login';
+                if (statsRes) this.stats = statsRes.stats;
+                if (healthRes) this.realtime = healthRes.realtime;
+
+                if (tripsChartRes) this.renderTripsChart(tripsChartRes.chart_data);
+                if (revenueChartRes) this.renderRevenueChart(revenueChartRes.chart_data);
+            },
+
+            async apiCall(url) {
+                try {
+                    const response = await fetch(url);
+                    if (response.status === 401 || response.status === 403) {
+                        window.location.href = '/login';
+                        return null;
+                    }
+                    return await response.json();
+                } catch (e) {
+                    console.error("API Error:", e);
                     return null;
                 }
-                return await response.json();
-            } catch (e) {
-                console.error("API Error:", e);
-                return null;
+            },
+
+            renderTripsChart(data) {
+                const ctx = document.getElementById('tripsChart').getContext('2d');
+
+                // Gradient
+                const gradient = ctx.createLinearGradient(0, 0, 0, 400);
+                gradient.addColorStop(0, 'rgba(59, 130, 246, 0.5)'); // Blue start
+                gradient.addColorStop(1, 'rgba(59, 130, 246, 0.0)'); // Transparent end
+
+                if (this.tripsChart) this.tripsChart.destroy();
+                this.tripsChart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: data.map(d => d.date),
+                        datasets: [{
+                            label: 'Safarlar',
+                            data: data.map(d => d.trips),
+                            borderColor: '#3b82f6',
+                            backgroundColor: gradient,
+                            fill: true,
+                            tension: 0.4,
+                            borderWidth: 3,
+                            pointBackgroundColor: '#1e293b',
+                            pointBorderColor: '#3b82f6',
+                            pointBorderWidth: 2,
+                            pointRadius: 4
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: false }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                grid: { color: '#334155', borderDash: [5, 5] },
+                                ticks: { color: '#94a3b8' }
+                            },
+                            x: {
+                                grid: { display: false },
+                                ticks: { color: '#94a3b8' }
+                            }
+                        }
+                    }
+                });
+            },
+
+            renderRevenueChart(data) {
+                const ctx = document.getElementById('revenueChart').getContext('2d');
+                if (this.revenueChart) this.revenueChart.destroy();
+                this.revenueChart = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: data.map(d => d.date),
+                        datasets: [{
+                            label: 'Daromad',
+                            data: data.map(d => d.revenue),
+                            backgroundColor: '#f59e0b',
+                            borderRadius: 6,
+                            hoverBackgroundColor: '#fbbf24'
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: false }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                grid: { color: '#334155', borderDash: [5, 5] },
+                                ticks: { callback: (value) => value.toLocaleString(), color: '#94a3b8' }
+                            },
+                            x: {
+                                grid: { display: false },
+                                ticks: { color: '#94a3b8' }
+                            }
+                        }
+                    }
+                });
+            },
+
+            formatMoney(amount) {
+                return new Intl.NumberFormat('uz-UZ').format(amount) + ' so\'m';
             }
-        },
-
-        renderTripsChart(data) {
-            const ctx = document.getElementById('tripsChart').getContext('2d');
-            if (this.tripsChart) this.tripsChart.destroy();
-            this.tripsChart = new Chart(ctx, {
-                type: 'line',
-                data: {
-                    labels: data.map(d => d.date),
-                    datasets: [{
-                        label: 'Safarlar',
-                        data: data.map(d => d.trips),
-                        borderColor: '#3b82f6',
-                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
-                        fill: true,
-                        tension: 0.4
-                    }]
-                },
-                options: { responsive: true, plugins: { legend: { display: false } } }
-            });
-        },
-
-        renderRevenueChart(data) {
-            const ctx = document.getElementById('revenueChart').getContext('2d');
-            if (this.revenueChart) this.revenueChart.destroy();
-            this.revenueChart = new Chart(ctx, {
-                type: 'bar',
-                data: {
-                    labels: data.map(d => d.date),
-                    datasets: [{
-                        label: 'Daromad',
-                        data: data.map(d => d.revenue),
-                        backgroundColor: '#f59e0b',
-                        borderRadius: 6
-                    }]
-                },
-                options: { responsive: true, plugins: { legend: { display: false } } }
-            });
-        },
-
-        formatMoney(amount) {
-            return new Intl.NumberFormat('uz-UZ').format(amount) + ' so\'m';
         }
     }
-}
 </script>
 {% endblock %}

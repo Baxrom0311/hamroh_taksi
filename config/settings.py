@@ -179,6 +179,16 @@ class Settings(BaseSettings):
     SMS_RATE_LIMIT_PER_HOUR: int = 3  # Soatiga max 3 ta SMS
     MAX_DRIVER_REJECTS_PER_DAY: int = 50  # Kuniga max 50 ta rad etish
     
+    DRIVER_INACTIVITY_THRESHOLD: int = 2  # Necha marta javob bermasa queue'dan chiqadi
+    
+    # ============================================
+    # SUPPORT SOZLAMALARI
+    # ============================================
+    
+    SUPPORT_PHONE: str = "+998 93 558 03 11"
+    SUPPORT_USERNAME: str = "@Bakhromdev"
+    WORKING_HOURS: str = "9:00 - 21:00"
+    
     # ============================================
     # DISTRIBUTED LOCK SOZLAMALARI
     # ============================================
@@ -300,6 +310,16 @@ class Settings(BaseSettings):
                 f"MAX_DRIVER_REJECTS_PER_DAY juda katta! "
                 f"Kiritilgan: {v}. Maksimal: 200"
             )
+        return v
+    
+    @field_validator('DRIVER_INACTIVITY_THRESHOLD')
+    @classmethod
+    def validate_inactivity_threshold(cls, v: int) -> int:
+        """Threshold 1-10 oralig'ida bo'lishi kerak"""
+        if v < 1:
+            raise ValueError(f"DRIVER_INACTIVITY_THRESHOLD kamida 1 bo'lishi kerak! Kiritilgan: {v}")
+        if v > 10:
+            raise ValueError(f"DRIVER_INACTIVITY_THRESHOLD juda katta! Kiritilgan: {v}")
         return v
     
     @field_validator('ORDER_LOCK_TIMEOUT_SECONDS')

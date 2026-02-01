@@ -646,6 +646,26 @@ async def start_trip(order_id: int, driver_id: int) -> dict:
             
             logger.info(f"✅ Trip started (atomic): order_id={order_id}, driver_id={driver_id}")
             
+            # ✅ REFACTORED: Remove driver from queue when trip starts
+            # This ensures queue moves forward and notifies others
+            try:
+                # Get route_id for queue cleanup
+                order_route_id = order.route_id if order else None
+                if not order_route_id and trip_id:
+                     trip_q = await session.execute(select(Trip.route_id).where(Trip.trip_id == trip_id))
+                     order_route_id = trip_q.scalar_one_or_none()
+
+                if order_route_id:
+                    from app.services.queue_service import driver_queue
+                    from app.tasks.matching import notify_queue_update_task, clear_queue_message_task, remove_driver_from_queue_task
+                    
+                    # Async taskga beramiz (tez ishlashi uchun)
+                    remove_driver_from_queue_task.delay(driver_id, order_route_id) # type: ignore
+                    
+                    logger.info(f"Driver {driver_id} cleanup scheduled for route {order_route_id}")
+            except Exception as qc_e:
+                logger.error(f"Failed to schedule queue cleanup: {qc_e}")
+
             return {
                 'success': True,
                 'message': '✅ Safar boshlandi! Xavfsiz yo\'l!'
@@ -897,7 +917,6 @@ async def _start_trip_sync(session: AsyncSession, trip_id: int, driver_id: int) 
                     chat_id=order.passenger.user.user_id,
                     text=(
                         "✅ <b>Safar boshlandi</b>\n\n"
-                        f"📦 Buyurtma #{order.order_id}\n"
                         f"🚗 Haydovchi: {driver.full_name if driver else 'N/A'}\n"
                         f"🚙 Mashina: {driver.car_model if driver else 'N/A'}\n"
                         "⏱ 10 daqiqadan so'ng avtomatik yakunlanadi."

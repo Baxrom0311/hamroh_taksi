@@ -216,10 +216,10 @@ async def route_selected(callback: CallbackQuery, state: FSMContext):
     """
     Haydovchi marshrut tanladi
     """
-    if callback.data is None:
+    route_id = parse_callback_data(callback.data, "select_route")
+    if route_id is None:
         await callback.answer("❌ Xatolik: Ma'lumot topilmadi")
         return
-    route_id = int(callback.data.split(":")[1])
     
     await state.update_data(route_id=route_id)
     await callback.message.edit_text( # type: ignore
@@ -247,10 +247,10 @@ async def seats_selected(callback: CallbackQuery, session: AsyncSession, driver:
     
     ✅ REFACTORED: Session va driver avtomatik
     """
-    if callback.data is None:
+    seats = parse_callback_data(callback.data, "select_seats")
+    if seats is None:
         await callback.answer(Messages.Error.CALLBACK_DATA_MISSING)
         return
-    seats = int(callback.data.split(":")[1])
     
     data = await state.get_data()
     route_id = data.get('route_id')
@@ -309,9 +309,9 @@ async def seats_selected(callback: CallbackQuery, session: AsyncSession, driver:
 
 @router.message(
     DriverStates.waiting_orders,
-    F.text == " To'xtatish"
+    F.text == "🛑 To'xtatish"
 )
-@router.message(F.text == " To'xtatish") 
+@router.message(F.text == "🛑 To'xtatish") 
 @with_driver_session  # ✅ Decorator
 async def stop_accepting_orders(message: Message, session: AsyncSession, driver: Driver, state: FSMContext):
     """

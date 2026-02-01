@@ -15,6 +15,7 @@ ISHLATISH:
 from app.core.database import get_session
 from sqlalchemy.orm import selectinload # SHUNI QO'SHING
 
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, Depends, HTTPException, status, Form
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -37,12 +38,42 @@ from app.core.metrics import API_RESPONSE_TIME
 # FASTAPI APP
 # ============================================
 
+# Lifespan context manager (replaces deprecated on_event)
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Application lifespan handler"""
+    # === STARTUP ===
+    logger.info("🚀 Admin panel starting...")
+    
+    from app.core.database import init_database
+    await init_database()
+    
+    from app.core.redis_client import init_redis
+    await init_redis()
+    
+    logger.success("✅ Admin panel started!")
+    
+    yield  # Application runs here
+    
+    # === SHUTDOWN ===
+    logger.info("🔄 Admin panel shutting down...")
+    
+    from app.core.database import close_database
+    await close_database()
+    
+    from app.core.redis_client import close_redis
+    await close_redis()
+    
+    logger.info("✅ Admin panel stopped!")
+
+
 app = FastAPI(
     title="Hamroh Admin Panel",
     description="Taxi bot admin panel",
     version="1.0.0",
-    docs_url="/docs" if settings.is_development else None,
-    redoc_url="/redoc" if settings.is_development else None
+    docs_url="/admin/docs",  # Available in all environments
+    redoc_url="/admin/redoc",
+    lifespan=lifespan,
 )
 
 
@@ -661,39 +692,8 @@ async def general_exception_handler(request: Request, exc: Exception):
 
 
 # ============================================
-# STARTUP / SHUTDOWN
+# STARTUP / SHUTDOWN (handled by lifespan above)
 # ============================================
-
-@app.on_event("startup")
-async def startup():
-    """Application startup"""
-    logger.info("🚀 Admin panel starting...")
-    
-    # Database
-    from app.core.database import init_database
-    await init_database()
-    
-    # Redis
-    from app.core.redis_client import init_redis
-    await init_redis()
-    
-    logger.success("✅ Admin panel started!")
-
-
-@app.on_event("shutdown")
-async def shutdown():
-    """Application shutdown"""
-    logger.info("🔄 Admin panel shutting down...")
-    
-    # Database
-    from app.core.database import close_database
-    await close_database()
-    
-    # Redis
-    from app.core.redis_client import close_redis
-    await close_redis()
-    
-    logger.info("✅ Admin panel stopped!")
 
 
 # ============================================

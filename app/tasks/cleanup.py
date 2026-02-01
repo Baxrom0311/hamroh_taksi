@@ -80,8 +80,57 @@ async def daily_cleanup():
         'deleted_logs': deleted_logs,
         'deleted_orders': deleted_orders
     }
+
+
+# ============================================
+# NIGHTLY DRIVER RESET (har kuni 03:00)
+# ============================================
+
+@celery_app.task
+@async_to_sync
+async def nightly_driver_reset():
+    """
+    Tungi 3:00 da barcha driverlarni reset qilish
     
+    NIMA QILADI:
+    1. is_active = False (agar is_on_trip=False bo'lsa)
+    2. Navbatdan o'chirish
+    3. Inactivity counter tozalash
     
+    MAQSAD:
+    - Eskirgan sessiyalarni tozalash
+    - Navbatni kattalashishini oldini olish
+    """
+    logger.info("🌙 Starting nightly driver reset...")
+    
+    async with get_session() as session:
+        # 1. Safardalik bo'lmagan driverlarni deactivate qilish
+        result = await session.execute(
+            update(Driver)
+            .where(Driver.is_active == True)
+            .where(Driver.is_on_trip == False)  # Safarda bo'lganlarni o'zgartirmaymiz
+            .values(
+                is_active=False,
+                current_route_id=None,
+                available_seats=0
+            )
+        )
+        deactivated = result.rowcount
+        await session.commit()
+    
+    # 2. Barcha navbatlarni tozalash
+    from app.services.queue_service import driver_queue
+    queues_cleared = await driver_queue.remove_all_drivers_from_queues()
+    
+    logger.success(
+        f"✅ Nightly reset: {deactivated} drivers deactivated, "
+        f"{queues_cleared} queues cleared"
+    )
+    
+    return {
+        'deactivated_drivers': deactivated,
+        'queues_cleared': queues_cleared
+    }
 
 
 # ============================================
@@ -368,6 +417,7 @@ async def manual_cleanup_orders(days: int = 30):
 
 __all__ = [
     'daily_cleanup',
+    'nightly_driver_reset',
     'reset_daily_ban_counts',
     'reset_hourly_cancellation_counts',
     'generate_daily_statistics',

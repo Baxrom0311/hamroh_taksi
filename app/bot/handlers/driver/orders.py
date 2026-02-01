@@ -40,10 +40,10 @@ router = Router()
 @with_driver_session  # ✅ Decorator
 async def accept_order_handler(callback: CallbackQuery, session: AsyncSession, driver: Driver, state: FSMContext):
     
-    if callback.data is None:
+    order_id = parse_callback_data(callback.data, "accept_order")
+    if order_id is None:
         await callback.answer(Messages.Error.CALLBACK_DATA_MISSING)
         return
-    order_id = int(callback.data.split(":")[1])
     # ❗ Bloklangan?
     if driver.is_blocked:
         await callback.answer(
@@ -56,6 +56,15 @@ async def accept_order_handler(callback: CallbackQuery, session: AsyncSession, d
     result = await accept_order_by_driver(driver_id=driver.driver_id, order_id=order_id)
     
     if result['success']:
+        # ✅ Clear inactivity counter (driver javob berdi)
+        from app.services.queue_service import driver_queue
+        order_route_id = result.get('order', {}).get('route_id') or driver.current_route_id
+        if order_route_id:
+            await driver_queue.clear_driver_inactivity(driver.driver_id, order_route_id)
+        
+        # ✅ Unlock driver offer (accepted)
+        await driver_queue.unlock_driver_offer(driver.driver_id)
+        
         # ✅ SESSION REFRESH: Fresh data olish (balance, available_seats)
         from app.utils.session_utils import refresh_model
         await refresh_model(session, driver)
@@ -305,7 +314,6 @@ async def driver_started_trip(message: Message, session: AsyncSession, driver: D
         # Haydovchiga xabar (Safar menyusi)
         await message.answer(
             f"✅ <b>Safar boshlandi!</b>\n\n"
-            f"📦 Buyurtma #{order.order_id}\n\n"
             f"⏱ <b>10 daqiqadan so'ng</b> safar avtomatik yakunlanadi.\n"
             f"Unga qadar '📞 Yo'lovchi bilan bog'lanish' tugmasidan foydalanishingiz mumkin.",
             reply_markup=get_trip_active_keyboard(order.order_id),
@@ -323,9 +331,7 @@ async def driver_started_trip(message: Message, session: AsyncSession, driver: D
             try:
                 await bot.send_message(
                     chat_id=order.passenger.user.user_id,  # ✅ Tuzatildi
-                    text=f"✅ <b>Haydovchi yo'lga chiqdi!</b>\n\n"
-                         f"📦 Buyurtma #{order_id}\n\n"
-                         f"🚗 Xavfsiz yo'l!",
+                    text=f"✅ <b>Haydovchi yo'lga chiqdi!</b>\n\n",
                     parse_mode="HTML"
                 )
             except Exception as e:
@@ -477,7 +483,6 @@ async def manual_complete_trip(message: Message, session: AsyncSession, driver: 
                 chat_id=passenger_user_id,
                 text=(
                     f"✅ <b>Safar yakunlandi</b>\n\n"
-                    f"📦 Buyurtma #{oid}\n"
                     f"✨ <b>Haydovchiga baho bering:</b>"
                 ),
                 parse_mode="HTML",
@@ -649,7 +654,6 @@ async def cancel_order_handler(message: Message, session: AsyncSession, driver: 
         await state.update_data(cancel_order_id=order.order_id)
         await message.answer(
             "⚠️ <b>Buyurtmani bekor qilmoqchimisiz?</b>\n\n"
-            f"📦 Buyurtma #{order.order_id}\n\n"
             "Bu jiddiy harakat! Agar bekor qilsangiz:\n"
             "• Komissiya qaytarilmaydi\n"
             "• Warning olasiz\n"
@@ -673,17 +677,15 @@ async def cancel_order_handler(message: Message, session: AsyncSession, driver: 
 @router.callback_query(F.data.startswith("cancel_order_select:"))
 async def cancel_order_select_handler(callback: CallbackQuery, state: FSMContext):
     """Bekor qilish uchun buyurtma tanlandi"""
-    if callback.data is None:
+    order_id = parse_callback_data(callback.data, "cancel_order_select")
+    if order_id is None:
         await callback.answer("Xatolik: data mavjud emas")
         return
-    
-    order_id = int(callback.data.split(":")[1])
     await state.update_data(cancel_order_id=order_id)
     
     if isinstance(callback.message, Message):
         await callback.message.edit_text(
             "⚠️ <b>Buyurtmani bekor qilmoqchimisiz?</b>\n\n"
-            f"📦 Buyurtma #{order_id}\n\n"
             "Bu jiddiy harakat! Agar bekor qilsangiz:\n"
             "• Komissiya qaytarilmaydi\n"
             "• Warning olasiz\n"
@@ -768,7 +770,6 @@ async def confirm_cancellation(message: Message, session: AsyncSession, driver: 
             await bot.send_message(
                 chat_id=order.passenger.user.user_id,
                 text=f"❌ <b>Buyurtma bekor qilindi</b>\n\n"
-                     f"📦 Buyurtma #{order_id}\n\n"
                      f"Haydovchi buyurtmani bekor qildi.\n"
                      f"Yangi haydovchi topilmoqda...",
                 parse_mode="HTML"
@@ -798,11 +799,10 @@ async def reject_order_handler(callback: CallbackQuery, session: AsyncSession, d
     
     ✅ REFACTORED: Session va driver avtomatik
     """
-    if callback.data is None:
+    order_id = parse_callback_data(callback.data, "reject_order")
+    if order_id is None:
         await callback.answer(Messages.Error.CALLBACK_DATA_MISSING)
         return
-    
-    order_id = int(callback.data.split(":")[1])
     
     # ❗ Bloklangan?
     if driver.is_blocked:
@@ -831,9 +831,16 @@ async def reject_order_handler(callback: CallbackQuery, session: AsyncSession, d
         await callback.answer("Kunlik limit yetdi", show_alert=True)
         return
     
+    # ✅ Unlock driver offer (rejected)
+    await driver_queue.unlock_driver_offer(driver.driver_id)
+    
     # 1. Rad etishni sanash va skip qilish
     await driver_queue.track_driver_reject(driver.driver_id)
     await driver_queue.skip_driver_for_order(driver.driver_id, order_id)
+    
+    # ✅ Clear inactivity counter (driver javob berdi)
+    if driver.current_route_id:
+        await driver_queue.clear_driver_inactivity(driver.driver_id, driver.current_route_id)
     
     # 2. Xabarni yangilash
     if callback.message and isinstance(callback.message, Message):

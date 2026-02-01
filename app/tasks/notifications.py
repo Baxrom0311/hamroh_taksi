@@ -421,7 +421,6 @@ async def notify_trip_completed(order_id: int):
         driver_text = f"""
 🎉 <b>Safar yakunlandi!</b>
 
-📦 Buyurtma #{order_id}
 ⏱ Davomiyligi: {order.duration_minutes or 0} daqiqa
 
 ✨ Rahmat! Keyingi safarga muvaffaqiyat tilaymiz!

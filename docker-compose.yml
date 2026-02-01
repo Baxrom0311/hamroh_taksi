@@ -12,7 +12,7 @@ services:
       - "5433:5432"
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U hamroh_user"]
+      test: [ "CMD-SHELL", "pg_isready -U hamroh_user" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -20,14 +20,14 @@ services:
   redis:
     image: redis:7-alpine
     container_name: hamroh_redis
-    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD}"]
+    command: [ "redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD}" ]
     volumes:
       - redis_data:/data
     ports:
       - "6379:6379"
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: [ "CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping" ]
       interval: 10s
       timeout: 3s
       retries: 3
@@ -37,21 +37,31 @@ services:
     container_name: hamroh_bot
     command: python -m app.bot.main
     depends_on:
-      - postgres
-      - redis
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     env_file:
       - .env
     volumes:
       - ./logs:/app/logs
     restart: unless-stopped
+    healthcheck:
+      test: [ "CMD", "python", "-c", "import redis; r = redis.Redis(host='redis', port=6379, password='${REDIS_PASSWORD}'); r.ping()" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
 
   celery_worker:
     build: .
     container_name: hamroh_celery
     command: celery -A app.core.celery_app worker --loglevel=info --concurrency=4
     depends_on:
-      - postgres
-      - redis
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     env_file:
       - .env
     volumes:
@@ -63,7 +73,8 @@ services:
     container_name: hamroh_celery_beat
     command: celery -A app.core.celery_app beat --loglevel=info
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
     env_file:
       - .env
     restart: unless-stopped
@@ -73,8 +84,10 @@ services:
     container_name: hamroh_flower
     command: celery -A app.core.celery_app flower --port=5555 --basic_auth=${FLOWER_USER}:${FLOWER_PASSWORD}
     depends_on:
-      - redis
-      - celery_worker
+      redis:
+        condition: service_healthy
+      celery_worker:
+        condition: service_started
     env_file:
       - .env
     ports:
@@ -86,74 +99,22 @@ services:
     container_name: hamroh_admin
     command: uvicorn app.admin.main:app --host 0.0.0.0 --port 8000
     depends_on:
-      - postgres
-      - redis
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     env_file:
       - .env
     ports:
       - "8000:8000"
     restart: unless-stopped
-    # Exposes /metrics for Prometheus scraping
-
-  prometheus:
-    image: prom/prometheus:v2.55.1
-    container_name: hamroh_prometheus
-    volumes:
-      - ./config/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - prom_data:/prometheus
-    command:
-      - --config.file=/etc/prometheus/prometheus.yml
-    ports:
-      - "9090:9090"
-    restart: unless-stopped
-    depends_on:
-      - admin_panel
-      - node_exporter
-
-  grafana:
-    image: grafana/grafana:11.1.2
-    container_name: hamroh_grafana
-    environment:
-      - GF_SECURITY_ADMIN_USER=admin
-      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
-      - GF_INSTALL_PLUGINS=redis-datasource
-
-    volumes:
-      - grafana_data:/var/lib/grafana
-      - ./config/grafana/datasources:/etc/grafana/provisioning/datasources:ro
-    ports:
-      - "3000:3000"
-    restart: unless-stopped
-    depends_on:
-      - prometheus
-
-  redis_exporter:
-    image: oliver006/redis_exporter:v1.62.0
-    container_name: hamroh_redis_exporter
-    env_file:
-      - .env
-    command:
-      - '--redis.addr=redis://:${REDIS_PASSWORD}@redis:6379'
-    ports:
-      - "9121:9121"
-    restart: unless-stopped
-    depends_on:
-      - redis
-
-  node_exporter:
-    image: prom/node-exporter:v1.8.1
-    container_name: hamroh_node_exporter
-    command: ["--path.rootfs=/host"]
-    volumes:
-      - /:/host:ro,rslave
-    ports:
-      - "9100:9100"
-    restart: unless-stopped
-
-
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8000/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
 
 volumes:
   postgres_data:
   redis_data:
-  prom_data:
-  grafana_data:

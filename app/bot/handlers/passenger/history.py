@@ -79,10 +79,9 @@ async def navigate_history(callback: CallbackQuery, session: AsyncSession, passe
     """
     Safar tarixi sahifalari orasida navigatsiya
     """
-    if not callback.data:
+    page = parse_callback_data(callback.data, "history_page")
+    if page is None:
         return
-    
-    page = int(callback.data.split(":")[1])
     
     # Offset va limit
     offset = page * ITEMS_PER_PAGE

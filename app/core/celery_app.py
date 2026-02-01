@@ -234,6 +234,15 @@ celery_app.conf.beat_schedule = {
         'schedule': 300.0,  # 5 daqiqa (soniya)
         'options': {'queue': 'high_priority'}
     },
+    
+    # ============================================
+    # Nightly driver reset (har kuni 03:00 da)
+    # ============================================
+    'nightly-driver-reset': {
+        'task': 'app.tasks.cleanup.nightly_driver_reset',
+        'schedule': crontab(hour="3", minute="0"),  # 03:00
+        'options': {'queue': 'low_priority'}
+    },
 }
 
 

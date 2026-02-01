@@ -39,7 +39,7 @@ def get_driver_active_keyboard():
     """Aktiv haydovchi"""
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text=" To'xtatish", callback_data="pause_driver")],
+            [InlineKeyboardButton(text="🛑 To'xtatish", callback_data="pause_driver")],
             [InlineKeyboardButton(text="📊 Statistika", callback_data="driver_stats")]
         ]
     )

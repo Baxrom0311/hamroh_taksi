@@ -116,7 +116,10 @@ async def change_car_handler(callback: CallbackQuery, session: AsyncSession, pas
     if not callback.data:
         await callback.answer("Xatolik")
         return
-    order_id = int(callback.data.split(":")[1])
+    order_id = parse_callback_data(callback.data, "change_car")
+    if order_id is None:
+        await callback.answer("Xatolik: noto'g'ri format")
+        return
     # Order'ni tekshirish
     order = await get_order_by_id(session, order_id)
     if not order or order.passenger_id != passenger.passenger_id:

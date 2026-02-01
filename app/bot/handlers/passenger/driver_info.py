@@ -37,11 +37,10 @@ async def change_driver_handler(callback: CallbackQuery, session: AsyncSession, 
     
     ✅ REFACTORED: Session va passenger avtomatik
     """
-    if callback.data is None:
+    order_id = parse_callback_data(callback.data, "change_driver")
+    if order_id is None:
         await callback.answer("Xatolik: data mavjud emas")
         return
-    
-    order_id = int(callback.data.split(":")[1])
     
     # Order'ni olish
     order = await get_order_by_id(session, order_id)
@@ -121,13 +120,11 @@ async def select_new_driver_handler(callback: CallbackQuery, session: AsyncSessi
     
     ✅ REFACTORED: Session va passenger avtomatik
     """
-    if callback.data is None:
+    result = parse_callback_multi(callback.data, "select_new_driver", 2)
+    if result is None:
         await callback.answer("Xatolik: data mavjud emas")
         return
-    
-    parts = callback.data.split(":")
-    order_id = int(parts[1])
-    new_driver_id = int(parts[2])
+    order_id, new_driver_id = result
     
     # Order'ni olish
     order = await get_order_by_id(session, order_id)
@@ -201,7 +198,6 @@ async def select_new_driver_handler(callback: CallbackQuery, session: AsyncSessi
                 await bot.send_message(
                     chat_id=old_driver.user_id,
                     text=f"🔄 <b>Mashina almashtirildi</b>\n\n"
-                         f"📦 Buyurtma #{order_id}\n\n"
                          f"Yo'lovchi boshqa haydovchini tanladi.\n"
                          f"Yangi buyurtmalarni qabul qilishingiz mumkin.",
                     parse_mode="HTML"
@@ -223,7 +219,6 @@ async def select_new_driver_handler(callback: CallbackQuery, session: AsyncSessi
     if callback.message  and isinstance(callback.message, Message):
         await callback.message.edit_text(
             f"✅ <b>Yangi haydovchi tanlandi!</b>\n\n"
-            f"📦 Buyurtma #{order_id}\n\n"
             f"👤 Haydovchi: {new_driver.full_name}\n"
             f"🚗 Mashina: {new_driver.car_model} ({new_driver.car_color})\n"
             f"🔢 Raqam: {new_driver.car_number}\n\n"
@@ -251,11 +246,10 @@ async def ban_driver_handler(callback: CallbackQuery, session: AsyncSession, pas
     
     ✅ REFACTORED: Session va passenger avtomatik
     """
-    if callback.data is None:
+    order_id = parse_callback_data(callback.data, "ban_driver")
+    if order_id is None:
         await callback.answer("Xatolik: data mavjud emas")
         return
-    
-    order_id = int(callback.data.split(":")[1])
     
     # Order'ni olish
     order = await get_order_by_id(session, order_id)
@@ -332,11 +326,10 @@ async def view_driver_info(callback: CallbackQuery, session: AsyncSession):
     """
     Haydovchi ma'lumotlarini ko'rish - ✅ REFACTORED
     """
-    if callback.data is None:
+    order_id = parse_callback_data(callback.data, "view_driver")
+    if order_id is None:
         await callback.answer("Xatolik: data mavjud emas")
         return
-    
-    order_id = int(callback.data.split(":")[1])
     
     order = await get_order_by_id(session, order_id)
     

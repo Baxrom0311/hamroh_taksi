@@ -103,6 +103,12 @@ async def get_system_settings(
                     'sms_rate_limit_per_day': settings_dict.get('sms_rate_limit_per_day', str(config_settings.SMS_RATE_LIMIT_PER_DAY)),
                     'sms_rate_limit_per_hour': settings_dict.get('sms_rate_limit_per_hour', str(config_settings.SMS_RATE_LIMIT_PER_HOUR)),
                     'max_driver_rejects_per_day': settings_dict.get('max_driver_rejects_per_day', str(config_settings.MAX_DRIVER_REJECTS_PER_DAY)),
+                    'driver_inactivity_threshold': settings_dict.get('driver_inactivity_threshold', str(config_settings.DRIVER_INACTIVITY_THRESHOLD)),
+                    
+                    # Support
+                    'support_phone': settings_dict.get('support_phone', config_settings.SUPPORT_PHONE),
+                    'support_username': settings_dict.get('support_username', config_settings.SUPPORT_USERNAME),
+                    'working_hours': settings_dict.get('working_hours', config_settings.WORKING_HOURS),
                     
                     # Celery Timing
                     'auto_complete_trip_seconds': settings_dict.get('auto_complete_trip_seconds', str(config_settings.AUTO_COMPLETE_TRIP_SECONDS)),
@@ -111,6 +117,8 @@ async def get_system_settings(
                     'driver_matching_timeout_seconds': settings_dict.get('driver_matching_timeout_seconds', str(config_settings.DRIVER_MATCHING_TIMEOUT_SECONDS)),
                     'driver_matching_max_retries': settings_dict.get('driver_matching_max_retries', str(config_settings.DRIVER_MATCHING_MAX_RETRIES)),
                     'driver_matching_retry_delay_seconds': settings_dict.get('driver_matching_retry_delay_seconds', str(config_settings.DRIVER_MATCHING_RETRY_DELAY_SECONDS)),
+                    'auto_start_trip_delay_seconds': settings_dict.get('auto_start_trip_delay_seconds', str(config_settings.AUTO_START_TRIP_DELAY_SECONDS)),
+                    'task_retry_delay_seconds': settings_dict.get('task_retry_delay_seconds', str(config_settings.TASK_RETRY_DELAY_SECONDS)),
                     
                     # Lock Settings
                     'order_lock_timeout_seconds': settings_dict.get('order_lock_timeout_seconds', str(config_settings.ORDER_LOCK_TIMEOUT_SECONDS)),

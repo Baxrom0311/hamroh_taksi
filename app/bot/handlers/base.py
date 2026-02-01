@@ -16,7 +16,8 @@ from app.models.user import User, UserRole, get_user_by_id
 from app.models.driver import Driver, get_driver_by_user_id
 from app.models.passenger import Passenger, get_passenger_by_user_id
 from app.bot.utils import (
-    get_driver_or_error, get_passenger_or_error, get_order_or_error
+    get_driver_or_error, get_passenger_or_error, get_order_or_error,
+    parse_callback_data, parse_callback_str, parse_callback_multi  # ✅ Safe callback parsing
 )
 
 __all__ = [
@@ -28,5 +29,6 @@ __all__ = [
     'Messages', 'User', 'UserRole', 'get_user_by_id', 'Driver', 
     'get_driver_by_user_id', 'Passenger', 'get_passenger_by_user_id',
     'get_driver_or_error', 'get_passenger_or_error', 'get_order_or_error',
-    'selectinload'
+    'selectinload', 'parse_callback_data', 'parse_callback_str', 'parse_callback_multi'
 ]
+

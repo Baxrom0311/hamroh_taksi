@@ -1,316 +1,476 @@
 {% extends "base.html" %}
 
 {% block title %}Yo'lovchilar | Hamroh Admin{% endblock %}
-{% block header_title %}Yo'lovchilar Ro'yxati{% endblock %}
+{% block header_title %}Yo'lovchilarni Boshqarish{% endblock %}
 
 {% block content %}
-<div class="p-8">
-    <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-        <table class="min-w-full divide-y divide-gray-200">
-            <thead class="bg-gray-50 text-gray-500 text-xs uppercase font-semibold">
-                <tr>
-                    <th class="px-6 py-4 text-left">F.I.SH / Telefon</th>
-                    <th class="px-6 py-4 text-left">Jinsi / Yoshi</th>
-                    <th class="px-6 py-4 text-left">Jami safarlar</th>
-                    <th class="px-6 py-4 text-left">Ro'yxatdan o'tgan</th>
-                    <th class="px-6 py-4 text-left">Holat</th>
-                    <th class="px-6 py-4 text-right">Amallar</th>
-                </tr>
-            </thead>
-            <tbody id="passengerRows" class="divide-y divide-gray-100">
-                {% for p in passengers %}
-                <tr class="hover:bg-gray-50 transition" data-row="{{ loop.index0 }}">
-                    <td class="px-6 py-4">
-                        <div class="text-sm font-bold text-gray-900">{{ p.full_name }}</div>
-                        <div class="text-xs text-gray-500">{{ p.phone_number }}</div>
-                    </td>
-                    <td class="px-6 py-4">
-                        <div class="text-sm text-gray-700">
-                            {% if p.gender %}
-                                {# Enum/string aralash bo'lishi mumkin #}
-                                {% set raw = p.gender.value if p.gender is not string and p.gender is not none else p.gender %}
-                                {% set g = (raw or '')|trim|lower %}
-                                {% set male_vals = ['male', 'erkak', 'm', 'man'] %}
-                                {% set female_vals = ['female', 'ayol', 'f', 'woman'] %}
-                                {% if g in male_vals %}
-                                    Erkak
-                                {% elif g in female_vals %}
-                                    Ayol
-                                {% else %}
-                                    -
-                                {% endif %}
-                            {% else %}
-                                -
-                            {% endif %}
-                        </div>
-                        <div class="text-xs text-gray-400">{{ p.age }} yosh</div>
-                    </td>
-                    <td class="px-6 py-4">
-                        <span class="px-3 py-1 bg-blue-50 text-blue-600 rounded-lg text-sm font-bold">
-                            {{ p.total_trips }} ta
-                        </span>
-                    </td>
-                    <td class="px-6 py-4 text-sm">
-                        {% if p.is_blocked %}
-                            <span class="px-3 py-1 bg-red-100 text-red-700 rounded-lg text-xs font-semibold">
-                                Bloklangan
-                            </span>
-                        {% else %}
-                            <span class="px-3 py-1 bg-green-100 text-green-700 rounded-lg text-xs font-semibold">
-                                Faol
-                            </span>
-                        {% endif %}
-                    </td>
-                    <td class="px-6 py-4 text-sm text-gray-500">{{ p.created_at }}</td>
-                    <td class="px-6 py-4 text-right space-x-2">
-                        <button 
-                            onclick="editPassenger({{ loop.index0 }})" 
-                            class="text-blue-500 hover:text-blue-700 p-1" 
-                            title="Tahrirlash"
-                        >✏️</button>
-                        {% if p.is_blocked %}
-                        <button 
-                            onclick="unblockPassenger({{ p.passenger_id }})" 
-                            class="text-green-500 hover:text-green-700 p-1" 
-                            title="Blokdan ochish"
-                        >✅</button>
-                        {% else %}
-                        <button 
-                            onclick="blockPassenger('{{ p.full_name }}', '{{ p.phone_number }}')" 
-                            class="text-red-500 hover:text-red-700 p-1" 
-                            title="Bloklash"
-                        >🚫</button>
-                        {% endif %}
-                    </td>
-                </tr>
-                {% else %}
-                <tr>
-                    <td colspan="6" class="px-6 py-20 text-center text-gray-400">Yo'lovchilar mavjud emas</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+<div class="space-y-6" x-data="passengersApp()" x-init="init()">
+
+    <!-- Stats Cards -->
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div class="bg-dark-card p-5 rounded-2xl shadow-lg border border-dark-border">
+            <p class="text-xs text-dark-muted font-medium uppercase tracking-wider">Jami</p>
+            <p class="text-2xl font-bold text-white mt-1" x-text="stats.total || 0"></p>
+        </div>
+        <div class="bg-dark-card p-5 rounded-2xl shadow-lg border border-dark-border">
+            <p class="text-xs text-green-400 font-medium uppercase tracking-wider">Aktiv (7 kun)</p>
+            <p class="text-2xl font-bold text-white mt-1" x-text="stats.active_last_week || 0"></p>
+        </div>
+        <div class="bg-dark-card p-5 rounded-2xl shadow-lg border border-dark-border">
+            <p class="text-xs text-blue-400 font-medium uppercase tracking-wider">Bugungi</p>
+            <p class="text-2xl font-bold text-white mt-1" x-text="stats.today_registrations || 0"></p>
+        </div>
+        <div class="bg-dark-card p-5 rounded-2xl shadow-lg border border-dark-border">
+            <p class="text-xs text-red-400 font-medium uppercase tracking-wider">Bloklangan</p>
+            <p class="text-2xl font-bold text-white mt-1" x-text="stats.blocked || 0"></p>
+        </div>
+    </div>
+
+    <!-- Filters & Search -->
+    <div
+        class="bg-dark-card p-4 rounded-2xl shadow-lg border border-dark-border flex flex-wrap items-center justify-between gap-4">
+        <div class="flex items-center gap-4 flex-1">
+            <div class="relative flex-1 max-w-md">
+                <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-dark-muted">🔍</span>
+                <input type="text" x-model="filters.search" @input.debounce.500ms="fetchPassengers()"
+                    class="block w-full pl-10 pr-3 py-2 bg-dark-bg border border-dark-border rounded-xl text-white placeholder-dark-muted focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition-all"
+                    placeholder="Ism yoki telefon raqam...">
+            </div>
+
+            <select x-model="filters.is_blocked" @change="fetchPassengers()"
+                class="bg-dark-bg border border-dark-border rounded-xl px-3 py-2 text-sm text-white focus:ring-2 focus:ring-blue-500 outline-none">
+                <option value="">Holat (Barchasi)</option>
+                <option value="false">✅ Faol</option>
+                <option value="true">🚫 Bloklangan</option>
+            </select>
+        </div>
+        <button @click="fetchPassengers()"
+            class="bg-dark-hover hover:bg-gray-700 text-white px-4 py-2 rounded-xl text-sm font-medium transition-colors border border-dark-border">
+            Yangilash
+        </button>
+    </div>
+
+    <!-- Passengers Table -->
+    <div class="bg-dark-card rounded-2xl shadow-lg border border-dark-border overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-dark-border">
+                <thead class="bg-dark-bg/50">
+                    <tr>
+                        <th class="px-6 py-4 text-left text-xs font-medium text-dark-muted uppercase tracking-wider">
+                            Yo'lovchi</th>
+                        <th class="px-6 py-4 text-left text-xs font-medium text-dark-muted uppercase tracking-wider">
+                            Jinsi / Yoshi</th>
+                        <th class="px-6 py-4 text-left text-xs font-medium text-dark-muted uppercase tracking-wider">
+                            Safarlar</th>
+                        <th class="px-6 py-4 text-left text-xs font-medium text-dark-muted uppercase tracking-wider">
+                            Holat</th>
+                        <th class="px-6 py-4 text-left text-xs font-medium text-dark-muted uppercase tracking-wider">
+                            Ro'yxatdan o'tdi</th>
+                        <th class="px-6 py-4 text-right text-xs font-medium text-dark-muted uppercase tracking-wider">
+                            Amallar</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-dark-border">
+                    <template x-for="p in passengers" :key="p.passenger_id">
+                        <tr class="hover:bg-dark-hover/50 transition-colors">
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <div class="flex items-center">
+                                    <div class="h-10 w-10 flex-shrink-0 bg-purple-500/10 rounded-full flex items-center justify-center text-purple-400 font-bold border border-purple-500/20"
+                                        x-text="p.full_name[0]"></div>
+                                    <div class="ml-4">
+                                        <div class="text-sm font-medium text-white" x-text="p.full_name"></div>
+                                        <div class="text-sm text-dark-muted" x-text="p.phone_number"></div>
+                                    </div>
+                                </div>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <div class="text-sm text-white" x-text="p.gender === 'male' ? 'Erkak' : 'Ayol'"></div>
+                                <div class="text-xs text-dark-muted" x-text="p.age ? p.age + ' yosh' : '-'"></div>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <span
+                                    class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20"
+                                    x-text="p.total_trips + ' ta'"></span>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <template x-if="p.is_blocked">
+                                    <span
+                                        class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-500/10 text-red-400 border border-red-500/20">Bloklangan</span>
+                                </template>
+                                <template x-if="!p.is_blocked">
+                                    <span
+                                        class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-500/10 text-green-400 border border-green-500/20">Faol</span>
+                                </template>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-dark-muted"
+                                x-text="formatDate(p.created_at)"></td>
+                            <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2">
+                                <button @click="viewDetails(p.passenger_id)"
+                                    class="text-blue-400 hover:text-blue-300 transition-colors">Tafsilotlar</button>
+                                <button @click="deletePassenger(p.passenger_id)"
+                                    class="text-red-400 hover:text-red-300 transition-colors" title="O'chirish">
+                                    <svg class="w-5 h-5 inline-block" fill="none" viewBox="0 0 24 24"
+                                        stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                            d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                    </svg>
+                                </button>
+                            </td>
+                        </tr>
+                    </template>
+                </tbody>
+            </table>
+        </div>
+
         <!-- Pagination -->
-        <div class="px-6 py-4 bg-gray-50 border-t border-gray-200 flex items-center justify-between text-sm">
-            <span>Jami: <b id="passengerTotal">{{ passengers|length }}</b></span>
-            <div class="flex items-center gap-2">
-                <button id="passengerPrev" class="px-3 py-1 border rounded bg-white disabled:opacity-50" disabled>Oldingi</button>
-                <span id="passengerPageInfo" class="text-gray-600"></span>
-                <button id="passengerNext" class="px-3 py-1 border rounded bg-white disabled:opacity-50">Keyingi</button>
+        <div class="px-6 py-4 bg-dark-bg/30 border-t border-dark-border flex items-center justify-between">
+            <span class="text-sm text-dark-muted">Jami: <b class="text-white" x-text="totalCount"></b></span>
+            <div class="flex gap-2">
+                <button @click="prevPage()" :disabled="filters.offset === 0"
+                    class="px-3 py-1 border border-dark-border rounded-lg bg-dark-card text-white disabled:opacity-50 hover:bg-dark-hover transition-colors">
+                    Oldingi
+                </button>
+                <button @click="nextPage()" :disabled="filters.offset + filters.limit >= totalCount"
+                    class="px-3 py-1 border border-dark-border rounded-lg bg-dark-card text-white disabled:opacity-50 hover:bg-dark-hover transition-colors">
+                    Keyingi
+                </button>
             </div>
         </div>
     </div>
-</div>
 
-<!-- Edit Passenger Modal -->
-<div id="editPassengerModal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
-    <div class="bg-white rounded-xl p-6 max-w-md w-full mx-4">
-        <h3 class="text-lg font-bold mb-4">Yo'lovchi ma'lumotlarini tahrirlash</h3>
-        <form id="editPassengerForm" onsubmit="savePassengerEdit(event)">
-            <input type="hidden" id="editPassengerIndex" />
-            <div class="space-y-4">
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Ism Familiya</label>
-                    <input type="text" id="editPassengerName" class="w-full px-3 py-2 border rounded-lg" required />
-                </div>
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Telefon</label>
-                    <input type="text" id="editPassengerPhone" class="w-full px-3 py-2 border rounded-lg" required />
-                </div>
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Jinsi</label>
-                    <select id="editPassengerGender" class="w-full px-3 py-2 border rounded-lg">
-                        <option value="MALE">Erkak</option>
-                        <option value="FEMALE">Ayol</option>
-                    </select>
-                </div>
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Yoshi</label>
-                    <input type="number" id="editPassengerAge" class="w-full px-3 py-2 border rounded-lg" min="1" max="120" required />
-                </div>
+    <!-- Details Modal -->
+    <div x-show="modals.details" class="fixed inset-0 z-50 overflow-y-auto" x-cloak>
+        <div class="flex items-center justify-center min-h-screen px-4 p-6">
+            <div class="fixed inset-0 bg-black/70 backdrop-blur-sm transition-opacity" @click="modals.details = false">
             </div>
-            <div class="flex space-x-2 mt-6">
-                <button type="submit" class="flex-1 bg-blue-500 text-white py-2 rounded-lg hover:bg-blue-600">Saqlash</button>
-                <button type="button" onclick="closeEditPassengerModal()" class="flex-1 bg-gray-300 text-gray-700 py-2 rounded-lg hover:bg-gray-400">Bekor qilish</button>
-            </div>
-        </form>
-    </div>
-</div>
+            <div
+                class="bg-dark-card rounded-2xl overflow-hidden shadow-2xl transform transition-all max-w-4xl w-full p-6 relative border border-dark-border">
+                <button @click="modals.details = false"
+                    class="absolute top-4 right-4 text-gray-400 hover:text-white text-2xl transition-colors">&times;</button>
 
-<!-- Block Passenger Modal -->
-<div id="blockPassengerModal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
-    <div class="bg-white rounded-xl p-6 max-w-md w-full mx-4">
-        <h3 class="text-lg font-bold mb-4">Yo'lovchini bloklash</h3>
-        <form id="blockPassengerForm" onsubmit="confirmBlockPassenger(event)">
-            <input type="hidden" id="blockPassengerPhone" />
-            <div class="mb-4">
-                <p class="text-sm text-gray-600 mb-2">Yo'lovchi: <span id="blockPassengerName" class="font-bold"></span></p>
-                <p class="text-sm text-gray-600">Telefon: <span id="blockPassengerPhoneDisplay" class="font-bold"></span></p>
+                <template x-if="selectedPassenger">
+                    <div>
+                        <div
+                            class="flex flex-col md:flex-row justify-between items-start border-b border-dark-border pb-6 mb-6 gap-4">
+                            <div>
+                                <h3 class="text-3xl font-bold text-white tracking-tight" x-text="editForm.full_name">
+                                </h3>
+                                <p class="text-dark-muted mt-1 font-mono text-sm"
+                                    x-text="'ID: ' + selectedPassenger.passenger_id"></p>
+                            </div>
+                            <div class="flex flex-wrap gap-2">
+                                <template x-if="!editMode">
+                                    <button @click="startEdit()"
+                                        class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-xl text-sm font-medium transition-colors shadow-lg shadow-blue-500/20">Tahrirlash</button>
+                                </template>
+                                <template x-if="editMode">
+                                    <div class="flex gap-2">
+                                        <button @click="submitEdit()"
+                                            class="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded-xl text-sm font-medium transition-colors shadow-lg shadow-green-500/20">Saqlash</button>
+                                        <button @click="cancelEdit()"
+                                            class="bg-dark-hover text-white px-4 py-2 rounded-xl text-sm font-medium border border-dark-border">Chiqish</button>
+                                    </div>
+                                </template>
+
+                                <template x-if="!selectedPassenger.is_blocked">
+                                    <button @click="openBlockModal(selectedPassenger)"
+                                        class="bg-red-600 hover:bg-red-500 text-white px-4 py-2 rounded-xl text-sm font-medium transition-colors shadow-lg shadow-red-500/20">Bloklash</button>
+                                </template>
+                                <template x-if="selectedPassenger.is_blocked">
+                                    <button @click="unblockPassenger(selectedPassenger.passenger_id)"
+                                        class="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded-xl text-sm font-medium transition-colors">Blokdan
+                                        ochish</button>
+                                </template>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+                            <!-- Info -->
+                            <div class="space-y-4 text-dark-text">
+                                <div class="space-y-1">
+                                    <p class="text-xs text-dark-muted uppercase font-semibold">Telefon</p>
+                                    <template x-if="!editMode">
+                                        <p class="font-medium text-lg" x-text="editForm.phone_number"></p>
+                                    </template>
+                                    <template x-if="editMode">
+                                        <input
+                                            class="w-full bg-dark-bg border border-dark-border rounded-lg px-3 py-2 text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                                            x-model="editForm.phone_number" />
+                                    </template>
+                                </div>
+
+                                <div class="space-y-1">
+                                    <p class="text-xs text-dark-muted uppercase font-semibold">Jinsi / Yoshi</p>
+                                    <template x-if="!editMode">
+                                        <p class="font-medium text-lg"
+                                            x-text="(editForm.gender === 'male' ? 'Erkak' : 'Ayol') + ' / ' + (editForm.age || '-') + ' yosh'">
+                                        </p>
+                                    </template>
+                                    <template x-if="editMode">
+                                        <div class="flex gap-2">
+                                            <select x-model="editForm.gender"
+                                                class="bg-dark-bg border border-dark-border rounded-lg px-2 py-2 text-white text-sm">
+                                                <option value="male">Erkak</option>
+                                                <option value="female">Ayol</option>
+                                            </select>
+                                            <input type="number"
+                                                class="w-20 bg-dark-bg border border-dark-border rounded-lg px-2 py-2 text-white text-sm"
+                                                x-model="editForm.age" placeholder="Yosh" />
+                                        </div>
+                                    </template>
+                                </div>
+                                <div class="space-y-1">
+                                    <p class="text-xs text-dark-muted uppercase font-semibold">Ro'yxatdan o'tdi</p>
+                                    <p class="font-medium text-sm" x-text="formatDate(selectedPassenger.created_at)">
+                                    </p>
+                                </div>
+                            </div>
+
+                            <!-- Recent Orders -->
+                            <div class="col-span-2">
+                                <h4 class="font-bold text-white mb-4 text-lg">Oxirgi buyurtmalar</h4>
+                                <div class="bg-dark-bg rounded-xl border border-dark-border overflow-hidden">
+                                    <div class="max-h-60 overflow-y-auto">
+                                        <table class="w-full text-sm">
+                                            <thead
+                                                class="bg-dark-bg border-b border-dark-border text-xs uppercase text-dark-muted">
+                                                <tr>
+                                                    <th class="px-4 py-2 text-left">Sana</th>
+                                                    <th class="px-4 py-2 text-left">Holat</th>
+                                                    <th class="px-4 py-2 text-right">Yo'lovchilar</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody class="divide-y divide-dark-border">
+                                                <template x-for="order in recentOrders">
+                                                    <tr class="hover:bg-dark-hover/50">
+                                                        <td class="px-4 py-3 text-dark-muted"
+                                                            x-text="formatDate(order.created_at)"></td>
+                                                        <td class="px-4 py-3">
+                                                            <span
+                                                                class="px-2 py-0.5 rounded text-xs uppercase font-bold"
+                                                                :class="{
+                                                                    'bg-green-500/10 text-green-400': order.status === 'completed',
+                                                                    'bg-blue-500/10 text-blue-400': order.status === 'active',
+                                                                    'bg-red-500/10 text-red-400': order.status === 'cancelled',
+                                                                    'bg-yellow-500/10 text-yellow-400': order.status === 'pending'
+                                                                  }" x-text="order.status"></span>
+                                                        </td>
+                                                        <td class="px-4 py-3 text-right text-white"
+                                                            x-text="order.passenger_count + ' kishi'"></td>
+                                                    </tr>
+                                                </template>
+                                                <template x-if="recentOrders.length === 0">
+                                                    <tr>
+                                                        <td colspan="3" class="px-4 py-8 text-center text-dark-muted">
+                                                            Buyurtmalar mavjud emas</td>
+                                                    </tr>
+                                                </template>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </template>
             </div>
-            <div class="mb-4">
-                <label class="block text-sm font-medium text-gray-700 mb-1">Bloklash sababi</label>
-                <textarea id="blockPassengerReason" class="w-full px-3 py-2 border rounded-lg" rows="3" required></textarea>
-            </div>
-            <div class="flex space-x-2">
-                <button type="submit" class="flex-1 bg-red-500 text-white py-2 rounded-lg hover:bg-red-600">Bloklash</button>
-                <button type="button" onclick="closeBlockPassengerModal()" class="flex-1 bg-gray-300 text-gray-700 py-2 rounded-lg hover:bg-gray-400">Bekor qilish</button>
-            </div>
-        </form>
+        </div>
     </div>
+
+    <!-- Block Modal -->
+    <div x-show="modals.block" class="fixed inset-0 z-50 overflow-y-auto" x-cloak>
+        <div class="flex items-center justify-center min-h-screen text-center p-4">
+            <div class="fixed inset-0 bg-black/70 backdrop-blur-sm" @click="modals.block = false"></div>
+            <div
+                class="bg-dark-card rounded-2xl p-6 max-w-sm w-full relative text-left border border-dark-border shadow-2xl">
+                <h3 class="text-xl font-bold text-white mb-4">Yo'lovchini bloklash</h3>
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-dark-muted mb-1">Sabab</label>
+                        <textarea x-model="blockForm.reason"
+                            class="w-full bg-dark-bg border border-dark-border rounded-xl p-3 text-white focus:ring-2 focus:ring-red-500 outline-none"
+                            placeholder="Nima uchun bloklanmoqda?"></textarea>
+                    </div>
+                    <div class="flex justify-end gap-3 pt-2">
+                        <button @click="modals.block = false"
+                            class="px-4 py-2 bg-dark-hover text-white rounded-xl border border-dark-border">Bekor
+                            qilish</button>
+                        <button @click="submitBlock()"
+                            class="px-4 py-2 bg-red-600 hover:bg-red-500 text-white rounded-xl shadow-lg shadow-red-500/20">Bloklash</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
 </div>
 
 <script>
-const passengers = {{ passengers|tojson }};
-const pageSize = 25;
-let currentPage = 1;
-
-function renderPassengerPage() {
-    const rows = Array.from(document.querySelectorAll('#passengerRows tr[data-row]'));
-    const total = rows.length;
-    const start = (currentPage - 1) * pageSize;
-    const end = start + pageSize;
-    rows.forEach((row, idx) => {
-        row.classList.toggle('hidden', !(idx >= start && idx < end));
-    });
-    const pageInfo = document.getElementById('passengerPageInfo');
-    const totalPages = Math.max(1, Math.ceil(total / pageSize));
-    pageInfo.textContent = `${currentPage} / ${totalPages}`;
-    document.getElementById('passengerPrev').disabled = currentPage === 1;
-    document.getElementById('passengerNext').disabled = end >= total;
-}
-
-document.addEventListener('DOMContentLoaded', () => {
-    renderPassengerPage();
-    document.getElementById('passengerPrev').addEventListener('click', () => {
-        if (currentPage > 1) {
-            currentPage -= 1;
-            renderPassengerPage();
-        }
-    });
-    document.getElementById('passengerNext').addEventListener('click', () => {
-        const total = passengers.length;
-        if (currentPage * pageSize < total) {
-            currentPage += 1;
-            renderPassengerPage();
-        }
-    });
-});
-
-function editPassenger(index) {
-    const passenger = passengers[index];
-    document.getElementById('editPassengerIndex').value = index;
-    document.getElementById('editPassengerName').value = passenger.full_name;
-    document.getElementById('editPassengerPhone').value = passenger.phone_number;
-    const g = (passenger.gender || '').toString().toUpperCase();
-    document.getElementById('editPassengerGender').value = g.includes('MALE') || g.startsWith('E') ? 'MALE' : 'FEMALE';
-    document.getElementById('editPassengerAge').value = passenger.age;
-    document.getElementById('editPassengerModal').classList.remove('hidden');
-}
-
-function closeEditPassengerModal() {
-    document.getElementById('editPassengerModal').classList.add('hidden');
-}
-
-async function savePassengerEdit(event) {
-    event.preventDefault();
-    const index = parseInt(document.getElementById('editPassengerIndex').value);
-    const passenger = passengers[index];
-    
-    const data = {
-        full_name: document.getElementById('editPassengerName').value,
-        phone_number: document.getElementById('editPassengerPhone').value,
-        gender: document.getElementById('editPassengerGender').value,
-        age: parseInt(document.getElementById('editPassengerAge').value)
-    };
-    
-    try {
-        const response = await fetch(`/api/passengers/${passenger.passenger_id}`, {
-            method: 'PUT',
-            headers: {
-                'Content-Type': 'application/json',
+    function passengersApp() {
+        return {
+            passengers: [],
+            stats: {},
+            totalCount: 0,
+            selectedPassenger: null,
+            recentOrders: [],
+            editMode: false,
+            editForm: {
+                full_name: '',
+                phone_number: '',
+                gender: 'male',
+                age: null
             },
-            body: JSON.stringify(data)
-        });
-        
-        if (response.ok) {
-            alert('✅ Ma\'lumotlar saqlandi!');
-            location.reload();
-        } else {
-            const error = await response.json();
-            alert('❌ Xatolik: ' + (error.detail || 'Noma\'lum xatolik'));
-        }
-    } catch (error) {
-        alert('❌ Xatolik: ' + error.message);
-    }
-}
-
-function blockPassenger(name, phone) {
-    document.getElementById('blockPassengerName').textContent = name;
-    document.getElementById('blockPassengerPhone').value = phone;
-    document.getElementById('blockPassengerPhoneDisplay').textContent = phone;
-    document.getElementById('blockPassengerModal').classList.remove('hidden');
-}
-
-function closeBlockPassengerModal() {
-    document.getElementById('blockPassengerModal').classList.add('hidden');
-}
-
-async function confirmBlockPassenger(event) {
-    event.preventDefault();
-    const phone = document.getElementById('blockPassengerPhone').value;
-    const reason = document.getElementById('blockPassengerReason').value;
-    
-    // Passenger ID ni topish
-    const passenger = passengers.find(p => p.phone_number === phone);
-    if (!passenger) {
-        alert('❌ Yo\'lovchi topilmadi');
-        return;
-    }
-    
-    try {
-        const response = await fetch(`/api/passengers/${passenger.passenger_id}/block`, {
-            method: 'PUT',
-            headers: {
-                'Content-Type': 'application/json',
+            filters: {
+                search: '',
+                is_blocked: '',
+                limit: 50,
+                offset: 0
             },
-            body: JSON.stringify({
-                reason: reason
-            })
-        });
-        
-        if (response.ok) {
-            alert('✅ Yo\'lovchi bloklandi!');
-            location.reload();
-        } else {
-            const error = await response.json();
-            alert('❌ Xatolik: ' + (error.detail || 'Noma\'lum xatolik'));
-        }
-    } catch (error) {
-        alert('❌ Xatolik: ' + error.message);
-    }
-}
+            modals: {
+                details: false,
+                block: false,
+                edit: false
+            },
+            blockForm: { reason: '' },
 
-async function unblockPassenger(passengerId) {
-    if (!confirm("Rostdan ham blokdan ochmoqchimisiz?")) return;
+            async init() {
+                await this.fetchStats();
+                await this.fetchPassengers();
+            },
 
-    try {
-        const response = await fetch(`/api/passengers/${passengerId}/unblock`, {
-            method: 'PUT',
-            headers: {
-                'Content-Type': 'application/json',
+            async fetchStats() {
+                const data = await this.apiCall('/api/passengers/statistics/overview');
+                if (data) this.stats = data.statistics;
+            },
+
+            async fetchPassengers() {
+                let url = `/api/passengers/?limit=${this.filters.limit}&offset=${this.filters.offset}`;
+                if (this.filters.search) url += `&search=${encodeURIComponent(this.filters.search)}`;
+                if (this.filters.is_blocked !== '') url += `&is_blocked=${this.filters.is_blocked}`;
+
+                const data = await this.apiCall(url);
+                if (data) {
+                    this.passengers = data.passengers;
+                    this.totalCount = data.total;
+                }
+            },
+
+            async viewDetails(id) {
+                const data = await this.apiCall(`/api/passengers/${id}`);
+                if (data) {
+                    this.selectedPassenger = data.passenger;
+                    this.recentOrders = data.recent_orders;
+                    this.populateEditForm(data.passenger);
+                    this.editMode = false;
+                    this.modals.details = true;
+                }
+            },
+
+            populateEditForm(passenger) {
+                this.editForm = {
+                    full_name: passenger.full_name || '',
+                    phone_number: passenger.phone_number || '',
+                    gender: passenger.gender || 'male',
+                    age: passenger.age || ''
+                };
+            },
+
+            startEdit() {
+                this.editMode = true;
+            },
+
+            cancelEdit() {
+                if (this.selectedPassenger) {
+                    this.populateEditForm(this.selectedPassenger);
+                }
+                this.editMode = false;
+            },
+
+            async submitEdit() {
+                if (!this.selectedPassenger) return;
+                const payload = { ...this.editForm };
+                if (payload.age === '') payload.age = null;
+
+                const res = await this.apiCall(`/api/passengers/${this.selectedPassenger.passenger_id}`, 'PUT', payload);
+                if (res?.success) {
+                    await this.viewDetails(this.selectedPassenger.passenger_id);
+                    await this.fetchPassengers();
+                    this.editMode = false;
+                    alert("Ma'lumotlar saqlandi");
+                }
+            },
+
+            openBlockModal(passenger) {
+                this.selectedPassenger = passenger;
+                this.blockForm = { reason: '' };
+                this.modals.block = true;
+            },
+
+            async submitBlock() {
+                const res = await this.apiCall(`/api/passengers/${this.selectedPassenger.passenger_id}/block`, 'PUT', this.blockForm);
+                if (res?.success) {
+                    this.modals.block = false;
+                    this.modals.details = false;
+                    this.fetchPassengers();
+                    this.fetchStats();
+                }
+            },
+
+            async unblockPassenger(id) {
+                if (!confirm('Rostdan ham blokdan ochmoqchimisiz?')) return;
+                const res = await this.apiCall(`/api/passengers/${id}/unblock`, 'PUT', {});
+                if (res?.success) {
+                    this.modals.details = false;
+                    this.fetchPassengers();
+                    this.fetchStats();
+                }
+            },
+
+            async deletePassenger(id) {
+                if (!confirm("DIQQAT! Yo'lovchini o'chirmoqchimisiz? Bu amalni ortga qaytarib bo'lmaydi!")) return;
+
+                const res = await this.apiCall(`/api/passengers/${id}`, 'DELETE');
+                if (res?.success) {
+                    alert(res.message);
+                    this.fetchPassengers();
+                    this.fetchStats();
+                }
+            },
+
+            async apiCall(url, method = 'GET', body = null) {
+                try {
+                    const options = {
+                        method,
+                        headers: { 'Content-Type': 'application/json' }
+                    };
+                    if (body) options.body = JSON.stringify(body);
+
+                    const response = await fetch(url, options);
+                    const data = await response.json();
+
+                    if (!response.ok) throw new Error(data.detail || 'Xatolik yuz berdi');
+                    return data;
+                } catch (e) {
+                    alert(e.message);
+                    return null;
+                }
+            },
+
+            nextPage() {
+                this.filters.offset += this.filters.limit;
+                this.fetchPassengers();
+            },
+
+            prevPage() {
+                this.filters.offset = Math.max(0, this.filters.offset - this.filters.limit);
+                this.fetchPassengers();
+            },
+
+            formatDate(iso) {
+                if (!iso) return '-';
+                return new Date(iso).toLocaleString('uz-UZ', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
             }
-        });
-
-        if (response.ok) {
-            alert("✅ Yo'lovchi blokdan ochildi!");
-            location.reload();
-        } else {
-            const error = await response.json();
-            alert('❌ Xatolik: ' + (error.detail || 'Noma\'lum xatolik'));
         }
-    } catch (error) {
-        alert('❌ Xatolik: ' + error.message);
     }
-}
 </script>
 {% endblock %}

@@ -309,6 +309,28 @@ DEFAULT_SETTINGS = [
         'value': '50',
         'description': 'Haydovchi kunlik rad etish limiti'
     },
+    {
+        'key': 'driver_inactivity_threshold',
+        'value': '2',
+        'description': 'Necha marta javob bermasa queue\'dan chiqadi'
+    },
+    
+    # Support
+    {
+        'key': 'support_phone',
+        'value': '+998 93 558 03 11',
+        'description': 'Support telefon raqami'
+    },
+    {
+        'key': 'support_username',
+        'value': '@Bakhromdev',
+        'description': 'Support telegram username'
+    },
+    {
+        'key': 'working_hours',
+        'value': '9:00 - 21:00',
+        'description': 'Ish vaqti'
+    },
     
     # Celery Timing
     {
@@ -366,6 +388,23 @@ DEFAULT_SETTINGS = [
         'key': 'auto_start_trip_delay_seconds',
         'value': '180',
         'description': 'Trip avtomatik boshlash kechikishi (soniya)'
+    },
+    {
+        'key': 'task_retry_delay_seconds',
+        'value': '600',
+        'description': 'Taskda xatolik bo\'lsa qayta urinish vaqti (10 daqiqa)'
+    },
+    
+    # Message Templates (Dynamic)
+    {
+        'key': 'msg_trip_started_passenger',
+        'value': "✅ <b>Safar boshlandi!</b>\n\n🚗 Xavfsiz yo'l!\n\nSafar yakunlangach haydovchi sizga xabar beradi.\n\n⏱ Safar 10 daqiqadan keyin avtomatik yakunlanadi.",
+        'description': 'Yo\'lovchiga safar boshlanganda yuboriladigan xabar'
+    },
+    {
+        'key': 'msg_trip_started_driver',
+        'value': "✅ <b>Yo'lovchi ketdi!</b>\n\n Xavfsiz yo'l!\n\n⏱ Safar 10 daqiqadan keyin avtomatik yakunlanadi.",
+        'description': 'Haydovchiga safar boshlanganda yuboriladigan xabar (order_id)'
     },
 ]
 

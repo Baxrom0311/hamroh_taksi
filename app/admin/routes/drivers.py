@@ -691,4 +691,47 @@ async def update_driver_state(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.delete("/{driver_id}")
+async def delete_driver(
+    driver_id: int,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Haydovchini o'chirish (Diqqat: bog'liq ma'lumotlar bo'lsa xato berishi mumkin)
+    """
+    try:
+        async with get_session() as session:
+            driver = await get_driver_by_id(session, driver_id)
+            if not driver:
+                raise HTTPException(status_code=404, detail="Driver topilmadi")
+
+            # Delete associated trips first (since FK is nullable=False but SQLAlchemy might try to nullify)
+            # Or reliance on DB cascade might require passive_deletes=True in model which we might not have.
+            # Explicit deletion is safer here.
+            from app.models.trip import Trip
+            await session.execute(
+                delete(Trip).where(Trip.driver_id == driver_id)
+            )
+            
+            # Also might need to delete other related entities if they don't cascade
+            # For now, Trips seems to be the blocker.
+            
+            await session.delete(driver)
+            await session.commit()
+            
+            logger.warning(f"Driver {driver_id} and their trips deleted by admin {current_user['username']}")
+            
+            return {
+                'success': True,
+                'message': 'Driver va uning safarlari muvaffaqiyatli o\'chirildi'
+            }
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to delete driver: {e}")
+        error_msg = str(e)
+        raise HTTPException(status_code=500, detail=f"O'chirishda xatolik: {error_msg}")
+
+
 __all__ = ['router']

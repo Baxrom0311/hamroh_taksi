@@ -11,9 +11,9 @@ class RegistrationStates(StatesGroup):
     # Rol tanlash
     choose_role = State()
     
-    # Telefon va SMS
+    # Telefon (SMS verification olib tashlandi)
     phone_number = State()
-    sms_code = State()
+    # sms_code = State()  <-- REMOVED
     
     # Haydovchi ma'lumotlari
     driver_full_name = State()

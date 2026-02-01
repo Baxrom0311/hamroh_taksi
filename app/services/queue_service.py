@@ -23,6 +23,7 @@ ISHLATISH:
 """
 
 import os
+import time  # ✅ Added time import for timestamp generation
 from typing import Optional, List, Dict, Union
 from datetime import datetime
 from collections import defaultdict
@@ -72,64 +73,29 @@ class DriverQueueManager:
         route_id: int
     ) -> float:
         """
-        Priority score hisoblash
+        Priority score = Timestamp (FIFO)
         
-        Returns:
-            Float score (0-80)
+        Kamroq score = Oldinroq kelgan = Yuqori prioritet
         """
-        async with get_session() as session:
-            driver = await get_driver_by_id(session, driver_id)
-            
-            if not driver:
-                return 0.0
-            
-            # 1. Reyting balli (0-50)
-            rating_score = float(driver.rating) * self.RATING_WEIGHT
-            
-            # 2. Kutish vaqti (cap bilan)
-            waiting_hours = await self.get_waiting_time_hours(driver_id, route_id)
-            capped_waiting = min(waiting_hours, self.MAX_WAITING_HOURS)
-            waiting_score = capped_waiting * self.WAITING_WEIGHT
-            
-            # 3. Jami ball
-            total_score = rating_score + waiting_score
-            
-            return round(total_score, 2)
+        return time.time()
     
     async def get_waiting_time_hours(
         self, 
         driver_id: int, 
         route_id: int
     ) -> float:
-        """
-        Haydovchi qancha vaqtdan beri kutayotgani
-        
-        Returns:
-            Soatlar (float)
-        """
+        # Backward compatibility / Helper
         join_time_key = f"driver_join_time:{driver_id}:{route_id}"
-
         if self._use_memory():
-            join_time = self._memory_join_time.get(join_time_key)
-            if not join_time:
-                self._memory_join_time[join_time_key] = datetime.now()
-                return 0.0
-            waiting_delta = datetime.now() - join_time
-            return waiting_delta.total_seconds() / 3600
+             join_time = self._memory_join_time.get(join_time_key)
+             if not join_time: return 0.0
+             return (datetime.now() - join_time).total_seconds() / 3600
 
         join_time_str = await self.redis.get(join_time_key)
-        if not join_time_str:
-            # Yangi haydovchi - hozirgi vaqtni saqlash
-            now = datetime.now().isoformat()
-            await self.redis.set(join_time_key, now, ex=86400)  # 24 soat
-            return 0.0
-
-        # Kutish vaqtini hisoblash
+        if not join_time_str: return 0.0
+        
         join_datetime = datetime.fromisoformat(join_time_str)
-        waiting_delta = datetime.now() - join_datetime
-        waiting_hours = waiting_delta.total_seconds() / 3600
-
-        return waiting_hours
+        return (datetime.now() - join_datetime).total_seconds() / 3600
     
     # ========================================
     # QUEUE OPERATIONS
@@ -160,8 +126,8 @@ class DriverQueueManager:
                 queue = [item for item in queue if item["driver_id"] != driver_id]
                 score = float(priority_score or 0.0)
                 queue.append({"driver_id": driver_id, "score": score, "seq": self._memory_seq})
-                # Highest score first, then insertion order
-                queue.sort(key=lambda item: (-item["score"], item["seq"]))
+                # Lowest score first (FIFO)
+                queue.sort(key=lambda item: (item["score"], item["seq"]))
                 self._memory_queue[route_id] = queue
                 position = next((idx + 1 for idx, item in enumerate(queue) if item["driver_id"] == driver_id), 1)
                 return {
@@ -180,7 +146,8 @@ class DriverQueueManager:
                 )
             
             # Redis Sorted Set'ga qo'shish
-            # Score yuqori bo'lgan birinchi chiqadi
+            # Redis Sorted Set'ga qo'shish
+            # FIFO: Score = Timestamp (Low is First)
             await self.redis.client.zadd(
                 queue_key,
                 {str(driver_id): priority_score}
@@ -260,8 +227,8 @@ class DriverQueueManager:
 
             queue_key = f"driver_queue:{route_id}"
             
-            # Reverse rank (yuqori score = 1-o'rin)
-            rank = await self.redis.client.zrevrank(queue_key, str(driver_id))
+            # Rank (kichik score = 1-o'rin)
+            rank = await self.redis.client.zrank(queue_key, str(driver_id))
             
             if rank is None:
                 return -1
@@ -285,7 +252,8 @@ class DriverQueueManager:
                 return [int(item["driver_id"]) for item in queue]
 
             queue_key = f"driver_queue:{route_id}"
-            drivers = await self.redis.client.zrevrange(queue_key, 0, -1)
+            # ZRANGE (Low to High)
+            drivers = await self.redis.client.zrange(queue_key, 0, -1)
             return [int(did) for did in drivers]
         except Exception as e:
             logger.error(f"Failed to get queue drivers: {e}")
@@ -329,6 +297,114 @@ class DriverQueueManager:
         reject_key = f"driver_rejects:{day_str}:{driver_id}"
         val = await self.redis.get(reject_key)
         return int(val) if val else 0
+
+    # ========================================
+    # OFFER LOCKING (Double Booking Prevention)
+    # ========================================
+    
+    async def lock_driver_for_offer(self, driver_id: int, order_id: int, ttl: int = 130) -> bool:
+        """
+        Haydovchini taklif vaqtida bloklash.
+        Returns:
+            True - muvaffaqiyatli bloklandi
+            False - allaqachon bloklangan (race condition avoided)
+        """
+        key = f"driver_offered:{driver_id}"
+        # nx=True: Set if Not Exists
+        result = await self.redis.set(key, str(order_id), ex=ttl, nx=True)
+        return bool(result)
+
+    async def is_driver_offered(self, driver_id: int) -> bool:
+        """Haydovchiga ayni paytda buyurtma taklif qilinganmi?"""
+        key = f"driver_offered:{driver_id}"
+        return await self.redis.exists(key)
+
+    async def unlock_driver_offer(self, driver_id: int):
+        """Haydovchini offer blokidan chiqarish"""
+        key = f"driver_offered:{driver_id}"
+        await self.redis.delete(key)
+    
+    # ========================================
+    # INACTIVITY TRACKING (2-Strike Rule)
+    # ========================================
+    
+    async def track_driver_inactivity(self, driver_id: int, route_id: int) -> int:
+        """
+        Haydovchining javobsizligini hisoblash.
+        
+        Buyurtmaga 2 marta javob bermasa navbatdan chiqariladi.
+        
+        Returns:
+            Joriy javobsizlik soni
+        """
+        if self._use_memory():
+            key = f"inactivity:{driver_id}:{route_id}"
+            count = self._memory_join_time.get(key, 0)
+            count = int(count) + 1 if isinstance(count, (int, float)) else 1
+            self._memory_join_time[key] = count
+            return count
+        
+        key = f"driver_inactivity:{driver_id}:{route_id}"
+        count = await self.redis.incr(key)
+        await self.redis.expire(key, 3600)  # 1 soat TTL
+        return count
+    
+    async def get_driver_inactivity_count(self, driver_id: int, route_id: int) -> int:
+        """Joriy javobsizlik sonini olish"""
+        if self._use_memory():
+            key = f"inactivity:{driver_id}:{route_id}"
+            val = self._memory_join_time.get(key, 0)
+            return int(val) if isinstance(val, (int, float)) else 0
+        
+        key = f"driver_inactivity:{driver_id}:{route_id}"
+        val = await self.redis.get(key)
+        return int(val) if val else 0
+    
+    async def clear_driver_inactivity(self, driver_id: int, route_id: int):
+        """
+        Javob berilganda inactivity tozalash.
+        
+        Accept yoki Reject bosilganda chaqiriladi.
+        """
+        if self._use_memory():
+            key = f"inactivity:{driver_id}:{route_id}"
+            self._memory_join_time.pop(key, None)
+            return
+        
+        key = f"driver_inactivity:{driver_id}:{route_id}"
+        await self.redis.delete(key)
+    
+    async def remove_all_drivers_from_queues(self) -> int:
+        """
+        Barcha navbatlarni tozalash (nightly cleanup).
+        
+        Tungi 3:00 da chaqiriladi.
+        
+        Returns:
+            Tozalangan navbatlar soni
+        """
+        if self._use_memory():
+            count = len(self._memory_queue)
+            self._memory_queue.clear()
+            self._memory_join_time.clear()
+            return count
+        
+        count = 0
+        # Driver queues tozalash
+        async for key in self.redis.client.scan_iter(match="driver_queue:*"):
+            await self.redis.delete(key)
+            count += 1
+        
+        # Join time'larni ham tozalash
+        async for key in self.redis.client.scan_iter(match="driver_join_time:*"):
+            await self.redis.delete(key)
+        
+        # Inactivity counter'larni tozalash
+        async for key in self.redis.client.scan_iter(match="driver_inactivity:*"):
+            await self.redis.delete(key)
+        
+        logger.info(f"🧹 All driver queues cleared: {count} queues")
+        return count
     
     # ========================================
     # MATCHING
@@ -386,99 +462,111 @@ class DriverQueueManager:
 
             queue_key = f"driver_queue:{route_id}"
             
-            # Top 20 haydovchilarni olish (yuqori priority)
-            top_drivers = await self.redis.client.zrevrange(
-                queue_key,
-                0,
-                19,  # Top 20
-                withscores=True
-            )
+            # Pagination (Batch Processing) - Fix Top 20 Limit
+            batch_size = 20
+            start = 0
             
-            if not top_drivers:
-                logger.warning(f"No drivers in queue for route {route_id}")
-                return None
-            
-            logger.info(f"Checking {len(top_drivers)} drivers for matching...")
-            
-            # Har bir haydovchini tekshirish
-            async with get_session() as session:
-                for driver_id_str, score in top_drivers:
-                    driver_id = int(driver_id_str)
-                    
-                    # Driver ma'lumotlarini olish
-                    driver = await get_driver_by_id(session, driver_id)
-                    
-                    if not driver:
-                        continue
-                    
-                    # 0. Skip tekshiruvi (agar order_id berilgan bo'lsa)
-                    if order_id and await self.is_driver_skipped(driver_id, order_id):
-                        logger.debug(f"Driver {driver_id}: skipped for order {order_id}")
-                        continue
-                    
-                    # 1. Aktiv va bo'sh
-                    if not driver.is_active or driver.is_on_trip:
-                        logger.debug(f"Driver {driver_id}: not active or on trip")
-                        continue
-                    
-                    # 2. Bloklangan emas
-                    if driver.is_blocked:
-                        logger.debug(f"Driver {driver_id}: blocked")
-                        continue
-                    
-                    # 3. Balans yetarli (dynamic)
-                    pricing = await get_pricing_settings(session)
-                    commission = pricing['commission_amount']
-                    if driver.balance < commission:
-                        logger.debug(f"Driver {driver_id}: insufficient balance")
-                        continue
-                    
-                    # 4. Bo'sh joylar yetarli
-                    if driver.available_seats < passenger_count:
-                        logger.debug(f"Driver {driver_id}: not enough seats")
-                        continue
-                    
-                    # 5. Lokatsiya mavjud
-                    if not driver.last_location_lat or not driver.last_location_lon:
-                        logger.debug(f"Driver {driver_id}: location missing")
-                        continue
-                    
-                    # 6. Geo-masofa tekshiruvi (ixtiyoriy)
-                    distance_km = None
-                    if enforce_distance and passenger_location is not None:
-                        distance_km = calculate_distance(
-                            float(driver.last_location_lat),
-                            float(driver.last_location_lon),
-                            passenger_location['lat'],
-                            passenger_location['lon']
+            while True:
+                # Get next batch (FIFO: low score first)
+                drivers_batch = await self.redis.client.zrange(
+                    queue_key,
+                    start,
+                    start + batch_size - 1,
+                    withscores=True
+                )
+                
+                if not drivers_batch:
+                    break
+                
+                logger.info(f"Checking drivers {start} to {start + len(drivers_batch)} for matching...")
+                start += batch_size
+                
+                # Check this batch
+                async with get_session() as session:
+                    for driver_id_str, score in drivers_batch:
+                        driver_id = int(driver_id_str)
+                        
+                        # Driver ma'lumotlarini olish
+                        driver = await get_driver_by_id(session, driver_id)
+                        
+                        if not driver:
+                            continue
+                        
+                        # 0. Skip tekshiruvi (agar order_id berilgan bo'lsa)
+                        if order_id and await self.is_driver_skipped(driver_id, order_id):
+                            logger.debug(f"Driver {driver_id}: skipped for order {order_id}")
+                            continue
+                        
+                        # 0.5 Offer Lock tekshiruvi (Yangi)
+                        if await self.is_driver_offered(driver_id):
+                            logger.debug(f"Driver {driver_id}: busy with another offer")
+                            continue
+                        
+                        # 1. Aktiv va bo'sh
+                        if not driver.is_active or driver.is_on_trip:
+                            logger.debug(f"Driver {driver_id}: not active or on trip")
+                            continue
+                        
+                        # 2. Bloklangan emas
+                        if driver.is_blocked:
+                            logger.debug(f"Driver {driver_id}: blocked")
+                            continue
+                        
+                        # 3. Balans yetarli (dynamic)
+                        pricing = await get_pricing_settings(session)
+                        commission = pricing['commission_amount']
+                        if driver.balance < commission:
+                            logger.debug(f"Driver {driver_id}: insufficient balance")
+                            continue
+                        
+                        # 4. Bo'sh joylar yetarli
+                        if driver.available_seats < passenger_count:
+                            logger.debug(f"Driver {driver_id}: not enough seats")
+                            continue
+                        
+                        # 5. Lokatsiya mavjud
+                        if not driver.last_location_lat or not driver.last_location_lon:
+                            logger.debug(f"Driver {driver_id}: location missing")
+                            continue
+                        
+                        # 6. Geo-masofa tekshiruvi (ixtiyoriy)
+                        distance_km = None
+                        if enforce_distance and passenger_location is not None:
+                            distance_km = calculate_distance(
+                                float(driver.last_location_lat),
+                                float(driver.last_location_lon),
+                                passenger_location['lat'],
+                                passenger_location['lon']
+                            )
+                            
+                            if distance_km > max_distance_km:
+                                logger.debug(
+                                    f"Driver {driver_id}: too far "
+                                    f"({distance_km:.1f} km > {max_distance_km} km)"
+                                )
+                                continue
+                        
+                        # ✅ TOPILDI!
+                        logger.success(
+                            f"✅ Driver {driver_id} matched! "
+                            f"score={score:.2f}, "
+                            f"distance={(distance_km if distance_km is not None else 'skip')}km, "
+                            f"seats={driver.available_seats}"
                         )
                         
-                        if distance_km > max_distance_km:
-                            logger.debug(
-                                f"Driver {driver_id}: too far "
-                                f"({distance_km:.1f} km > {max_distance_km} km)"
-                            )
-                            continue
-                    
-                    # ✅ TOPILDI!
-                    logger.success(
-                        f"✅ Driver {driver_id} matched! "
-                        f"score={score:.2f}, "
-                        f"distance={(distance_km if distance_km is not None else 'skip')}km, "
-                        f"seats={driver.available_seats}"
-                    )
-                    
-                    # MUHIM: Navbatdan O'CHIRMAYMIZ!
-                    # Agar haydovchida hali bo'sh o'rinlar bo'lsa,
-                    # keyingi buyurtmalar ham unga berilishi mumkin.
-                    # Faqat o'rinlar to'lganda navbatdan o'chiriladi.
-                    
-                    return driver_id
+                        # MUHIM: Navbatdan O'CHIRMAYMIZ!
+                        # Agar haydovchida hali bo'sh o'rinlar bo'lsa,
+                        # keyingi buyurtmalar ham unga berilishi mumkin.
+                        # Faqat o'rinlar to'lganda navbatdan o'chiriladi.
+                        
+                        return driver_id
             
-            # Hech kim topilmadi
+            # Hech kim topilmadi - Loop continues to next batch
+            
+            # Agar while loop tugasa va hech kim topilmasa:
             logger.warning(
                 f"No suitable driver found for route {route_id} "
-                f"(checked {len(top_drivers)} drivers)"
+                f"(checked total {start} drivers)"
             )
             return None
         
@@ -514,8 +602,8 @@ class DriverQueueManager:
                     'top_drivers': []
                 }
             
-            # Top 5
-            top_5 = await self.redis.client.zrevrange(
+            # Top 5 (Lowest score = Best)
+            top_5 = await self.redis.client.zrange(
                 queue_key,
                 0,
                 4,

@@ -1,403 +1,178 @@
 {% extends "base.html" %}
 
 {% block title %}Sozlamalar | Hamroh Admin{% endblock %}
-{% block header_title %}Tizim sozlamalari{% endblock %}
+{% block header_title %}Tizim Sozlamalari{% endblock %}
 
 {% block content %}
-<div class="p-8" x-data="settingsApp()" x-init="init()">
-    <!-- Tarif va Komissiya -->
-    <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6 space-y-6 mb-6">
-        <div class="flex items-center justify-between border-b pb-4">
-            <div>
-                <h2 class="text-lg font-bold flex items-center gap-2">
-                    <svg class="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                            d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    Tarif va komissiya
-                </h2>
-                <p class="text-sm text-gray-500 mt-1">Botni tekin/pullik rejimi va komissiya miqdori</p>
-            </div>
-        </div>
+<div class="max-w-4xl mx-auto space-y-8" x-data="settingsApp()" x-init="init()">
 
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div class="space-y-2">
-                <label class="text-sm font-medium text-gray-700">Bot rejimi</label>
-                <div class="flex items-center gap-4">
-                    <label class="inline-flex items-center cursor-pointer">
-                        <input type="radio" x-model="form.bot_is_free" value="true"
-                            class="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500">
-                        <span class="ml-2 text-sm font-medium text-gray-700">🆓 Tekin</span>
-                    </label>
-                    <label class="inline-flex items-center cursor-pointer">
-                        <input type="radio" x-model="form.bot_is_free" value="false"
-                            class="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500">
-                        <span class="ml-2 text-sm font-medium text-gray-700">💰 Pullik</span>
-                    </label>
+    <!-- Dynamic Settings Form -->
+    <div class="bg-dark-card rounded-2xl p-8 shadow-xl border border-dark-border relative overflow-hidden">
+        <h3 class="text-xl font-bold text-white mb-6 flex items-center gap-2">
+            <span>⚙️</span> Tizim Konfiguratsiyasi
+        </h3>
+
+        <div class="space-y-6">
+            <template x-if="loading">
+                <div class="text-center text-dark-muted py-8">Yuklanmoqda...</div>
+            </template>
+
+            <template x-for="(value, key) in settings" :key="key">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 items-center border-b border-dark-border pb-4 last:border-0"
+                    x-show="!['environment', 'is_production', 'working_hours', 'support_phone', 'support_username'].includes(key)">
+
+                    <!-- Label & Description -->
+                    <div class="pr-4">
+                        <label class="block text-sm font-bold text-gray-200 mb-1" x-text="getMeta(key).title"></label>
+                        <p class="text-xs text-dark-muted" x-text="getMeta(key).description"></p>
+                    </div>
+
+                    <!-- Input & Save -->
+                    <div class="flex items-center gap-2">
+
+                        <!-- Boolean (Toggle) -->
+                        <template x-if="getMeta(key).type === 'boolean'">
+                            <button @click="toggleSetting(key, $event)"
+                                class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none"
+                                :class="String(settings[key]) === 'true' ? 'bg-green-500' : 'bg-dark-border'">
+                                <span class="sr-only">Use setting</span>
+                                <span aria-hidden="true"
+                                    class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+                                    :class="String(settings[key]) === 'true' ? 'translate-x-5' : 'translate-x-0'">
+                                </span>
+                            </button>
+                        </template>
+
+                        <!-- Number -->
+                        <template x-if="getMeta(key).type === 'number'">
+                            <input type="number" x-model="settings[key]" step="any"
+                                class="flex-1 bg-dark-bg border border-dark-border rounded-lg p-2 text-white focus:ring-2 focus:ring-blue-500 outline-none">
+                        </template>
+
+                        <!-- Text (Default) -->
+                        <template x-if="getMeta(key).type === 'text'">
+                            <input type="text" x-model="settings[key]"
+                                class="flex-1 bg-dark-bg border border-dark-border rounded-lg p-2 text-white focus:ring-2 focus:ring-blue-500 outline-none">
+                        </template>
+
+                        <button @click="saveSetting(key, $event)"
+                            class="bg-blue-600 hover:bg-blue-500 text-white p-2 rounded-lg text-sm shadow-lg transition-all"
+                            title="Saqlash">
+                            💾
+                        </button>
+                    </div>
                 </div>
-                <p class="text-xs text-gray-500">Pullik rejimda komissiya va to'lovlar qo'llanadi</p>
-            </div>
-
-            <div class="space-y-2">
-                <label class="text-sm font-medium text-gray-700">Komissiya miqdori (so'm)</label>
-                <input type="number" x-model.number="form.commission_amount" :disabled="form.bot_is_free === 'true'"
-                    min="0" step="1000"
-                    class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed transition"
-                    placeholder="Masalan: 5000" />
-                <p class="text-xs text-gray-500">Har bir safar uchun haydovchidan olinadigan komissiya</p>
-            </div>
+            </template>
         </div>
-    </div>
-
-    <!-- Ban va cheklovlar -->
-    <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6 space-y-6 mb-6">
-        <div class="flex items-center justify-between border-b pb-4">
-            <div>
-                <h2 class="text-lg font-bold flex items-center gap-2">
-                    <svg class="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                            d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
-                    </svg>
-                    Ban va cheklovlar
-                </h2>
-                <p class="text-sm text-gray-500 mt-1">Haydovchilarni blocking uchun sozlamalar</p>
-            </div>
-        </div>
-
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div class="space-y-2">
-                <label class="text-sm font-medium text-gray-700">Ban foizi chegarasi (%)</label>
-                <input type="number" x-model.number="form.ban_percentage_threshold" min="0" max="100"
-                    class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
-                    placeholder="Masalan: 50" />
-                <p class="text-xs text-gray-500">Rad etish foizi ushbu chegaradan oshsa ban</p>
-            </div>
-
-            <div class="space-y-2">
-                <label class="text-sm font-medium text-gray-700">Ban soni chegarasi</label>
-                <input type="number" x-model.number="form.ban_count_threshold" min="1"
-                    class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
-                    placeholder="Masalan: 5" />
-                <p class="text-xs text-gray-500">Ushbu songa yetganda haydovchi muddatli ban qilinadi</p>
-            </div>
-
-            <div class="space-y-2">
-                <label class="text-sm font-medium text-gray-700">Soatlik o'zgartirish limiti</label>
-                <input type="number" x-model.number="form.max_driver_change_per_hour" min="1"
-                    class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
-                    placeholder="Masalan: 3" />
-                <p class="text-xs text-gray-500">Yo'lovchi soatiga necha marta haydovchi almashtirish mumkin</p>
-            </div>
-        </div>
-    </div>
-
-    <!-- Masofa va vaqt -->
-    <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6 space-y-6 mb-6">
-        <div class="flex items-center justify-between border-b pb-4">
-            <div>
-                <h2 class="text-lg font-bold flex items-center gap-2">
-                    <svg class="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                            d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    Masofa va vaqt
-                </h2>
-                <p class="text-sm text-gray-500 mt-1">Geolokatsiya va tasdiqash sozlamalari</p>
-            </div>
-        </div>
-
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div class="space-y-2">
-                <label class="text-sm font-medium text-gray-700">Maksimal pickup masofasi (km)</label>
-                <input type="number" x-model.number="form.max_pickup_distance_km" min="1" step="0.5"
-                    class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
-                    placeholder="Masalan: 5" />
-                <p class="text-xs text-gray-500">Haydovchi yo'lovchidan qancha uzoqlikda bo'lish mumkin (km)</p>
-            </div>
-
-            <div class="space-y-2">
-                <label class="text-sm font-medium text-gray-700">Avtomatik tasdiqlash vaqti (soniya)</label>
-                <input type="number" x-model.number="form.auto_confirm_delay_seconds" min="30" step="30"
-                    class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
-                    placeholder="Masalan: 120" />
-                <p class="text-xs text-gray-500">Haydovchi qabul qilmasa, ushbu vaqtda avtotasdiqlash</p>
-            </div>
-        </div>
-    </div>
-
-    <!-- Rate Limiting -->
-    <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6 space-y-6 mb-6">
-        <div class="flex items-center justify-between border-b pb-4">
-            <div>
-                <h2 class="text-lg font-bold flex items-center gap-2">
-                    <svg class="w-5 h-5 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                            d="M13 10V3L4 14h7v7l9-11h-7z" />
-                    </svg>
-                    Rate Limiting
-                </h2>
-                <p class="text-sm text-gray-500 mt-1">SMS va haydovchi rad etish limitleri</p>
-            </div>
-        </div>
-
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div class="space-y-2">
-                <label class="text-sm font-medium text-gray-700">SMS kunlik limit</label>
-                <input type="number" x-model.number="form.sms_rate_limit_per_day" min="1" max="100"
-                    class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
-                    placeholder="Masalan: 5" />
-                <p class="text-xs text-gray-500">Bir yo'lovchiga kuniga max SMS soni</p>
-            </div>
-
-            <div class="space-y-2">
-                <label class="text-sm font-medium text-gray-700">SMS soatlik limit</label>
-                <input type="number" x-model.number="form.sms_rate_limit_per_hour" min="1" max="20"
-                    class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
-                    placeholder="Masalan: 3" />
-                <p class="text-xs text-gray-500">Bir yo'lovchiga soatiga max SMS soni</p>
-            </div>
-
-            <div class="space-y-2">
-                <label class="text-sm font-medium text-gray-700">Haydovchi rad etish limiti</label>
-                <input type="number" x-model.number="form.max_driver_rejects_per_day" min="1" max="200"
-                    class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
-                    placeholder="Masalan: 50" />
-                <p class="text-xs text-gray-500">Haydovchi kuniga max nechta order rad eta oladi</p>
-            </div>
-        </div>
-    </div>
-
-    <!-- Celery Timing -->
-    <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6 space-y-6 mb-6">
-        <div class="flex items-center justify-between border-b pb-4">
-            <div>
-                <h2 class="text-lg font-bold flex items-center gap-2">
-                    <svg class="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                            d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    Celery Timing
-                </h2>
-                <p class="text-sm text-gray-500 mt-1">Avtomatik jarayонlar va timeout sozlamalari</p>
-            </div>
-        </div>
-
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div class="space-y-2">
-                <label class="text-sm font-medium text-gray-700">Trip avtoyakunlash (soniya)</label>
-                <input type="number" x-model.number="form.auto_complete_trip_seconds" min="60" step="60"
-                    class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
-                    placeholder="Masalan: 600" />
-                <p class="text-xs text-gray-500">Trip avtomatik yakunlanish vaqti</p>
-            </div>
-
-            <div class="space-y-2">
-                <label class="text-sm font-medium text-gray-700">Order avtorad (soniya)</label>
-                <input type="number" x-model.number="form.auto_reject_order_seconds" min="30" step="30"
-                    class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
-                    placeholder="Masalan: 120" />
-                <p class="text-xs text-gray-500">Haydovchi qabul qilmasa order rad etiladi</p>
-            </div>
-
-            <div class="space-y-2">
-                <label class="text-sm font-medium text-gray-700">Trip avtotasdiqlash (soniya)</label>
-                <input type="number" x-model.number="form.auto_confirm_trip_seconds" min="300" step="300"
-                    class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
-                    placeholder="Masalan: 1800" />
-                <p class="text-xs text-gray-500">Yo'lovchi tasdiqlamasa trip avtotasdiqlash</p>
-            </div>
-
-            <div class="space-y-2">
-                <label class="text-sm font-medium text-gray-700">Driver matching timeout (soniya)</label>
-                <input type="number" x-model.number="form.driver_matching_timeout_seconds" min="60" step="60"
-                    class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
-                    placeholder="Masalan: 300" />
-                <p class="text-xs text-gray-500">Haydovchi topish maksimal vaqti</p>
-            </div>
-
-            <div class="space-y-2">
-                <label class="text-sm font-medium text-gray-700">Matching max retries</label>
-                <input type="number" x-model.number="form.driver_matching_max_retries" min="1" max="10"
-                    class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
-                    placeholder="Masalan: 5" />
-                <p class="text-xs text-gray-500">Haydovchi topish maksimal urinishlar soni</p>
-            </div>
-
-            <div class="space-y-2">
-                <label class="text-sm font-medium text-gray-700">Matching retry delay (soniya)</label>
-                <input type="number" x-model.number="form.driver_matching_retry_delay_seconds" min="5" step="5"
-                    class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
-                    placeholder="Masalan: 30" />
-                <p class="text-xs text-gray-500">Urinishlar orasidagi kutish vaqti</p>
-            </div>
-        </div>
-    </div>
-
-    <!-- Lock & State Management -->
-    <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6 space-y-6 mb-6">
-        <div class="flex items-center justify-between border-b pb-4">
-            <div>
-                <h2 class="text-lg font-bold flex items-center gap-2">
-                    <svg class="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                            d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                    </svg>
-                    Lock & State Management
-                </h2>
-                <p class="text-sm text-gray-500 mt-1">Distributed lock va state TTL sozlamalari</p>
-            </div>
-        </div>
-
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div class="space-y-2">
-                <label class="text-sm font-medium text-gray-700">Order lock timeout (soniya)</label>
-                <input type="number" x-model.number="form.order_lock_timeout_seconds" min="10" max="300" step="10"
-                    class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
-                    placeholder="Masalan: 60" />
-                <p class="text-xs text-gray-500">Order qabul qilish lock timeout vaqti</p>
-            </div>
-
-            <div class="space-y-2">
-                <label class="text-sm font-medium text-gray-700">Generic lock timeout (soniya)</label>
-                <input type="number" x-model.number="form.generic_lock_timeout_seconds" min="5" max="60" step="5"
-                    class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
-                    placeholder="Masalan: 10" />
-                <p class="text-xs text-gray-500">Umumiy lock timeout vaqti</p>
-            </div>
-
-            <div class="space-y-2">
-                <label class="text-sm font-medium text-gray-700">FSM state TTL (soniya)</label>
-                <input type="number" x-model.number="form.state_ttl_seconds" min="600" step="600"
-                    class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
-                    placeholder="Masalan: 3600" />
-                <p class="text-xs text-gray-500">User state tozalanish vaqti (faolsiz bo'lsa)</p>
-            </div>
-        </div>
-    </div>
-
-    <!-- Tugmalar -->
-    <div class="flex justify-end gap-3">
-        <button @click="loadSettings()"
-            class="px-6 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium rounded-lg transition">
-            ↩️ Bekor qilish
-        </button>
-        <button @click="saveSettings()"
-            class="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition shadow-sm">
-            💾 Saqlash
-        </button>
     </div>
 </div>
 
 <script>
     function settingsApp() {
         return {
-            form: {
-                bot_is_free: 'true',
-                commission_amount: 0,
-                ban_percentage_threshold: 50,
-                ban_count_threshold: 5,
-                max_driver_change_per_hour: 3,
-                max_pickup_distance_km: 5,
-                auto_confirm_delay_seconds: 120,
-                sms_rate_limit_per_day: 5,
-                sms_rate_limit_per_hour: 3,
-                max_driver_rejects_per_day: 50,
-                auto_complete_trip_seconds: 600,
-                auto_reject_order_seconds: 120,
-                auto_confirm_trip_seconds: 1800,
-                driver_matching_timeout_seconds: 300,
-                driver_matching_max_retries: 5,
-                driver_matching_retry_delay_seconds: 30,
-                order_lock_timeout_seconds: 60,
-                generic_lock_timeout_seconds: 10,
-                state_ttl_seconds: 3600
+            settings: {},
+            loading: true,
+
+            // Metadata for settings descriptions and types
+            settingsMetadata: {
+                'commission_amount': { title: 'Komissiya Miqdori', description: 'Har bir buyurtmadan olinadigan to\'lov (so\'mda).', type: 'number' },
+                'bot_is_free': { title: 'Bot bepulmi?', description: 'Agar true bo\'lsa, komissiya olinmaydi.', type: 'boolean' },
+                'ban_percentage_threshold': { title: 'Ban foizi (Limit)', description: 'Haydovchi qancha foiz buyurtmani bekor qilsa ban oladi (%).', type: 'number' },
+                'ban_count_threshold': { title: 'Ban Soni (Limit)', description: 'Nechta bekor qilishdan keyin tekshiruv boshlanadi.', type: 'number' },
+                'max_driver_change_per_hour': { title: 'Haydovchi Almashtirish Limiti', description: 'Yo\'lovchi bir soatda necha marta haydovchini almashtirishi mumkin.', type: 'number' },
+                'max_pickup_distance_km': { title: 'Buyurtma Masofasi (KM)', description: 'Haydovchi qancha masofadagi buyurtmalarni ko\'radi.', type: 'number' },
+                'auto_confirm_delay_seconds': { title: 'Avto Tasdiqlash Kechikishi', description: 'Buyurtma qabul qilingandan keyin tasdiqlash uchun kutiladigan vaqt.', type: 'number' },
+                'sms_rate_limit_per_day': { title: 'SMS Limit (Kunlik)', description: 'Bir kunda bitta raqamga yuboriladigan maksimal SMS.', type: 'number' },
+                'sms_rate_limit_per_hour': { title: 'SMS Limit (Soatlik)', description: 'Bir soatda bitta raqamga yuboriladigan maksimal SMS.', type: 'number' },
+                'max_driver_rejects_per_day': { title: 'Haydovchi Rad Etish Limiti', description: 'Kunlik bekor qilishlar limiti.', type: 'number' },
+                'driver_inactivity_threshold': { title: 'Nofaollik chegarasi (Kun)', description: 'Haydovchi nechi kun kirmasa nofaol hisoblanadi.', type: 'number' },
+                'auto_complete_trip_seconds': { title: 'Avto Yakunlash (Sonita)', description: 'Safar boshlangandan keyin avtomatik tugatish vaqti.', type: 'number' },
+                'auto_reject_order_seconds': { title: 'Avto Bekor Qilish (Soniya)', description: 'Haydovchi topilmasa buyurtmani bekor qilish vaqti.', type: 'number' },
+                'auto_confirm_trip_seconds': { title: 'Avto Tasdiqlash (Trip)', description: 'Safar yakunlanganda avtomatik tasdiqlash vaqti.', type: 'number' },
+                'driver_matching_timeout_seconds': { title: 'Haydovchi Qidirish Vaqti', description: 'Buyurtmaga haydovchi qidirish maksimal vaqti.', type: 'number' },
+                'driver_matching_max_retries': { title: 'Qidirish Urinishlari', description: 'Haydovchi topilmasa qayta urinishlar soni.', type: 'number' },
+                'driver_matching_retry_delay_seconds': { title: 'Qayta Urinish Kechikishi', description: 'Har bir urinish orasidagi vaqt (soniya).' },
+                'auto_start_trip_delay_seconds': { title: 'Avto Boshlash Kechikishi', description: 'Haydovchi yetib kelgach safarni avtomatik boshlash vaqti.', type: 'number' },
+                'task_retry_delay_seconds': { title: 'Vazifa Qayta Urinish', description: 'Celery vazifalari xato bersa qayta urinish vaqti.', type: 'number' },
+                'order_lock_timeout_seconds': { title: 'Buyurtma Bloklash Vaqti', description: 'Buyurtmani tahrirlashda bloklash vaqti.', type: 'number' },
+                'generic_lock_timeout_seconds': { title: 'Umumiy Bloklash', description: 'Tizim bo\'yicha umumiy bloklash vaqti.', type: 'number' },
+                'state_ttl_seconds': { title: 'Holatni Saqlash (TTL)', description: 'Redisda foydalanuvchi holati qancha turishi (soniya).' }
             },
 
             async init() {
-                await this.loadSettings();
+                await this.fetchSettings();
             },
 
-            async loadSettings() {
-                const data = await this.apiCall('/api/settings/');
-                if (data?.settings) {
-                    this.form.bot_is_free = String(data.settings.bot_is_free ?? 'true');
-                    this.form.commission_amount = Number(data.settings.commission_amount ?? 0);
-                    this.form.ban_percentage_threshold = Number(data.settings.ban_percentage_threshold ?? 50);
-                    this.form.ban_count_threshold = Number(data.settings.ban_count_threshold ?? 5);
-                    this.form.max_driver_change_per_hour = Number(data.settings.max_driver_change_per_hour ?? 3);
-                    this.form.max_pickup_distance_km = Number(data.settings.max_pickup_distance_km ?? 5);
-                    this.form.auto_confirm_delay_seconds = Number(data.settings.auto_confirm_delay_seconds ?? 120);
-                    this.form.sms_rate_limit_per_day = Number(data.settings.sms_rate_limit_per_day ?? 5);
-                    this.form.sms_rate_limit_per_hour = Number(data.settings.sms_rate_limit_per_hour ?? 3);
-                    this.form.max_driver_rejects_per_day = Number(data.settings.max_driver_rejects_per_day ?? 50);
-                    this.form.auto_complete_trip_seconds = Number(data.settings.auto_complete_trip_seconds ?? 600);
-                    this.form.auto_reject_order_seconds = Number(data.settings.auto_reject_order_seconds ?? 120);
-                    this.form.auto_confirm_trip_seconds = Number(data.settings.auto_confirm_trip_seconds ?? 1800);
-                    this.form.driver_matching_timeout_seconds = Number(data.settings.driver_matching_timeout_seconds ?? 300);
-                    this.form.driver_matching_max_retries = Number(data.settings.driver_matching_max_retries ?? 5);
-                    this.form.driver_matching_retry_delay_seconds = Number(data.settings.driver_matching_retry_delay_seconds ?? 30);
-                    this.form.order_lock_timeout_seconds = Number(data.settings.order_lock_timeout_seconds ?? 60);
-                    this.form.generic_lock_timeout_seconds = Number(data.settings.generic_lock_timeout_seconds ?? 10);
-                    this.form.state_ttl_seconds = Number(data.settings.state_ttl_seconds ?? 3600);
-                }
-            },
-
-            async saveSettings() {
-                // Tekin rejimda komissiya 0
-                if (this.form.bot_is_free === 'true') {
-                    this.form.commission_amount = 0;
-                }
-
-                const payloads = [
-                    { key: 'bot_is_free', value: String(this.form.bot_is_free) },
-                    { key: 'commission_amount', value: String(this.form.commission_amount) },
-                    { key: 'ban_percentage_threshold', value: String(this.form.ban_percentage_threshold) },
-                    { key: 'ban_count_threshold', value: String(this.form.ban_count_threshold) },
-                    { key: 'max_driver_change_per_hour', value: String(this.form.max_driver_change_per_hour) },
-                    { key: 'max_pickup_distance_km', value: String(this.form.max_pickup_distance_km) },
-                    { key: 'auto_confirm_delay_seconds', value: String(this.form.auto_confirm_delay_seconds) },
-                    { key: 'sms_rate_limit_per_day', value: String(this.form.sms_rate_limit_per_day) },
-                    { key: 'sms_rate_limit_per_hour', value: String(this.form.sms_rate_limit_per_hour) },
-                    { key: 'max_driver_rejects_per_day', value: String(this.form.max_driver_rejects_per_day) },
-                    { key: 'auto_complete_trip_seconds', value: String(this.form.auto_complete_trip_seconds) },
-                    { key: 'auto_reject_order_seconds', value: String(this.form.auto_reject_order_seconds) },
-                    { key: 'auto_confirm_trip_seconds', value: String(this.form.auto_confirm_trip_seconds) },
-                    { key: 'driver_matching_timeout_seconds', value: String(this.form.driver_matching_timeout_seconds) },
-                    { key: 'driver_matching_max_retries', value: String(this.form.driver_matching_max_retries) },
-                    { key: 'driver_matching_retry_delay_seconds', value: String(this.form.driver_matching_retry_delay_seconds) },
-                    { key: 'order_lock_timeout_seconds', value: String(this.form.order_lock_timeout_seconds) },
-                    { key: 'generic_lock_timeout_seconds', value: String(this.form.generic_lock_timeout_seconds) },
-                    { key: 'state_ttl_seconds', value: String(this.form.state_ttl_seconds) }
-                ];
-
-                for (const item of payloads) {
-                    const res = await this.apiCall(`/api/settings/${item.key}`, 'PUT', { value: item.value });
-                    if (!res?.success) {
-                        alert(`❌ Saqlashda xato: ${item.key}`);
-                        return;
-                    }
-                }
-                alert("✅ Barcha sozlamalar muvaffaqiyatli saqlandi!");
-                await this.loadSettings();
-            },
-
-            async apiCall(url, method = 'GET', body = null) {
+            async fetchSettings() {
+                this.loading = true;
                 try {
-                    const options = {
-                        method,
-                        headers: { 'Content-Type': 'application/json' }
-                    };
-                    if (body) options.body = JSON.stringify(body);
-
-                    const response = await fetch(url, options);
-                    const data = await response.json();
-
-                    if (!response.ok) throw new Error(data.detail || 'Xatolik yuz berdi');
-                    return data;
+                    const res = await fetch('/api/settings/');
+                    const data = await res.json();
+                    if (data.success) {
+                        this.settings = data.settings;
+                    }
                 } catch (e) {
-                    alert(e.message);
-                    return null;
+                    console.error(e);
+                } finally {
+                    this.loading = false;
                 }
+            },
+
+            getMeta(key) {
+                const meta = this.settingsMetadata[key] || {
+                    title: this.formatLabel(key),
+                    description: key
+                };
+                // Ensure type defaults to 'text' if not specified
+                return {
+                    ...meta,
+                    type: meta.type || 'text'
+                };
+            },
+
+            toggleSetting(key, event) {
+                // Toggle between 'true' and 'false' strings (since settings values are strings)
+                const current = String(this.settings[key]) === 'true';
+                this.settings[key] = String(!current);
+
+                // Optional: Auto-save on toggle? Let's stick to manual save for now for consistency,
+                // or we can pass event to saveSetting if needed.
+                // However, the user might expect a toggle to save immediately ?
+                // The Save button is still there.Let's keep manual save to avoid accidental changes?
+                // Actually, toggles usually save immediately or have a save button. 
+                // Given existing UI has a save button next to it, let's keep using that.
+            },
+
+            async saveSetting(key, event) {
+                try {
+                    const btn = event ? event.currentTarget : null;
+                    const payload = { value: String(this.settings[key]) };
+
+                    const res = await fetch(`/api/settings/${key}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                    const data = await res.json();
+
+                    if (data.success) {
+                        if (btn) {
+                            const originalHTML = btn.innerHTML;
+                            btn.innerHTML = '✅';
+                            setTimeout(() => btn.innerHTML = originalHTML, 1500);
+                        } else {
+                            alert("Saqlandi!");
+                        }
+                    } else {
+                        alert("Xatolik: " + (data.detail || data.message));
+                    }
+                } catch (e) {
+                    alert("Xatolik yuz berdi: " + e.message);
+                }
+            },
+
+            formatLabel(key) {
+                return key.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
             }
         }
     }

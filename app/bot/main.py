@@ -102,8 +102,8 @@ async def on_shutdown():
                     "🔴 <b>Bot to'xtatildi!</b>",
                     parse_mode=ParseMode.HTML
                 )
-            except:
-                pass
+            except Exception as e:
+                logger.debug(f"Failed to notify admin {admin_id} on shutdown: {e}")
     
     # Database
     await close_database()

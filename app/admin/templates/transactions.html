@@ -1,283 +1,198 @@
 {% extends "base.html" %}
 
 {% block title %}To'lovlar | Hamroh Admin{% endblock %}
-{% block header_title %}Kutayotgan to'lovlar{% endblock %}
+{% block header_title %}To'lovlar Tarixi{% endblock %}
 
 {% block content %}
-<div class="p-8">
-    <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-        <table class="min-w-full divide-y divide-gray-200">
-            <thead class="bg-gray-50 text-gray-500 text-xs uppercase font-semibold">
-                <tr>
-                    <th class="px-6 py-4 text-left">Haydovchi</th>
-                    <th class="px-6 py-4 text-left">Summa</th>
-                    <th class="px-6 py-4 text-left">Vaqt</th>
-                    <th class="px-6 py-4 text-left">Holat</th>
-                    <th class="px-6 py-4 text-right">Amallar</th>
-                </tr>
-            </thead>
-            <tbody id="transactionRows" class="divide-y divide-gray-100">
-                {% for tx in transactions %}
-                <tr class="hover:bg-gray-50 transition" data-row="{{ loop.index0 }}">
-                    <td class="px-6 py-4 text-sm font-bold text-gray-900">{{ tx.driver_name }}</td>
-                    <td class="px-6 py-4">
-                        <div class="text-sm font-bold text-green-600">+{{ "{:,.0f}".format(tx.amount) }} so'm</div>
-                        <div class="text-[10px] text-gray-400 uppercase">{{ tx.type }}</div>
-                    </td>
-                    <td class="px-6 py-4 text-sm text-gray-500">{{ tx.created_at }}</td>
-                    <td class="px-6 py-4">
-                        {% if tx.status == 'pending' %}
-                            <span class="px-2 py-1 bg-yellow-100 text-yellow-700 rounded-full text-[10px] font-bold uppercase">Kutilmoqda</span>
-                        {% elif tx.status == 'approved' %}
-                            <span class="px-2 py-1 bg-green-100 text-green-700 rounded-full text-[10px] font-bold uppercase">Tasdiqlangan</span>
-                        {% else %}
-                            <span class="px-2 py-1 bg-red-100 text-red-700 rounded-full text-[10px] font-bold uppercase">Rad etilgan</span>
-                        {% endif %}
-                    </td>
-                    <td class="px-6 py-4 text-right space-x-2">
-                        {% if tx.receipt_url %}
-                            <button 
-                                onclick="showReceipt('{{ tx.receipt_url }}', {{ tx.id }})" 
-                                class="bg-blue-500 text-white px-3 py-1 rounded text-xs hover:bg-blue-600 transition"
-                                title="Chek rasmini ko'rish"
-                            >📷 Chek</button>
-                        {% endif %}
-                        {% if tx.status == 'pending' %}
-                            <button 
-                                onclick="approveTransaction({{ tx.id }}, {{ tx.amount }})" 
-                                class="bg-green-500 text-white px-3 py-1 rounded text-xs hover:bg-green-600 transition"
-                            >✅ Tasdiqlash</button>
-                            <button 
-                                onclick="rejectTransaction({{ tx.id }})" 
-                                class="bg-red-500 text-white px-3 py-1 rounded text-xs hover:bg-red-600 transition"
-                            >❌ Rad etish</button>
-                        {% else %}
-                            <span class="text-gray-300 text-xs">Yopilgan</span>
-                        {% endif %}
-                    </td>
-                </tr>
-                {% else %}
-                <tr>
-                    <td colspan="5" class="px-6 py-20 text-center text-gray-400">Tranzaksiyalar mavjud emas</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+<div class="space-y-6" x-data="transactionsApp()" x-init="init()">
+
+    <!-- Stats -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div class="bg-dark-card p-5 rounded-2xl shadow-lg border border-dark-border">
+            <p class="text-xs text-dark-muted font-medium uppercase tracking-wider">Bugungi kirim</p>
+            <p class="text-2xl font-bold text-green-400 mt-1" x-text="formatMoney(stats.today?.total || 0)"></p>
+        </div>
+        <div class="bg-dark-card p-5 rounded-2xl shadow-lg border border-dark-border">
+            <p class="text-xs text-dark-muted font-medium uppercase tracking-wider">Haftalik kirim</p>
+            <p class="text-2xl font-bold text-white mt-1" x-text="formatMoney(stats.week?.total || 0)"></p>
+        </div>
+        <div class="bg-dark-card p-5 rounded-2xl shadow-lg border border-dark-border">
+            <p class="text-xs text-dark-muted font-medium uppercase tracking-wider">Oylik kirim</p>
+            <p class="text-2xl font-bold text-white mt-1" x-text="formatMoney(stats.month?.total || 0)"></p>
+        </div>
+    </div>
+
+    <!-- Filters -->
+    <div
+        class="bg-dark-card p-4 rounded-2xl shadow-lg border border-dark-border flex flex-wrap items-center justify-between gap-4">
+        <div class="flex items-center gap-4 flex-1">
+            <div class="relative flex-1 max-w-md">
+                <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-dark-muted">🔍</span>
+                <input type="text" x-model="filters.driver_search" @input.debounce.500ms="fetchTransactions()"
+                    class="block w-full pl-10 pr-3 py-2 bg-dark-bg border border-dark-border rounded-xl text-white placeholder-dark-muted focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition-all"
+                    placeholder="Haydovchi qidirish...">
+            </div>
+
+            <select x-model="filters.type" @change="fetchTransactions()"
+                class="bg-dark-bg border border-dark-border rounded-xl px-3 py-2 text-sm text-white focus:ring-2 focus:ring-blue-500 outline-none">
+                <option value="">Barcha turlar</option>
+                <option value="fill_balance">Balans to'ldirish</option>
+                <option value="commission">Komissiya</option>
+                <option value="withdraw">Yechib olish</option>
+            </select>
+        </div>
+        <button @click="fetchTransactions()"
+            class="bg-dark-hover hover:bg-gray-700 text-white px-4 py-2 rounded-xl text-sm font-medium transition-colors border border-dark-border">
+            Yangilash
+        </button>
+    </div>
+
+    <!-- Transactions Table -->
+    <div class="bg-dark-card rounded-2xl shadow-lg border border-dark-border overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-dark-border">
+                <thead class="bg-dark-bg/50">
+                    <tr>
+                        <th class="px-6 py-4 text-left text-xs font-medium text-dark-muted uppercase tracking-wider">ID
+                        </th>
+                        <th class="px-6 py-4 text-left text-xs font-medium text-dark-muted uppercase tracking-wider">
+                            Haydovchi</th>
+                        <th class="px-6 py-4 text-left text-xs font-medium text-dark-muted uppercase tracking-wider">
+                            Summa</th>
+                        <th class="px-6 py-4 text-left text-xs font-medium text-dark-muted uppercase tracking-wider">Tur
+                        </th>
+                        <th class="px-6 py-4 text-left text-xs font-medium text-dark-muted uppercase tracking-wider">
+                            Izoh</th>
+                        <th class="px-6 py-4 text-left text-xs font-medium text-dark-muted uppercase tracking-wider">
+                            Sana</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-dark-border">
+                    <template x-for="t in transactions" :key="t.transaction_id">
+                        <tr class="hover:bg-dark-hover/50 transition-colors">
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-dark-muted" x-text="t.transaction_id">
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-white font-medium"
+                                x-text="t.driver_name"></td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm font-mono"
+                                :class="t.amount > 0 ? 'text-green-400' : 'text-red-400'"
+                                x-text="(t.amount > 0 ? '+' : '') + formatMoney(t.amount)">
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm">
+                                <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full" :class="{
+                                          'bg-green-500/10 text-green-400': t.type === 'fill_balance',
+                                          'bg-red-500/10 text-red-400': t.type === 'commission',
+                                          'bg-blue-500/10 text-blue-400': t.type === 'bonus'
+                                      }" x-text="getTypeName(t.type)">
+                                </span>
+                            </td>
+                            <td class="px-6 py-4 text-sm text-dark-muted truncate max-w-xs" x-text="t.description"></td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-dark-muted"
+                                x-text="formatDate(t.created_at)"></td>
+                        </tr>
+                    </template>
+                    <template x-if="transactions.length === 0">
+                        <tr>
+                            <td colspan="6" class="px-6 py-8 text-center text-dark-muted">To'lovlar topilmadi</td>
+                        </tr>
+                    </template>
+                </tbody>
+            </table>
+        </div>
+
         <!-- Pagination -->
-        <div class="px-6 py-4 bg-gray-50 border-t border-gray-200 flex items-center justify-between text-sm">
-            <span>Jami: <b id="transactionTotal">{{ transactions|length }}</b></span>
-            <div class="flex items-center gap-2">
-                <button id="transactionPrev" class="px-3 py-1 border rounded bg-white disabled:opacity-50" disabled>Oldingi</button>
-                <span id="transactionPageInfo" class="text-gray-600"></span>
-                <button id="transactionNext" class="px-3 py-1 border rounded bg-white disabled:opacity-50">Keyingi</button>
+        <div class="px-6 py-4 bg-dark-bg/30 border-t border-dark-border flex items-center justify-between">
+            <span class="text-sm text-dark-muted">Showing <span x-text="transactions.length"></span> of <span
+                    x-text="total"></span></span>
+            <div class="flex gap-2">
+                <button @click="prevPage()" :disabled="filters.offset === 0"
+                    class="px-3 py-1 border border-dark-border rounded-lg bg-dark-card text-white disabled:opacity-50 hover:bg-dark-hover transition-colors">
+                    Oldingi
+                </button>
+                <button @click="nextPage()" :disabled="filters.offset + filters.limit >= total"
+                    class="px-3 py-1 border border-dark-border rounded-lg bg-dark-card text-white disabled:opacity-50 hover:bg-dark-hover transition-colors">
+                    Keyingi
+                </button>
             </div>
         </div>
     </div>
 </div>
 
-<!-- Receipt Modal -->
-<div id="receiptModal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
-    <div class="bg-white rounded-xl p-6 max-w-2xl w-full mx-4">
-        <div class="flex items-center justify-between mb-4">
-            <h3 class="text-lg font-bold">Chek rasmi</h3>
-            <a id="receiptNewTab" href="#" target="_blank" class="text-blue-600 text-sm hover:underline">Yangi oynada ochish ↗</a>
-        </div>
-        <div class="mb-4 max-h-[70vh]">
-            <img id="receiptImage" src="" alt="Chek rasmi" class="w-full max-h-[70vh] object-contain rounded-lg border" />
-        </div>
-        <div class="flex justify-end">
-            <button onclick="closeReceiptModal()" class="bg-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-400">Yopish</button>
-        </div>
-    </div>
-</div>
+<script>
+    function transactionsApp() {
+        return {
+            transactions: [],
+            stats: {},
+            total: 0,
+            filters: {
+                driver_search: '',
+                type: '',
+                limit: 50,
+                offset: 0
+            },
 
-<!-- Approve Transaction Modal -->
-<div id="approveModal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
-    <div class="bg-white rounded-xl p-6 max-w-md w-full mx-4">
-        <h3 class="text-lg font-bold mb-4">To'lovni tasdiqlash</h3>
-        <form id="approveForm" onsubmit="confirmApprove(event)">
-            <input type="hidden" id="approveTransactionId" />
-            <div class="mb-4">
-                <label class="block text-sm font-medium text-gray-700 mb-1">Chekdagi summa (so'm)</label>
-                <input 
-                    type="number" 
-                    id="approveAmount" 
-                    class="w-full px-3 py-2 border rounded-lg" 
-                    min="0" 
-                    step="1000"
-                    required 
-                />
-                <p class="text-xs text-gray-500 mt-1">Haydovchi kiritgan summa: <span id="originalAmount" class="font-bold"></span> so'm</p>
-            </div>
-            <div class="flex space-x-2">
-                <button type="submit" class="flex-1 bg-green-500 text-white py-2 rounded-lg hover:bg-green-600">Tasdiqlash</button>
-                <button type="button" onclick="closeApproveModal()" class="flex-1 bg-gray-300 text-gray-700 py-2 rounded-lg hover:bg-gray-400">Bekor qilish</button>
-            </div>
-        </form>
-    </div>
-</div>
+            async init() {
+                await this.fetchStats();
+                await this.fetchTransactions();
+            },
 
-<!-- Reject Transaction Modal -->
-<div id="rejectModal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
-    <div class="bg-white rounded-xl p-6 max-w-md w-full mx-4">
-        <h3 class="text-lg font-bold mb-4">To'lovni rad etish</h3>
-        <form id="rejectForm" onsubmit="confirmReject(event)">
-            <input type="hidden" id="rejectTransactionId" />
-            <div class="mb-4">
-                <label class="block text-sm font-medium text-gray-700 mb-1">Rad etish sababi</label>
-                <textarea id="rejectReason" class="w-full px-3 py-2 border rounded-lg" rows="3" required></textarea>
-            </div>
-            <div class="flex space-x-2">
-                <button type="submit" class="flex-1 bg-red-500 text-white py-2 rounded-lg hover:bg-red-600">Rad etish</button>
-                <button type="button" onclick="closeRejectModal()" class="flex-1 bg-gray-300 text-gray-700 py-2 rounded-lg hover:bg-gray-400">Bekor qilish</button>
-            </div>
-        </form>
-    </div>
-</div>
+            async fetchStats() {
+                const data = await this.apiCall('/api/transactions/stats');
+                if (data) this.stats = data;
+            },
 
-    <script>
-    // Inline constants (Jinja templating remains intact)
-    const BOT_TOKEN = '{{ settings.BOT_TOKEN }}';
-const txPageSize = 20;
-let txCurrentPage = 1;
-let currentReceiptUrl = null;
+            async fetchTransactions() {
+                let url = `/api/transactions/?limit=${this.filters.limit}&offset=${this.filters.offset}`;
+                if (this.filters.driver_search) url += `&driver_search=${encodeURIComponent(this.filters.driver_search)}`;
+                if (this.filters.type) url += `&type=${this.filters.type}`;
 
-function renderTransactionsPage() {
-    const rows = Array.from(document.querySelectorAll('#transactionRows tr[data-row]'));
-    const total = rows.length;
-    const start = (txCurrentPage - 1) * txPageSize;
-    const end = start + txPageSize;
-    rows.forEach((row, idx) => {
-        row.classList.toggle('hidden', !(idx >= start && idx < end));
-    });
-    const totalPages = Math.max(1, Math.ceil(total / txPageSize));
-    document.getElementById('transactionPageInfo').textContent = `${txCurrentPage} / ${totalPages}`;
-    document.getElementById('transactionPrev').disabled = txCurrentPage === 1;
-    document.getElementById('transactionNext').disabled = end >= total;
-}
+                const data = await this.apiCall(url);
+                if (data) {
+                    this.transactions = data.transactions;
+                    this.total = data.total;
+                }
+            },
 
-document.addEventListener('DOMContentLoaded', () => {
-    renderTransactionsPage();
-    document.getElementById('transactionPrev').addEventListener('click', () => {
-        if (txCurrentPage > 1) {
-            txCurrentPage -= 1;
-            renderTransactionsPage();
-        }
-    });
-    document.getElementById('transactionNext').addEventListener('click', () => {
-        const total = document.querySelectorAll('#transactionRows tr[data-row]').length;
-        if (txCurrentPage * txPageSize < total) {
-            txCurrentPage += 1;
-            renderTransactionsPage();
-        }
-    });
-});
+            async apiCall(url) {
+                try {
+                    const res = await fetch(url);
+                    return await res.json();
+                } catch (e) {
+                    console.error(e);
+                    return null;
+                }
+            },
 
-function showReceipt(fileId, transactionId) {
-    // Telegram file_id dan rasm URL olish
-    const imageUrl = `https://api.telegram.org/file/bot${BOT_TOKEN}/${fileId}`;
-    // Yoki to'g'ridan-to'g'ri file_id orqali
-    const directUrl = `https://api.telegram.org/bot${BOT_TOKEN}/getFile?file_id=${fileId}`;
-    
-    // Avval file path olish
-    fetch(directUrl)
-        .then(res => res.json())
-        .then(data => {
-            if (data.ok) {
-                const filePath = data.result.file_path;
-                const imageUrl = `https://api.telegram.org/file/bot${BOT_TOKEN}/${filePath}`;
-                currentReceiptUrl = imageUrl;
-                document.getElementById('receiptImage').src = imageUrl;
-                document.getElementById('receiptNewTab').href = imageUrl;
-                document.getElementById('receiptModal').classList.remove('hidden');
-            } else {
-                alert('❌ Rasm yuklab bo\'lmadi');
+            getTypeName(type) {
+                const map = {
+                    'fill_balance': 'Balans to\'ldirish',
+                    'commission': 'Komissiya',
+                    'withdraw': 'Yechib olish',
+                    'bonus': 'Bonus',
+                    'penalty': 'Jarima'
+                };
+                return map[type] || type;
+            },
+
+            formatMoney(n) {
+                return new Intl.NumberFormat('uz-UZ').format(n);
+            },
+
+            formatDate(iso) {
+                if (!iso) return '-';
+                return new Date(iso).toLocaleString('uz-UZ', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+            },
+
+            nextPage() {
+                this.filters.offset += this.filters.limit;
+                this.fetchTransactions();
+            },
+
+            prevPage() {
+                this.filters.offset = Math.max(0, this.filters.offset - this.filters.limit);
+                this.fetchTransactions();
             }
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            alert('❌ Xatolik: ' + error.message);
-        });
-}
-
-function closeReceiptModal() {
-    document.getElementById('receiptModal').classList.add('hidden');
-}
-
-function approveTransaction(transactionId, originalAmount) {
-    document.getElementById('approveTransactionId').value = transactionId;
-    document.getElementById('originalAmount').textContent = originalAmount.toLocaleString();
-    document.getElementById('approveAmount').value = originalAmount;
-    document.getElementById('approveModal').classList.remove('hidden');
-}
-
-function closeApproveModal() {
-    document.getElementById('approveModal').classList.add('hidden');
-}
-
-async function confirmApprove(event) {
-    event.preventDefault();
-    const transactionId = parseInt(document.getElementById('approveTransactionId').value);
-    const amount = parseFloat(document.getElementById('approveAmount').value);
-    
-    try {
-        const response = await fetch(`/api/transactions/${transactionId}/approve`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                amount: amount  // Admin kiritgan summa
-            })
-        });
-        
-        if (response.ok) {
-            alert('✅ To\'lov tasdiqlandi!');
-            location.reload();
-        } else {
-            const error = await response.json();
-            alert('❌ Xatolik: ' + (error.detail || 'Noma\'lum xatolik'));
         }
-    } catch (error) {
-        alert('❌ Xatolik: ' + error.message);
     }
-}
-
-function rejectTransaction(transactionId) {
-    document.getElementById('rejectTransactionId').value = transactionId;
-    document.getElementById('rejectModal').classList.remove('hidden');
-}
-
-function closeRejectModal() {
-    document.getElementById('rejectModal').classList.add('hidden');
-}
-
-async function confirmReject(event) {
-    event.preventDefault();
-    const transactionId = parseInt(document.getElementById('rejectTransactionId').value);
-    const reason = document.getElementById('rejectReason').value;
-    
-    try {
-        const response = await fetch(`/api/transactions/${transactionId}/reject`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                reason: reason
-            })
-        });
-        
-        if (response.ok) {
-            alert('✅ To\'lov rad etildi!');
-            location.reload();
-        } else {
-            const error = await response.json();
-            alert('❌ Xatolik: ' + (error.detail || 'Noma\'lum xatolik'));
-        }
-    } catch (error) {
-        alert('❌ Xatolik: ' + error.message);
-    }
-}
 </script>
 {% endblock %}

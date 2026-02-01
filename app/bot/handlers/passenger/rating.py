@@ -18,17 +18,14 @@ async def rate_driver_handler(callback: CallbackQuery, session: AsyncSession):
     
     ✅ REFACTORED: Session avtomatik
     """
-    if callback.data is None:
-        await callback.answer("Xatolik: data yo'q")
-        return
-
-    try:
-        _, order_id_str, stars_str = callback.data.split(":")
-        order_id = int(order_id_str)
-        stars = int(stars_str)
-    except ValueError:
+    from app.bot.utils import parse_callback_multi
+    
+    result = parse_callback_multi(callback.data, "rate_driver", 2)
+    if result is None:
         await callback.answer("Xatolik: noto'g'ri format")
         return
+    
+    order_id, stars = result
 
     # Order va Driverni topish
     stmt = select(Order).where(Order.order_id == order_id)

@@ -19,9 +19,9 @@ class Messages:
         
         SUPPORT_INFO = (
             "📞 <b>Support xizmati</b>\n\n"
-            "Admin bilan bog'lanish: @Bakhromdev\n"
-            "Telefon: +998 93 558 03 11\n\n"
-            "Ish vaqti: 9:00 - 21:00"
+            "Admin bilan bog'lanish: {username}\n"
+            "Telefon: {phone}\n\n"
+            "Ish vaqti: {working_hours}"
         )
     
     class Driver:
@@ -51,7 +51,7 @@ class Messages:
         QUEUE_POSITION = (
             "📢 <b>Navbat yangilandi!</b>\n\n"
             "📍 Marshrut: <b>{route_name}</b>\n"
-            "🔢 Sizning navbatingiz: <b>{position}/{total}</b>\n\n"
+            "🔢 Sizning navbatingiz: <b>{position}</b>\n\n"
             "⏳ Buyurtma kelishini kutmoqdasiz..."
         )
         QUEUE_TURN = "🎉 <b>Navbatingiz keldi!</b> 🚖"
@@ -74,20 +74,17 @@ class Messages:
         )
         TRIP_STARTED = (
             "✅ <b>Yo'lga chiqdingiz!</b>\n\n"
-            "📦 Buyurtma #{order_id}\n\n"
             "🚗 Xavfsiz yo'l!\n\n"
             "⏱ Safar 15 daqiqadan keyin avtomatik yakunlanadi.\n"
             "Yoki '<b><i>🚗 Safarni yakunlash</i></b>' tugmasini bosing."
         )
         TRIP_COMPLETED = (
             "🎉 <b>Safar yakunlandi!</b>\n\n"
-            "📦 Buyurtma #{order_id}\n"
             "⏱ Davomiyligi: {duration} daqiqa\n\n"
             "✨ Rahmat! Keyingi safarga muvaffaqiyat tilaymiz!"
         )
         ORDER_CANCELLED = (
             "❌ <b>Buyurtma bekor qilindi</b>\n\n"
-            "📦 Buyurtma #{order_id}\n\n"
             "⚠️ Warning olindingiz!"
         )
         TRIP_ACCEPTED_PROMPT = "✅ <b>Buyurtma #{order_id} qabul qilindi!</b>"
@@ -110,13 +107,11 @@ class Messages:
         )
         ORDER_CREATED = (
             "✅ <b>Buyurtma qabul qilindi!</b>\n\n"
-            "📦 Buyurtma #{order_id}\n\n"
             "⏳ Haydovchi topilmoqda...\n\n"
             "📱 Haydovchi topilgach xabar beramiz!"
         )
         DRIVER_FOUND = (
             "✅ <b>Haydovchi topildi!</b>\n\n"
-            "📦 Buyurtma: #{order_id}\n\n"
             "👤 Haydovchi: {full_name}\n"
             "📱 <b>Telefon:</b> {phone_number}\n"
             "🎨 <b>Rang:</b> {car_color}\n"
@@ -128,7 +123,6 @@ class Messages:
         
         SELECT_NEW_DRIVER = (
             "🔄 <b>Yangi haydovchi tanlang</b>\n\n"
-            "📦 Buyurtma #{order_id}\n\n"
             "Quyidagi haydovchilardan birini tanlang:"
         )
 

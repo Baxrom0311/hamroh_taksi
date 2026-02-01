@@ -259,7 +259,7 @@ async def reject_transaction(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/statistics")
+@router.get("/stats")
 async def get_transaction_statistics(
     current_user: dict = Depends(get_current_user)
 ):
@@ -299,6 +299,20 @@ async def get_transaction_statistics(
             week_result = await session.execute(week_query)
             week_data = week_result.first()
             
+            # Oylik statistika
+            month_start = today_start.replace(day=1)
+            month_query = select(
+                func.count(Transaction.transaction_id).label('count'),
+                func.sum(Transaction.amount).label('total')
+            ).where(
+                Transaction.created_at >= month_start
+            ).where(
+                Transaction.status == TransactionStatus.APPROVED
+            )
+            
+            month_result = await session.execute(month_query)
+            month_data = month_result.first()
+
             # Pending count
             pending_query = select(func.count(Transaction.transaction_id)).where(
                 Transaction.status == TransactionStatus.PENDING
@@ -316,6 +330,10 @@ async def get_transaction_statistics(
                 'week': {
                     'count': week_data.count or 0, # type: ignore
                     'total': float(week_data.total or 0) # type: ignore
+                },
+                'month': {
+                    'count': month_data.count or 0, # type: ignore
+                    'total': float(month_data.total or 0) # type: ignore
                 },
                 'pending': pending_count or 0
             }

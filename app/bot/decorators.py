@@ -82,9 +82,14 @@ def _create_role_session_decorator(
                             f"Data integrity error: User {user_id} is {role.value} "
                             f"but has no {entity_name} profile!"
                         )
+                        
+                        from app.models.system_settings import get_setting
+                        from config.settings import settings as config
+                        support_username = await get_setting(session, "support_username", config.SUPPORT_USERNAME)
+                        
                         error_msg = (
                             f"❌ Tizim xatolik: {entity_name.capitalize()} profili topilmadi. "
-                            "Iltimos @bakhromdev ga murojaat qiling."
+                            f"Iltimos {support_username} ga murojaat qiling."
                         )
                         if isinstance(event, Message):
                             await event.answer(error_msg)

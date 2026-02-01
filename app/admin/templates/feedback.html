@@ -1,241 +1,222 @@
 {% extends "base.html" %}
 
-{% block title %}Feedback - Hamroh Admin{% endblock %}
-
-{% block header_title %}Murojaatlar (Feedback){% endblock %}
+{% block title %}Murojaatlar | Hamroh Admin{% endblock %}
+{% block header_title %}Murojaatlar va Takliflar{% endblock %}
 
 {% block content %}
-<div class="container mx-auto px-6 py-8"
-    x-data="{ activeTab: 'open', replyModalOpen: false, currentFeedback: null, replyText: '' }">
+<div class="space-y-6" x-data="feedbackApp()" x-init="init()">
 
     <!-- Stats -->
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        <div class="bg-white rounded-lg shadow p-6 border-l-4 border-yellow-500">
-            <h3 class="text-gray-500 text-sm font-medium">Yangi Murojaatlar</h3>
-            <p class="text-3xl font-bold text-gray-800">{{ open_count }}</p>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div class="bg-dark-card p-5 rounded-2xl shadow-lg border border-dark-border">
+            <p class="text-xs text-dark-muted font-medium uppercase tracking-wider">Jami murojaatlar</p>
+            <p class="text-2xl font-bold text-white mt-1" x-text="stats.total || 0"></p>
         </div>
-        <div class="bg-white rounded-lg shadow p-6 border-l-4 border-blue-500">
-            <h3 class="text-gray-500 text-sm font-medium">Jami Bugun</h3>
-            <p class="text-3xl font-bold text-gray-800">{{ today_count }}</p>
+        <div class="bg-dark-card p-5 rounded-2xl shadow-lg border border-dark-border">
+            <p class="text-xs text-green-400 font-medium uppercase tracking-wider">Bugun</p>
+            <p class="text-2xl font-bold text-white mt-1" x-text="stats.today || 0"></p>
         </div>
-        <div class="bg-white rounded-lg shadow p-6 border-l-4 border-green-500">
-            <h3 class="text-gray-500 text-sm font-medium">Hal Qilingan</h3>
-            <p class="text-3xl font-bold text-gray-800">{{ resolved_count }}</p>
+        <div class="bg-dark-card p-5 rounded-2xl shadow-lg border border-dark-border">
+            <p class="text-xs text-yellow-400 font-medium uppercase tracking-wider">O'qilmagan</p>
+            <p class="text-2xl font-bold text-white mt-1" x-text="stats.unread || 0"></p>
         </div>
     </div>
 
-    <!-- Tabs -->
-    <div class="border-b border-gray-200 mb-6">
-        <nav class="-mb-px flex space-x-8">
-            <button @click="activeTab = 'open'"
-                :class="{'border-blue-500 text-blue-600': activeTab === 'open', 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300': activeTab !== 'open'}"
-                class="whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition">
-                🔴 Yangi (Ochiq)
+    <!-- Filters -->
+    <div class="bg-dark-card p-4 rounded-2xl shadow-lg border border-dark-border flex items-center justify-between">
+        <div class="flex items-center gap-4 flex-1">
+            <select x-model="filters.status" @change="fetchFeedback()"
+                class="bg-dark-bg border border-dark-border rounded-xl px-3 py-2 text-sm text-white focus:ring-2 focus:ring-blue-500 outline-none">
+                <option value="">Holat (Barchasi)</option>
+                <option value="unread">O'qilmagan</option>
+                <option value="read">O'qilgan</option>
+            </select>
+            <button @click="fetchFeedback()" class="text-dark-muted hover:text-white transition-colors">
+                🔄 Yangilash
             </button>
-            <button @click="activeTab = 'all'"
-                :class="{'border-blue-500 text-blue-600': activeTab === 'all', 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300': activeTab !== 'all'}"
-                class="whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition">
-                📋 Barcha Tarix
-            </button>
-        </nav>
+        </div>
     </div>
 
-    <!-- OPEN FEEDBACK LIST -->
-    <div x-show="activeTab === 'open'" class="space-y-4">
-        {% if not open_feedbacks %}
-        <div class="bg-white rounded-lg shadow-sm p-8 text-center text-gray-500">
-            <p class="text-xl">🎉 Hozircha yangi murojaatlar yo'q!</p>
-        </div>
-        {% endif %}
-
-        {% for fb in open_feedbacks %}
-        <div class="bg-white rounded-lg shadow p-6 hover:shadow-md transition">
-            <div class="flex justify-between items-start">
-                <div class="flex items-center space-x-3">
-                    <span
-                        class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium {{ 'bg-red-100 text-red-800' if fb.type == 'complaint' else 'bg-yellow-100 text-yellow-800' }}">
-                        {{ '📝 Shikoyat' if fb.type == 'complaint' else '💡 Taklif' }}
-                    </span>
-                    <span class="text-xs text-gray-500">{{ fb.created_at }}</span>
-                </div>
-                <div class="flex space-x-2">
-                    <button @click='currentFeedback = {{ fb | tojson }}; replyModalOpen = true'
-                        class="text-blue-600 hover:text-blue-900 text-sm font-medium border border-blue-600 rounded px-3 py-1 hover:bg-blue-50 transition">
-                        ↩️ Javob berish
-                    </button>
-                </div>
-            </div>
-
-            <div class="mt-4">
-                <div class="flex items-center mb-2">
-                    <div class="font-bold text-gray-900 mr-2">{{ fb.user_name }}</div>
-                    <div class="text-sm text-gray-500">{{ fb.user_phone }}</div>
-                    <span class="mx-2 text-gray-300">|</span>
-                    <span class="text-xs text-gray-400 capitalize">{{ fb.user_role }}</span>
-                </div>
-                <p class="text-gray-800 bg-gray-50 p-3 rounded border border-gray-100">
-                    {{ fb.message }}
-                </p>
-            </div>
-        </div>
-        {% endfor %}
-    </div>
-
-    <!-- ALL FEEDBACK LIST -->
-    <div x-show="activeTab === 'all'" x-cloak class="bg-white shadow rounded-lg overflow-hidden">
-        <table class="min-w-full divide-y divide-gray-200">
-            <thead class="bg-gray-50">
-                <tr>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID / Vaqt
-                    </th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">User</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Xabar
-                    </th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Holat
-                    </th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Admin
-                        Javobi</th>
-                </tr>
-            </thead>
-            <tbody class="bg-white divide-y divide-gray-200">
-                {% for fb in all_feedbacks %}
-                <tr>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        #{{ fb.id }}<br>
-                        <span class="text-xs">{{ fb.created_at }}</span>
-                    </td>
-                    <td class="px-6 py-4 whitespace-nowrap">
-                        <div class="text-sm font-medium text-gray-900">{{ fb.user_name }}</div>
-                        <div class="text-sm text-gray-500">{{ fb.user_phone }}</div>
-                    </td>
-                    <td class="px-6 py-4">
-                        <div class="text-sm text-gray-900 line-clamp-2" title="{{ fb.message }}">
-                            <span
-                                class="{{ 'text-red-600 font-bold' if fb.type == 'complaint' else 'text-yellow-600 font-bold' }}">
-                                {{ '[Shikoyat]' if fb.type == 'complaint' else '[Taklif]' }}
-                            </span>
-                            {{ fb.message }}
+    <!-- Feedback List -->
+    <div class="grid grid-cols-1 gap-4">
+        <template x-for="item in feedback" :key="item.id">
+            <div class="bg-dark-card rounded-2xl p-5 shadow-lg border border-dark-border hover:border-blue-500/50 transition-colors cursor-pointer"
+                :class="{'border-l-4 border-l-blue-500': !item.is_read}" @click="viewDetails(item)">
+                <div class="flex justify-between items-start mb-2">
+                    <div class="flex items-center gap-3">
+                        <div
+                            class="h-10 w-10 rounded-full bg-dark-bg flex items-center justify-center text-lg shadow-inner">
+                            👤
                         </div>
-                    </td>
-                    <td class="px-6 py-4 whitespace-nowrap">
-                        {% if fb.status == 'open' %}
-                        <span
-                            class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">
-                            Yangi
-                        </span>
-                        {% elif fb.status == 'resolved' %}
-                        <span
-                            class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
-                            Hal etildi
-                        </span>
-                        {% else %}
-                        <span
-                            class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-800">
-                            {{ fb.status }}
-                        </span>
-                        {% endif %}
-                    </td>
-                    <td class="px-6 py-4">
-                        {% if fb.admin_reply %}
-                        <div class="text-sm text-gray-600 italic">"{{ fb.admin_reply }}"</div>
-                        <div class="text-xs text-gray-400 mt-1">by Admin #{{ fb.resolved_by }}</div>
-                        {% else %}
-                        <span class="text-gray-400 text-xs">-</span>
-                        {% endif %}
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+                        <div>
+                            <h4 class="text-white font-bold text-base" x-text="item.user?.full_name || 'Noma\'lum'">
+                            </h4>
+                            <p class="text-xs text-dark-muted"
+                                x-text="item.user?.phone + ' • ' + (item.user_type === 'driver' ? 'Haydovchi' : 'Yo\'lovchi')">
+                            </p>
+                        </div>
+                    </div>
+                    <span class="text-xs text-dark-muted" x-text="formatDate(item.created_at)"></span>
+                </div>
+                <p class="text-gray-300 text-sm line-clamp-2 pl-13" x-text="item.message"></p>
+            </div>
+        </template>
+        <template x-if="feedback.length === 0">
+            <div class="text-center py-12 bg-dark-card rounded-2xl border border-dark-border">
+                <p class="text-dark-muted">Murojaatlar mavjud emas</p>
+            </div>
+        </template>
     </div>
 
-    <!-- REPLY MODAL -->
-    <div x-show="replyModalOpen" style="display: none;" class="fixed inset-0 z-50 overflow-y-auto"
-        aria-labelledby="modal-title" role="dialog" aria-modal="true">
-        <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+    <!-- Details Modal -->
+    <div x-show="modals.details" class="fixed inset-0 z-50 overflow-y-auto" x-cloak>
+        <div class="flex items-center justify-center min-h-screen p-4">
+            <div class="fixed inset-0 bg-black/70 backdrop-blur-sm" @click="modals.details = false"></div>
+            <div class="bg-dark-card rounded-2xl p-6 max-w-2xl w-full relative border border-dark-border shadow-2xl">
+                <button @click="modals.details = false"
+                    class="absolute top-4 right-4 text-gray-400 hover:text-white text-2xl">&times;</button>
 
-            <div x-show="replyModalOpen" x-transition:enter="ease-out duration-300" x-transition:enter-start="opacity-0"
-                x-transition:enter-end="opacity-100" x-transition:leave="ease-in duration-200"
-                x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0"
-                class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" aria-hidden="true"
-                @click="replyModalOpen = false"></div>
-
-            <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
-
-            <div x-show="replyModalOpen" x-transition:enter="ease-out duration-300"
-                x-transition:enter-start="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
-                x-transition:enter-end="opacity-100 translate-y-0 sm:scale-100"
-                x-transition:leave="ease-in duration-200"
-                x-transition:leave-start="opacity-100 translate-y-0 sm:scale-100"
-                x-transition:leave-end="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
-                class="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg w-full">
-
-                <form method="POST" action="/api/feedback/reply" @submit.prevent="submitReply($el)">
-                    <div class="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
-                        <div class="sm:flex sm:items-start">
+                <template x-if="selectedItem">
+                    <div>
+                        <div class="flex items-center gap-4 mb-6">
                             <div
-                                class="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-blue-100 sm:mx-0 sm:h-10 sm:w-10">
-                                <span class="text-blue-600 text-xl">↩️</span>
+                                class="h-14 w-14 rounded-full bg-blue-500/10 flex items-center justify-center text-2xl text-blue-400 border border-blue-500/20">
+                                📝
                             </div>
-                            <div class="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left w-full">
-                                <h3 class="text-lg leading-6 font-medium text-gray-900" id="modal-title">
-                                    Murojaatga javob berish #<span x-text="currentFeedback?.id"></span>
+                            <div>
+                                <h3 class="text-xl font-bold text-white mb-1" x-text="selectedItem.user?.full_name">
                                 </h3>
-                                <div class="mt-2">
-                                    <p class="text-sm text-gray-500 mb-2">
-                                        User: <span x-text="currentFeedback?.user_name" class="font-bold"></span>
-                                    </p>
-                                    <p class="text-sm text-gray-600 italic bg-gray-50 p-2 rounded border mb-4"
-                                        x-text="currentFeedback?.message"></p>
-
-                                    <input type="hidden" name="feedback_id" :value="currentFeedback?.id">
-
-                                    <label class="block text-sm font-medium text-gray-700 mb-1">Javob matni</label>
-                                    <textarea name="reply_text" x-model="replyText" rows="4" required
-                                        class="shadow-sm focus:ring-blue-500 focus:border-blue-500 mt-1 block w-full sm:text-sm border border-gray-300 rounded-md"
-                                        placeholder="Hurmatli foydalanuvchi..."></textarea>
-                                </div>
+                                <p class="text-sm text-dark-muted"
+                                    x-text="selectedItem.user?.phone + ' | ' + formatDate(selectedItem.created_at)"></p>
                             </div>
                         </div>
+
+                        <div class="bg-dark-bg p-4 rounded-xl border border-dark-border mb-6">
+                            <p class="text-gray-200 whitespace-pre-wrap leading-relaxed" x-text="selectedItem.message">
+                            </p>
+                        </div>
+
+                        <div class="flex justify-end gap-3">
+                            <a :href="'tel:' + selectedItem.user?.phone"
+                                class="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded-xl text-sm font-medium transition-colors shadow-lg shadow-green-500/20">
+                                📞 Qo'ng'iroq qilish
+                            </a>
+                            <template x-if="!selectedItem.is_read">
+                                <button @click="markAsRead(selectedItem.id)"
+                                    class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-xl text-sm font-medium transition-colors shadow-lg shadow-blue-500/20">
+                                    ✅ O'qildi deb belgilash
+                                </button>
+                            </template>
+                        </div>
                     </div>
-                    <div class="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
-                        <button type="submit"
-                            class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-blue-600 text-base font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 sm:ml-3 sm:w-auto sm:text-sm">
-                            Yuborish
-                        </button>
-                        <button type="button" @click="replyModalOpen = false"
-                            class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm">
-                            Bekor qilish
-                        </button>
-                    </div>
-                </form>
+                </template>
             </div>
         </div>
     </div>
 
-    <script>
-        function submitReply(form) {
-            const formData = new FormData(form);
+    <!-- Pagination -->
+    <div class="flex justify-center mt-6">
+        <button @click="loadMore()" x-show="hasMore"
+            class="bg-dark-card hover:bg-dark-hover text-white px-6 py-2 rounded-xl border border-dark-border transition-colors">
+            Yana yuklash...
+        </button>
+    </div>
 
-            fetch(form.action, {
-                method: 'POST',
-                body: formData,
-                credentials: 'include' // Cookie yuborish uchun muhim!
-            })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        alert('Javob yuborildi!');
-                        window.location.reload();
-                    } else {
-                        alert('Xatolik: ' + data.detail);
-                    }
-                })
-                .catch(error => {
-                    alert('Xatolik yuz berdi');
-                    console.error(error);
-                });
-        }
-    </script>
 </div>
+
+<script>
+    function feedbackApp() {
+        return {
+            feedback: [],
+            stats: {},
+            filters: {
+                status: '',
+                limit: 20,
+                offset: 0
+            },
+            hasMore: true,
+            selectedItem: null,
+            modals: { details: false },
+
+            async init() {
+                await this.fetchStats();
+                await this.fetchFeedback();
+            },
+
+            async fetchStats() {
+                const data = await this.apiCall('/api/feedback/stats');
+                if (data) this.stats = data;
+            },
+
+            async fetchFeedback(append = false) {
+                if (!append) {
+                    this.filters.offset = 0;
+                    this.feedback = [];
+                    this.hasMore = true;
+                }
+
+                let url = `/api/feedback/?limit=${this.filters.limit}&offset=${this.filters.offset}`;
+                if (this.filters.status) url += `&status=${this.filters.status}`;
+
+                const data = await this.apiCall(url);
+                if (data) {
+                    if (append) {
+                        this.feedback = [...this.feedback, ...data.items];
+                    } else {
+                        this.feedback = data.items;
+                    }
+
+                    if (data.items.length < this.filters.limit) {
+                        this.hasMore = false;
+                    }
+                }
+            },
+
+            async loadMore() {
+                this.filters.offset += this.filters.limit;
+                await this.fetchFeedback(true);
+            },
+
+            viewDetails(item) {
+                this.selectedItem = item;
+                this.modals.details = true;
+                if (!item.is_read) {
+                    // Avtomatik o'qilgan deb belgilash (serverga so'rov yuborish mumkin)
+                }
+            },
+
+            async markAsRead(id) {
+                const res = await this.apiCall(`/api/feedback/${id}/read`, 'PUT');
+                if (res && res.success) {
+                    this.selectedItem.is_read = true;
+                    const idx = this.feedback.findIndex(x => x.id === id);
+                    if (idx !== -1) this.feedback[idx].is_read = true;
+                    this.fetchStats();
+                    this.modals.details = false;
+                }
+            },
+
+            async apiCall(url, method = 'GET', body = null) {
+                try {
+                    const options = {
+                        method,
+                        headers: { 'Content-Type': 'application/json' }
+                    };
+                    if (body) options.body = JSON.stringify(body);
+
+                    const res = await fetch(url, options);
+                    return await res.json();
+                } catch (e) {
+                    console.error(e);
+                    return null;
+                }
+            },
+
+            formatDate(iso) {
+                if (!iso) return '-';
+                return new Date(iso).toLocaleString('uz-UZ', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+            }
+        }
+    }
+</script>
 {% endblock %}

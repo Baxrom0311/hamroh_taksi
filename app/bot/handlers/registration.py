@@ -71,42 +71,19 @@ async def phone_contact(message: Message, state: FSMContext) -> None:
     phone = contact.phone_number
     if not phone.startswith("+"):
         phone = f"+{phone}"
-    await state.update_data(phone_number=phone)
-    # ✅ SECURITY: Secure RNG
-    import secrets
-    import string
-    # 6 digit secure code
-    sms_code = "".join(secrets.choice(string.digits) for _ in range(6))
-    await state.update_data(sms_code=sms_code)
     
-    # ✅ DEAD END FIX: Environment-aware SMS sending
-    # In dev/staging: show code directly, in production: send real SMS
-    from config.settings import settings
-    if settings.ENVIRONMENT in ('development', 'staging'):
-        # Dev mode: Show code directly (no SMS provider needed)
-        await message.answer(
-            f"📨 <b>Kod yuborildi</b>\n\n"
-            f"Telefon: {phone}\n"
-            f"🔑 <code>{sms_code}</code>\n\n"
-            "☝️ Bu dev/staging rejimi - kod shu yerda ko'rsatilgan\n"
-            "Kodni kiriting:",
-            reply_markup=ReplyKeyboardRemove(),
-            parse_mode="HTML"
-        )
+    await state.update_data(phone_number=phone)
+    
+    # SMS Verification REMOVED - Direct transition
+    data = await state.get_data()
+    role = data.get("role")
+    
+    if role == "driver":
+        await message.answer("🚗 To'liq ismingizni kiriting:", reply_markup=ReplyKeyboardRemove())
+        await state.set_state(RegistrationStates.driver_full_name)
     else:
-        # Production: Real SMS (TODO: Implement Eskiz.uz or Twilio)
-        # For now, show code until SMS provider is configured
-        logger.warning(f"SMS not sent (production mode, provider not configured): {phone}")
-        await message.answer(
-            f"📨 SMS kod yuborildi\n\n"
-            f"Telefon: {phone}\n"
-            f"<b>Vaqtincha demo kod: {sms_code}</b>\n\n"
-            "⚠️ SMS provider konfiguratsiya qilinmagan\n"
-            "Kodni kiriting:",
-            reply_markup=ReplyKeyboardRemove(),
-        )
-
-    await state.set_state(RegistrationStates.sms_code)
+        await message.answer("👤 To'liq ismingizni kiriting:", reply_markup=ReplyKeyboardRemove())
+        await state.set_state(RegistrationStates.passenger_full_name)
 
 
 # =========================================================
@@ -125,62 +102,15 @@ async def phone_text(message: Message, state: FSMContext) -> None:
 
     await state.update_data(phone_number=text)
 
-    # ✅ SECURITY: Secure RNG
-    import secrets
-    import string
-    sms_code = "".join(secrets.choice(string.digits) for _ in range(6))
-    await state.update_data(sms_code=sms_code)
-
-    # ✅ Environment-aware (same as contact handler)
-    from config.settings import settings
-    
-    if settings.ENVIRONMENT in ('development', 'staging'):
-        await message.answer(
-            f"📨 <b>Kod yuborildi</b>\n\n"
-            f"🔑 <code>{sms_code}</code>\n\n"
-            "Kodni kiriting:",
-            parse_mode="HTML"
-        )
-    else:
-        await message.answer(
-            f"📨 SMS kod: <b>{sms_code}</b> (vaqtincha demo)\n\n"
-            "⚠️ SMS provider kerak\nKodni kiriting:"
-        )
-
-    await state.set_state(RegistrationStates.sms_code)
-
-
-# =========================================================
-# 3. SMS VERIFY
-# =========================================================
-
-@router.message(RegistrationStates.sms_code, F.text)
-async def sms_code_verify(message: Message, state: FSMContext) -> None:
-    text = require_text(message).strip()
-    user = require_user(message)
+    # SMS Verification REMOVED - Direct transition
     data = await state.get_data()
-
-    # ✅ SECURITY: Rate Limit (Brute force protection)
-    # 1 daqiqada 5 ta urinish ruxsat etiladi
-    from app.utils.rate_limiter import RateLimiter
-
-    verify_limiter = RateLimiter(max_requests=5, window_seconds=60, prefix="sms_verify")
+    role = data.get("role")
     
-    if not await verify_limiter.check_limit(user.id, "verify_attempt"):
-        await message.answer("🚫 <b>Juda ko'p urinish!</b>\n\nIltimos, 1 daqiqa kuting.", parse_mode="HTML")
-        return
-
-    if text != data.get("sms_code"):
-        await message.answer("❌ Noto'g'ri kod, qayta urinib ko'ring:")
-        return
-
-    await message.answer("✅ Telefon tasdiqlandi")
-
-    if data.get("role") == "driver":
-        await message.answer("🚗 To'liq ismingizni kiriting:")
+    if role == "driver":
+        await message.answer("🚗 To'liq ismingizni kiriting:", reply_markup=ReplyKeyboardRemove())
         await state.set_state(RegistrationStates.driver_full_name)
     else:
-        await message.answer("👤 To'liq ismingizni kiriting:")
+        await message.answer("👤 To'liq ismingizni kiriting:", reply_markup=ReplyKeyboardRemove())
         await state.set_state(RegistrationStates.passenger_full_name)
 
 
