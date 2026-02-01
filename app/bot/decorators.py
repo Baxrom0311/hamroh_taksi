@@ -76,26 +76,22 @@ def _create_role_session_decorator(
                     # 2. Entity (driver/passenger) record olish
                     entity = await entity_getter(session, user_id)
                     
-                    if not entity:
                         # DATA INTEGRITY ERROR: Role mavjud, profil yo'q
-                        logger.critical(
+                        logger.warning(
                             f"Data integrity error: User {user_id} is {role.value} "
                             f"but has no {entity_name} profile!"
                         )
                         
-                        from app.models.system_settings import get_setting
-                        from config.settings import settings as config
-                        support_username = await get_setting(session, "support_username", config.SUPPORT_USERNAME)
-                        
-                        error_msg = (
-                            f"❌ Tizim xatolik: {entity_name.capitalize()} profili topilmadi. "
-                            f"Iltimos {support_username} ga murojaat qiling."
+                        warning_msg = (
+                            f"⚠️ <b>Sizning profilingiz topilmadi</b> (ehtimol o'chirilgan).\n\n"
+                            f"Iltimos, qayta ro'yxatdan o'tish uchun /start ni bosing."
                         )
+                        
                         if isinstance(event, Message):
-                            await event.answer(error_msg)
+                            await event.answer(warning_msg)
                         else:
-                            await event.answer(error_msg, show_alert=True)
-                        return  # Stop propagation (SkipHandler EMAS!)
+                            await event.answer(warning_msg, show_alert=True)
+                        return  # Stop propagation
                     
                     # Handler'ni chaqirish
                     return await func(event, session, entity, *args, **kwargs)

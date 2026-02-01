@@ -84,10 +84,14 @@ async def cmd_start(message: Message, session: AsyncSession, state: FSMContext):
         passenger = await get_passenger_by_user_id(session, user_id)
         
         if not passenger:
+            # Profil o'chirilgan bo'lsa, qayta ro'yxatdan o'tishni taklif qilamiz
             await message.answer(
-                "❌ Yo'lovchi ma'lumotlari topilmadi.\n"
-                "Support bilan bog'laning: @support"
+                "⚠️ <b>Sizning profilingiz topilmadi</b> (ehtimol o'chirilgan).\n"
+                "Iltimos, qayta ro'yxatdan o'ting:",
+                reply_markup=get_registration_choice_keyboard()
             )
+            from app.bot.states.registration import RegistrationStates
+            await state.set_state(RegistrationStates.choose_role)
             return
         
         # Har qanday eski state'ni tozalab yuboramiz (driver state i yoki boshqalar)
@@ -106,10 +110,14 @@ async def cmd_start(message: Message, session: AsyncSession, state: FSMContext):
         driver = await get_driver_by_user_id(session, user_id)
         
         if not driver:
+            # Profil o'chirilgan bo'lsa, qayta ro'yxatdan o'tishni taklif qilamiz
             await message.answer(
-                "❌ Haydovchi ma'lumotlari topilmadi.\n"
-                "Support bilan bog'laning: @support"
+                "⚠️ <b>Sizning profilingiz topilmadi</b> (ehtimol o'chirilgan).\n"
+                "Iltimos, qayta ro'yxatdan o'ting:",
+                reply_markup=get_registration_choice_keyboard()
             )
+            from app.bot.states.registration import RegistrationStates
+            await state.set_state(RegistrationStates.choose_role)
             return
 
         # Agar safarda bo'lsa, aktiv buyurtmani qayta yuklab state ni tiklash

@@ -177,15 +177,33 @@ async def driver_car_number(message: Message, session: AsyncSession, state: FSMC
             await session.rollback()
             await state.clear()
             return
-        await create_user(
-            session,
-            user_id=user.id,
-            phone_number=data["phone_number"],
-            first_name=user.first_name or "",
-            last_name=user.last_name,
-            username=user.username,
-            role=UserRole.DRIVER,
-        )
+        # User allaqachon bormi (qayta ro'yxatdan o'tish)?
+        existing_user_by_id = await get_user_by_id(session, user.id)
+        if not existing_user_by_id:
+            await create_user(
+                session,
+                user_id=user.id,
+                phone_number=data["phone_number"],
+                first_name=user.first_name or "",
+                last_name=user.last_name,
+                username=user.username,
+                role=UserRole.DRIVER,
+            )
+        else:
+            # Mavjud user'ni yangilaymiz
+            from sqlalchemy import update
+            from app.models.user import User
+            await session.execute(
+                update(User)
+                .where(User.user_id == user.id)
+                .values(
+                    phone_number=data["phone_number"],
+                    role=UserRole.DRIVER,
+                    first_name=user.first_name or "",
+                    last_name=user.last_name,
+                    username=user.username
+                )
+            )
         driver = await create_driver(
             session,
             user_id=user.id,
@@ -276,15 +294,33 @@ async def passenger_age(message: Message, session: AsyncSession, state: FSMConte
     user = require_user(message)
     data = await state.get_data()
 
-    await create_user(
-        session,
-        user_id=user.id,
-        phone_number=data["phone_number"],
-        first_name=user.first_name,
-        last_name=user.last_name,
-        username=user.username,
-        role=UserRole.PASSENGER,
-    )
+    # User allaqachon bormi?
+    existing_user_by_id = await get_user_by_id(session, user.id)
+    if not existing_user_by_id:
+        await create_user(
+            session,
+            user_id=user.id,
+            phone_number=data["phone_number"],
+            first_name=user.first_name,
+            last_name=user.last_name,
+            username=user.username,
+            role=UserRole.PASSENGER,
+        )
+    else:
+        # Mavjud user'ni yangilaymiz
+        from sqlalchemy import update
+        from app.models.user import User
+        await session.execute(
+            update(User)
+            .where(User.user_id == user.id)
+            .values(
+                phone_number=data["phone_number"],
+                role=UserRole.PASSENGER,
+                first_name=user.first_name,
+                last_name=user.last_name,
+                username=user.username
+            )
+        )
 
     passenger = await create_passenger(
         session,
