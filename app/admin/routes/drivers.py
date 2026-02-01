@@ -641,12 +641,17 @@ async def update_driver_state(
                 raise HTTPException(status_code=404, detail="Driver topilmadi")
 
             values = {}
+            queue_cleanup_needed = False
+            old_route_id = driver.current_route_id
+            
             if payload.is_active is not None:
                 values['is_active'] = payload.is_active
                 # Offline qilinsa, joy va marshrutni tozalash mumkin
                 if payload.is_active is False:
                     values.setdefault('available_seats', 0)
                     values.setdefault('current_route_id', None)
+                    queue_cleanup_needed = True  # ✅ Queue'dan olib tashlash kerak!
+                    
             if payload.is_on_trip is not None:
                 values['is_on_trip'] = payload.is_on_trip
             if payload.available_seats is not None:
@@ -673,6 +678,86 @@ async def update_driver_state(
 
             # Yangilangan ma'lumotni qayta yuklash
             await session.refresh(driver)
+            
+            # ✅ Queue cleanup (agar is_active=False bo'lsa)
+            if queue_cleanup_needed and old_route_id:
+                from app.services.queue_service import driver_queue
+                removed = await driver_queue.remove_driver(driver_id, old_route_id)
+                logger.info(
+                    f"Admin deactivated driver {driver_id}, removed from queue "
+                    f"(route={old_route_id}): {removed}"
+                )
+            
+            # ✅ Active orders va trip cleanup (deactivate qilinganda)
+            if queue_cleanup_needed:
+                from app.models.trip import Trip, TripStatus
+                from app.models.order import Order, OrderStatus
+                
+                # Driver'ning barcha aktiv order'larini topish (ACCEPTED yoki IN_PROGRESS)
+                active_orders_result = await session.execute(
+                    select(Order.order_id, Order.passenger_id, Order.trip_id, Order.status)
+                    .where(Order.driver_id == driver_id)
+                    .where(Order.status.in_([OrderStatus.ACCEPTED, OrderStatus.IN_PROGRESS]))
+                )
+                active_orders = active_orders_result.fetchall()
+                
+                if active_orders:
+                    # Order'larni cancel qilish
+                    await session.execute(
+                        update(Order)
+                        .where(Order.driver_id == driver_id)
+                        .where(Order.status.in_([OrderStatus.ACCEPTED, OrderStatus.IN_PROGRESS]))
+                        .values(
+                            status=OrderStatus.CANCELLED,
+                            cancellation_reason="Haydovchi admin tomonidan deaktivatsiya qilindi",
+                            cancelled_at=func.now()
+                        )
+                    )
+                    
+                    # Trip ID'larni yig'ish (bir nechta trip bo'lishi mumkin)
+                    trip_ids = set(order.trip_id for order in active_orders if order.trip_id)
+                    
+                    # Barcha tegishli trip'larni cancel qilish
+                    if trip_ids:
+                        await session.execute(
+                            update(Trip)
+                            .where(Trip.trip_id.in_(trip_ids))
+                            .where(Trip.status == TripStatus.ACTIVE)
+                            .values(
+                                status=TripStatus.CANCELLED,
+                                completed_at=func.now()
+                            )
+                        )
+                    
+                    logger.warning(
+                        f"Admin deactivated driver {driver_id} with {len(active_orders)} active orders. "
+                        f"Cancelled {len(trip_ids)} trip(s) and all orders."
+                    )
+                    
+                    # Yo'lovchilarga xabar yuborish (async task)
+                    from typing import Any, cast
+                    from app.tasks.notifications import notify_order_cancelled
+                    
+                    for order_id, passenger_id, trip_id, order_status in active_orders:
+                        try:
+                            cast(Any, notify_order_cancelled).delay(
+                                order_id=order_id,
+                                passenger_id=passenger_id,
+                                reason="Haydovchi faoliyatdan chetlashtirildi. Iltimos, yangi buyurtma bering."
+                            )
+                        except Exception as e:
+                            logger.error(f"Failed to send cancellation notification: {e}")
+                
+                # ✅ Driver holatini tozalash (order bo'lsin yoki bo'lmasin)
+                # Data inconsistency'ni to'g'rilash uchun
+                if driver.is_on_trip:
+                    await session.execute(
+                        update(Driver)
+                        .where(Driver.driver_id == driver_id)
+                        .values(is_on_trip=False)
+                    )
+                    await session.refresh(driver)
+                    logger.info(f"Reset is_on_trip=False for deactivated driver {driver_id}")
 
             return {
                 "success": True,
