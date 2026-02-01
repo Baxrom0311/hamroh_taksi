@@ -162,7 +162,7 @@ class Settings(BaseSettings):
     # BIZNES LOGIKA SOZLAMALARI
     # ============================================
 
-    COMMISSION_AMOUNT: int = 500 # Har bir safar uchun komissiya (so'm)
+    COMMISSION_AMOUNT: int = 0 # Har bir safar uchun komissiya (so'm)
     # BU QIYMATNI O'ZGARTIRING: Komissiya miqdorini belgilash
     
     MAX_PICKUP_DISTANCE_KM: int = 50  # Maksimal masofa (km)
