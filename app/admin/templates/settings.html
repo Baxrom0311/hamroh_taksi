@@ -96,7 +96,9 @@
                 'task_retry_delay_seconds': { title: 'Vazifa Qayta Urinish', description: 'Celery vazifalari xato bersa qayta urinish vaqti.', type: 'number' },
                 'order_lock_timeout_seconds': { title: 'Buyurtma Bloklash Vaqti', description: 'Buyurtmani tahrirlashda bloklash vaqti.', type: 'number' },
                 'generic_lock_timeout_seconds': { title: 'Umumiy Bloklash', description: 'Tizim bo\'yicha umumiy bloklash vaqti.', type: 'number' },
-                'state_ttl_seconds': { title: 'Holatni Saqlash (TTL)', description: 'Redisda foydalanuvchi holati qancha turishi (soniya).' }
+                'state_ttl_seconds': { title: 'Holatni Saqlash (TTL)', description: 'Redisda foydalanuvchi holati qancha turishi (soniya).' },
+                'onboarding_video_1_id': { title: 'Video Qo\'llanma 1 (ID)', description: 'Start bosilganda yuboriladigan 1-video ID (file_id).', type: 'text' },
+                'onboarding_video_2_id': { title: 'Video Qo\'llanma 2 (ID)', description: 'Start bosilganda yuboriladigan 2-video ID (file_id).', type: 'text' }
             },
 
             async init() {

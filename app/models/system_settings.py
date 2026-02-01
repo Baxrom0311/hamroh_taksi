@@ -406,6 +406,18 @@ DEFAULT_SETTINGS = [
         'value': "✅ <b>Yo'lovchi ketdi!</b>\n\n Xavfsiz yo'l!\n\n⏱ Safar 10 daqiqadan keyin avtomatik yakunlanadi.",
         'description': 'Haydovchiga safar boshlanganda yuboriladigan xabar (order_id)'
     },
+
+    # Onboarding Videos
+    {
+        'key': 'onboarding_video_1_id',
+        'value': '',
+        'description': 'Start bosilganda yuboriladigan 1-video ID'
+    },
+    {
+        'key': 'onboarding_video_2_id',
+        'value': '',
+        'description': 'Start bosilganda yuboriladigan 2-video ID'
+    }
 ]
 
 

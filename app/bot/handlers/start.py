@@ -2,24 +2,27 @@
 app/bot/handlers/start.py
 
 /start COMMAND HANDLER
-
-BU HANDLER NIMA QILADI:
-- /start commandni qabul qiladi
-- User ro'yxatdan o'tganligini tekshiradi
-- Rol bo'yicha yo'naltiradi (driver/passenger)
-
-ISHLATISH:
-    User: /start
-    Bot: Assalomu alaykum! ... (ro'yxatdan o'tish)
 """
 
-from .base import *
-from app.admin.routes import settings
+import os
+from aiogram import Router, F
+from aiogram.filters import CommandStart
+from aiogram.fsm.context import FSMContext
+from aiogram.types import Message, FSInputFile
+from sqlalchemy.ext.asyncio import AsyncSession
+from loguru import logger
+
+from app.core.database import get_session
+from app.bot.decorators import with_session
+from app.models.user import get_user_by_id
+from app.models.passenger import get_passenger_by_user_id
+from app.models.driver import get_driver_by_user_id
 from app.bot.keyboards.driver import get_driver_main_menu, get_trip_active_keyboard
 from app.bot.keyboards.passenger import get_passenger_main_menu
 from app.bot.keyboards.common import get_registration_choice_keyboard, get_support_keyboard
 from app.bot.states.driver import DriverStates
 from app.models.order import Order, OrderStatus
+from config.settings import settings as config_settings
 
 
 # Router yaratish
@@ -55,9 +58,58 @@ async def cmd_start(message: Message, session: AsyncSession, state: FSMContext):
             f"Bu bot orqali siz:\n"
             f"• Yo'lovchi sifatida taksi chaqirishingiz\n"
             f"• Haydovchi sifatida buyurtma qabul qilishingiz mumkin\n\n"
-            f"🔐 Davom etish uchun <b>ro'yxatdan o'teing</b>",
+            f"🔐 Davom etish uchun <b>ro'yxatdan o'ting</b>",
             reply_markup=get_registration_choice_keyboard()
         )
+
+        try:
+            # Video yuborish (Local File or File ID)
+            from app.models.system_settings import get_setting, set_setting
+            
+            # Helper function to send or upload video
+            async def send_or_upload_video(key_id, filename, caption):
+                video_id = await get_setting(session, key_id)
+                
+                # 1. Agar ID bo'lsa - ID orqali yuboramiz
+                if video_id:
+                    try:
+                        await message.answer_video(video_id, caption=caption)
+                        return
+                    except Exception:
+                        # ID eskirgan bo'lishi mumkin, reset qilamiz
+                        logger.warning(f"Invalid video file_id for {key_id}, retrying with file...")
+                
+                # 2. Agar ID yo'q bo'lsa yoki xato bersa - Fayldan yuklaymiz
+                video_path = f"/app/videos/{filename}"
+                if os.path.exists(video_path):
+                    logger.info(f"Uploading video from {video_path}...")
+                    video_file = FSInputFile(video_path)
+                    msg = await message.answer_video(video_file, caption=caption)
+                    
+                    # 3. Yangi ID ni saqlab qo'yamiz (Cache)
+                    if msg.video:
+                        await set_setting(session, key_id, msg.video.file_id)
+                        await session.commit()
+                        logger.success(f"Cached new video ID for {key_id}")
+                else:
+                    logger.debug(f"Video file not found: {video_path}")
+
+            # 1-video
+            await send_or_upload_video(
+                'onboarding_video_1_id', 
+                'telegram-cloud-document-2-5474487790769052786.mp4',
+                "📹 <b>Tizimdan foydalanish (1-qism)</b>"
+            )
+            
+            # 2-video
+            await send_or_upload_video(
+                'onboarding_video_2_id', 
+                'telegram-cloud-document-2-5474487790769052826.mp4',
+                "📹 <b>Tizimdan foydalanish (2-qism)</b>"
+            )
+
+        except Exception as e:
+            logger.error(f"Failed to send onboarding video: {e}")
         
         # FSM state o'rnatish
         from app.bot.states.registration import RegistrationStates

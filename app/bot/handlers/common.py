@@ -16,12 +16,53 @@ from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message, ReplyKeyboardRemove
 from loguru import logger
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.states.registration import RegistrationStates
 from app.bot.states.driver import DriverStates
 from app.bot.states.passenger import PassengerStates
+from app.bot.decorators import with_session
+from app.models.user import get_user_by_id
 
 router = Router()
+
+# ============================================
+# 0. ADMIN TOOLS (Get File ID)
+# ============================================
+
+@router.message(F.video, StateFilter("*"))
+@with_session
+async def get_video_id(message: Message, session: AsyncSession, state: FSMContext):
+    """
+    Admin video yuborilganda File ID sini qaytaradi
+    """
+    try:
+        user_id = message.from_user.id
+        user = await get_user_by_id(session, user_id)
+        
+        if user and user.is_admin:
+            file_id = message.video.file_id
+            await message.reply(
+                f"📹 <b>Video File ID:</b>\n\n"
+                f"<code>{file_id}</code>\n\n"
+                f"<i>Bu ID ni Admin panel > Sozlamalar bo'limiga qo'ying.</i>",
+                parse_mode="HTML"
+            )
+            return
+        
+        # Agar admin bo'lmasa, pastdagi generic_fallback ishlashi kerak edi, 
+        # lekin handler ushlab qoldi. 
+        # Shuning uchun oddiy fallback logikasini shu yerda bajaramiz:
+        
+        current_state = await state.get_state()
+        if current_state:
+            await message.answer("⚠️ <b>Noto'g'ri ma'lumot turi!</b>\nVideo qabul qilinmaydi.", parse_mode="HTML")
+        else:
+            await message.answer("Tushunmadim. /start bosing.")
+
+    except Exception as e:
+        logger.error(f"Error in get_video_id: {e}")
+
 
 # ============================================
 # 1. GLOBAL CANCEL COMMAND
