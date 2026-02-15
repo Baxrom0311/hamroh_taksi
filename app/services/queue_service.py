@@ -52,6 +52,10 @@ class DriverQueueManager:
     RATING_WEIGHT = 10     # Reyting og'irligi
     WAITING_WEIGHT = 5     # Kutish og'irligi
     
+    # Priority Offset (1 Trillion)
+    # Priority bo'lganlar uchun vaqtni o'tmishga suramiz
+    PRIORITY_OFFSET = 1_000_000_000_000
+    
     def __init__(self):
         self.redis = redis_client
         # Test/CI fallback when Redis is not available
@@ -75,10 +79,81 @@ class DriverQueueManager:
         """
         Priority score = Timestamp (FIFO)
         
+        Agar driver.is_priority=True bo'lsa:
+            score = Timestamp - PRIORITY_OFFSET
+            
         Kamroq score = Oldinroq kelgan = Yuqori prioritet
         """
-        return time.time()
+        score = time.time()
+        
+        # Priority tekshirish
+        try:
+            # Agar xotira rejimida bo'lsa, oddiy vaqt qaytaramiz (testlar uchun)
+            if self._use_memory():
+                return score
+
+            async with get_session() as session:
+                driver = await get_driver_by_id(session, driver_id)
+                if driver and driver.is_priority:
+                     score -= self.PRIORITY_OFFSET
+                     logger.info(f"Priority applied for driver {driver_id}")
+        except Exception as e:
+            logger.error(f"Error checking priority for driver {driver_id}: {e}")
+            
+        return score
     
+    async def toggle_driver_priority(self, driver_id: int, enable: bool) -> bool:
+        """
+        Haydovchi prioritetini o'zgartirish (Dynamic Update)
+        
+        Agar haydovchi navbatda bo'lsa, uning o'rnini (score) yangilaydi.
+        """
+        try:
+            # 1. DB yangilash
+            async with get_session() as session:
+                driver = await get_driver_by_id(session, driver_id)
+                if not driver:
+                    return False
+                
+                # Update DB
+                from sqlalchemy import update
+                await session.execute(
+                    update(Driver)
+                    .where(Driver.driver_id == driver_id)
+                    .values(is_priority=enable)
+                )
+                await session.commit()
+                
+                # 2. Agar navbatda bo'lsa - Score yangilash
+                if driver.current_route_id:
+                    queue_key = f"driver_queue:{driver.current_route_id}"
+                    
+                    # Redis'da borligini tekshirish
+                    score = await self.redis.client.zscore(queue_key, str(driver_id))
+                    
+                    if score is not None:
+                        new_score = score
+                        if enable:
+                            # Priority yoqildi: -OFFSET
+                            if score > 0: # Agar oldin priority bo'lmagan bo'lsa
+                                new_score = score - self.PRIORITY_OFFSET
+                        else:
+                            # Priority o'chirildi: +OFFSET
+                            if score < 0: # Agar oldin priority bo'lgan bo'lsa
+                                new_score = score + self.PRIORITY_OFFSET
+                        
+                        await self.redis.client.zadd(
+                            queue_key,
+                            {str(driver_id): new_score}
+                        )
+                        logger.info(f"Driver {driver_id} priority toggled to {enable}. New score: {new_score}")
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to toggle priority for driver {driver_id}: {e}")
+            return False
+
     async def get_waiting_time_hours(
         self, 
         driver_id: int, 

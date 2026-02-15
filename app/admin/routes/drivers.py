@@ -49,6 +49,7 @@ class DriverResponse(BaseModel):
     is_active: bool
     is_on_trip: bool
     is_blocked: bool
+    is_priority: bool
     blocked_until: Optional[str]
     block_reason: Optional[str]
     available_seats: int
@@ -80,6 +81,11 @@ class DriverStateUpdateRequest(BaseModel):
     is_on_trip: Optional[bool] = None
     available_seats: Optional[int] = None
     current_route_id: Optional[int] = None
+
+
+class PriorityRequest(BaseModel):
+    """Priority o'zgartirish"""
+    is_priority: bool
 
 
 # ============================================
@@ -173,6 +179,7 @@ async def get_drivers_list(
                     'is_active': driver.is_active,
                     'is_on_trip': driver.is_on_trip,
                     'is_blocked': driver.is_blocked,
+                    'is_priority': driver.is_priority,
                     'blocked_until': driver.blocked_until.isoformat() if driver.blocked_until else None,
                     'block_reason': driver.block_reason,
                     'available_seats': driver.available_seats,
@@ -255,6 +262,7 @@ async def get_driver_details(
                     'is_active': driver.is_active,
                     'is_on_trip': driver.is_on_trip,
                     'is_blocked': driver.is_blocked,
+                    'is_priority': driver.is_priority,
                     'blocked_until': driver.blocked_until.isoformat() if driver.blocked_until else None,
                     'block_reason': driver.block_reason,
                     'current_route_id': driver.current_route_id,
@@ -615,6 +623,37 @@ async def get_drivers_statistics(
         logger.error(f"Failed to get drivers statistics: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+
+@router.put("/{driver_id}/priority")
+async def toggle_driver_priority_endpoint(
+    driver_id: int,
+    request: PriorityRequest,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Haydovchi prioritetini o'zgartirish (Navbatda ustunlik)
+    """
+    try:
+        from app.services.queue_service import driver_queue
+        
+        success = await driver_queue.toggle_driver_priority(driver_id, request.is_priority)
+        
+        if not success:
+             raise HTTPException(status_code=404, detail="Driver topilmadi")
+             
+        status_text = "yoqildi" if request.is_priority else "o'chirildi"
+        logger.info(f"Driver {driver_id} priority {status_text} by admin {current_user['username']}")
+        
+        return {
+            "success": True,
+            "message": f"Priority {status_text}"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to toggle priority: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 # ============================================
 # DRIVER HOLATINI QO'LDA YANGILASH (is_active, is_on_trip, seats, route)

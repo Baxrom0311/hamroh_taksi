@@ -72,6 +72,8 @@
                             Balans</th>
                         <th class="px-6 py-4 text-left text-xs font-medium text-dark-muted uppercase tracking-wider">
                             Reyting / Safarlar</th>
+                        <th class="px-6 py-4 text-center text-xs font-medium text-dark-muted uppercase tracking-wider">
+                            Prioritet</th>
                         <th class="px-6 py-4 text-left text-xs font-medium text-dark-muted uppercase tracking-wider">
                             Status</th>
                         <th class="px-6 py-4 text-center text-xs font-medium text-dark-muted uppercase tracking-wider">
@@ -106,6 +108,14 @@
                             <td class="px-6 py-4 whitespace-nowrap text-sm text-dark-muted">
                                 <span class="text-yellow-400">⭐ <span x-text="driver.rating"></span></span>
                                 <span class="ml-2">| <span x-text="driver.total_trips"></span> ta</span>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-center">
+                                <button @click="togglePriority(driver)"
+                                    class="text-lg transition-transform hover:scale-110 focus:outline-none"
+                                    :class="driver.is_priority ? 'text-yellow-400' : 'text-gray-600 hover:text-gray-400'"
+                                    :title="driver.is_priority ? 'Prioritetni o\'chirsh' : 'Prioritet berish'">
+                                    <span x-text="driver.is_priority ? '⭐' : '☆'"></span>
+                                </button>
                             </td>
                             <td class="px-6 py-4 whitespace-nowrap text-sm">
                                 <div class="flex flex-col gap-1">
@@ -626,6 +636,22 @@
                     this.modals.details = false;
                     this.fetchDrivers();
                     this.fetchStats();
+                }
+            },
+
+            async togglePriority(driver) {
+                const newStatus = !driver.is_priority;
+                const confirmMsg = newStatus 
+                    ? `"${driver.full_name}" ga prioritet bermoqchimisiz?\n(Navbatda birinchi bo'lib turadi)`
+                    : `"${driver.full_name}" dan prioritetni olib tashlamoqchimisiz?`;
+                
+                if (!confirm(confirmMsg)) return;
+
+                const res = await this.apiCall(`/api/drivers/${driver.driver_id}/priority`, 'PUT', { is_priority: newStatus });
+                if (res?.success) {
+                    driver.is_priority = newStatus;
+                    // Optional: refresh list to update stats or sorting if needed
+                    // this.fetchDrivers(); 
                 }
             },
 

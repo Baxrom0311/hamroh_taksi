@@ -37,6 +37,76 @@ async def topup_balance_start(callback: CallbackQuery, state: FSMContext):
     )
     await state.set_state(DriverStates.balance_topup)
     await callback.answer()
+
+
+@router.callback_query(F.data == "balance_history")
+@with_driver_session
+async def balance_history_handler(callback: CallbackQuery, session: AsyncSession, driver: Driver):
+    """
+    Balans tarixi — so'nggi 10 ta tranzaksiya
+    """
+    from app.models.transaction import Transaction, TransactionType, TransactionStatus
+
+    result = await session.execute(
+        select(Transaction)
+        .where(Transaction.driver_id == driver.driver_id)
+        .order_by(Transaction.created_at.desc())
+        .limit(10)
+    )
+    transactions = result.scalars().all()
+
+    if not transactions:
+        await callback.answer("📊 Tranzaksiyalar tarixi bo'sh", show_alert=True)
+        return
+
+    # Tranzaksiyalarni formatlash
+    import pytz
+
+    history_text = "📊 <b>Balans tarixi</b>\n\n"
+    history_text += f"💰 Joriy balans: <b>{driver.balance:,} so'm</b>\n\n"
+
+    TYPE_EMOJI = {
+        TransactionType.DEPOSIT: "💳",
+        TransactionType.COMMISSION: "💸",
+        TransactionType.WITHDRAWAL: "🔄",
+    }
+
+    for idx, tx in enumerate(transactions, 1):
+        emoji = TYPE_EMOJI.get(tx.type, "📋")
+        # Vaqtni formatlash
+        try:
+            tx_time = tx.created_at.astimezone(pytz.timezone('Asia/Tashkent'))
+            time_str = tx_time.strftime("%H:%M, %d.%m.%Y")
+        except Exception:
+            time_str = str(tx.created_at)[:16] if tx.created_at else "N/A"
+
+        # Summa belgisi
+        if tx.type == TransactionType.COMMISSION:
+            amount_str = f"-{tx.amount:,}"
+        else:
+            amount_str = f"+{tx.amount:,}"
+
+        # Status
+        if tx.status == TransactionStatus.APPROVED:
+            status = "✅"
+        elif tx.status == TransactionStatus.PENDING:
+            status = "⏳"
+        else:
+            status = "❌"
+
+        history_text += (
+            f"{idx}. {emoji} {tx.type.value} {status}\n"
+            f"   💵 {amount_str} so'm\n"
+            f"   📅 {time_str}\n\n"
+        )
+
+    if isinstance(callback.message, Message):
+        await callback.message.edit_text(
+            history_text,
+            parse_mode="HTML"
+        )
+
+    await callback.answer()
 @router.message(DriverStates.balance_topup, F.text)
 async def topup_amount_entered(message: Message, state: FSMContext):
     """Summa kiritildi"""

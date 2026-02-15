@@ -27,6 +27,7 @@ from app.bot.keyboards.driver import (
     get_driver_main_menu
 )
 from app.tasks.matching import find_driver_for_order_task
+from app.services.redis_cleanup import cleanup_skip_keys_for_order
 
 
 router = Router()
@@ -698,6 +699,110 @@ async def cancel_order_select_handler(callback: CallbackQuery, state: FSMContext
     await callback.answer()
 
 
+@router.callback_query(F.data == "cancel_all_orders")
+@with_driver_session
+async def cancel_all_orders_handler(callback: CallbackQuery, session: AsyncSession, driver: Driver, state: FSMContext):
+    """
+    Barcha aktiv buyurtmalarni bekor qilish
+
+    NIMA BO'LADI:
+    1. Barcha ACCEPTED/IN_PROGRESS buyurtmalar PENDING ga qaytadi
+    2. Driver bo'shatiladi (is_on_trip=False, available_seats qaytadi)
+    3. Har bir order uchun yangi haydovchi topish task ishga tushadi
+    4. Yo'lovchilarga xabar yuboriladi
+    """
+    # Barcha aktiv buyurtmalarni olish
+    active_orders_result = await session.execute(
+        select(Order)
+        .options(selectinload(Order.passenger).selectinload(Passenger.user))
+        .where(Order.driver_id == driver.driver_id)
+        .where(Order.status.in_([OrderStatus.ACCEPTED, OrderStatus.IN_PROGRESS]))
+        .order_by(Order.created_at)
+    )
+    active_orders = active_orders_result.scalars().all()
+
+    if not active_orders:
+        await callback.answer("Aktiv buyurtmalar topilmadi", show_alert=True)
+        return
+
+    cancelled_count = 0
+    total_passengers_returned = 0
+
+    for order in active_orders:
+        # Order'ni PENDING qilish (qayta match qilish uchun)
+        await session.execute(
+            update(Order)
+            .where(Order.order_id == order.order_id)
+            .values(
+                status=OrderStatus.PENDING,
+                cancellation_reason=None,
+                cancelled_at=None,
+                driver_id=None,
+                accepted_at=None
+            )
+        )
+        total_passengers_returned += order.passenger_count
+        cancelled_count += 1
+        
+        # Remove redis skip keys
+        await cleanup_skip_keys_for_order(order.order_id)
+
+        # Yo'lovchiga xabar
+        if order.passenger and order.passenger.user:
+            from app.bot.main import bot
+            try:
+                await bot.send_message(
+                    chat_id=order.passenger.user.user_id,
+                    text=f"❌ <b>Buyurtma bekor qilindi</b>\n\n"
+                         f"Haydovchi buyurtmani bekor qildi.\n"
+                         f"Yangi haydovchi topilmoqda...",
+                    parse_mode="HTML"
+                )
+            except Exception as e:
+                logger.error(f"Failed to notify passenger for order {order.order_id}: {e}")
+
+        # Yangi haydovchi topish
+        find_driver_for_order_task.delay(order.order_id)  # type: ignore
+
+    # Driver'ni bo'shatish
+    await session.execute(
+        update(Driver)
+        .where(Driver.driver_id == driver.driver_id)
+        .values(
+            is_on_trip=False,
+            is_active=False,
+            available_seats=0
+        )
+    )
+
+    await session.commit()
+
+    # Xabarni yangilash
+    if isinstance(callback.message, Message):
+        await callback.message.edit_text(
+            f"✅ <b>Barcha buyurtmalar bekor qilindi</b>\n\n"
+            f"📦 Bekor qilingan: {cancelled_count} ta buyurtma\n"
+            f"🔄 Har bir buyurtma uchun yangi haydovchi topilmoqda...",
+            parse_mode="HTML"
+        )
+
+    await state.clear()
+
+    # Asosiy menyuni yuborish
+    if isinstance(callback.message, Message):
+        await callback.message.answer(
+            "Asosiy menyu:",
+            reply_markup=get_driver_main_menu()
+        )
+
+    logger.warning(
+        f"Driver {driver.driver_id} cancelled ALL orders: "
+        f"{cancelled_count} orders cancelled"
+    )
+
+    await callback.answer(f"{cancelled_count} ta buyurtma bekor qilindi")
+
+
 @router.message(
     DriverStates.confirming_cancellation, 
     F.text.lower() == "tasdiqlash"
@@ -752,6 +857,9 @@ async def confirm_cancellation(message: Message, session: AsyncSession, driver: 
             accepted_at=None
         )
     )
+    
+    # Remove redis skip keys
+    await cleanup_skip_keys_for_order(order_id)
     
     # Driver'ni bo'shatish
     await session.execute(

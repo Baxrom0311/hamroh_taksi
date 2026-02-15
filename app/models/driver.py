@@ -207,6 +207,14 @@ class Driver(Base):
         index=True,
         comment="Bloklangan"
     )
+
+    is_priority: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        nullable=False,
+        index=True,
+        comment="Priority (Navbatda ustunlik)"
+    )
     
     blocked_until: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True),
