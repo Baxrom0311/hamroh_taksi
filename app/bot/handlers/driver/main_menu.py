@@ -394,7 +394,8 @@ async def show_statistics(message: Message, session: AsyncSession, driver: Drive
 async def driver_settings(message: Message, session: AsyncSession, driver: Driver):
     await message.answer(
         "⚙️ <b>Sozlamalar bo'limi</b>\n\n"
-        "Hozircha ishlab chiqilmoqda...",
+        "Hozircha ishlab chiqilmoqda...\n"
+        "<i>Tez orada bu yerda shaxsiy ma'lumotlarni o'zgartirish imkoniyati bo'ladi.</i>", # TODO: Implement driver settings
         parse_mode="HTML"
     )
 
@@ -431,17 +432,5 @@ async def stop_accepting_orders_callback(callback: CallbackQuery, session: Async
         )
     # Telegramga "Tugma ishladi" degan javob qaytaramiz (loading aylanmasligi uchun)
     await callback.answer(Messages.Driver.OFFLINE)
-@router.callback_query(F.data == "driver_stats")
-@with_driver_session  # ✅ Decorator
-async def show_statistics_callback(callback: CallbackQuery, session: AsyncSession, driver: Driver):
-    """
-    Haydovchi statistikasi (callback)
     
-    ✅ REFACTORED: Session va driver avtomatik
-    """
-    text = f"📊 <b>Sizning statistikangiz</b>\n\n💰 Balans: {driver.balance} so'm\n⭐ Reyting: {driver.rating}"
-    
-    if callback.message and isinstance(callback.message, Message):
-        await callback.message.answer(text)
-    await callback.answer()
 __all__ = ['router']

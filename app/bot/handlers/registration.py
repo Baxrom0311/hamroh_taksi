@@ -74,7 +74,7 @@ async def phone_contact(message: Message, state: FSMContext) -> None:
     
     await state.update_data(phone_number=phone)
     
-    # SMS Verification REMOVED - Direct transition
+
     data = await state.get_data()
     role = data.get("role")
     
@@ -102,7 +102,7 @@ async def phone_text(message: Message, state: FSMContext) -> None:
 
     await state.update_data(phone_number=text)
 
-    # SMS Verification REMOVED - Direct transition
+
     data = await state.get_data()
     role = data.get("role")
     

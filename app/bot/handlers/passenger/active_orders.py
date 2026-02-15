@@ -98,64 +98,7 @@ async def view_active_orders(message: Message, session: AsyncSession, passenger:
         parse_mode="HTML"
     )
     logger.info(f"Passenger {passenger.passenger_id} viewed {len(active_orders)} active orders")
-# ============================================
-# MASHINANI ALMASHTIRISH (Yo'lovchi haydovchini o'zgartirmoqchi)
-# ============================================
-@router.callback_query(F.data.startswith("change_car:"))
-@with_passenger_session  # ✅ Decorator
-async def change_car_handler(callback: CallbackQuery, session: AsyncSession, passenger: Passenger):
-    """
-    Yo'lovchi mashinani almashtirishni xohlasa
-    ✅ REFACTORED: Session va passenger avtomatik
-    QACHON:
-    - Order ACCEPTED holatida (haydovchi topilgan, lekin hali yetib kelmagan)
-    - Komissiya haydovchiga qaytariladi
-    - Order CANCELLED bo'ladi
-    - Yangi haydovchi topish boshlaydi
-    """
-    if not callback.data:
-        await callback.answer("Xatolik")
-        return
-    order_id = parse_callback_data(callback.data, "change_car")
-    if order_id is None:
-        await callback.answer("Xatolik: noto'g'ri format")
-        return
-    # Order'ni tekshirish
-    order = await get_order_by_id(session, order_id)
-    if not order or order.passenger_id != passenger.passenger_id:
-        await callback.answer("Buyurtma topilmadi yoki sizga tegishli emas")
-        return
-    if order.status not in [OrderStatus.ACCEPTED, OrderStatus.PENDING]:
-        await callback.answer(
-            "Bu buyurtmani bekor qilib bo'lmaydi (allaqachon boshlangan yoki yakunlangan)",
-            show_alert=True
-        )
-        return
-    # ✅ Komissiya qaytarish (trip_service orqali)
-    result = await refund_commission_for_order(
-        order_id,
-        reason="passenger_changed_car"
-    )
-    if not result['success']:
-        await callback.answer(result['message'], show_alert=True)
-        return
-    # Order yangilash (cancel)
-    await session.commit()
-    if callback.message and isinstance(callback.message, Message):
-        await callback.message.edit_text(
-            f"✅ <b>Buyurtma bekor qilindi</b>\n\n"
-            f"💰 Haydovchiga {result.get('refunded_amount', 0):,.0f} so'm qaytarildi\n\n"
-            f"🔄 Yangi haydovchi topilmoqda...",
-            parse_mode="HTML"
-        )
-    # Yangi haydovchi topish task
-    from typing import Any, cast
-    cast(Any, find_driver_for_order_task).delay(order_id)
-    logger.info(
-        f"Passenger {passenger.passenger_id} changed car for order {order_id}, "
-        f"refunded {result.get('refunded_amount', 0)}"
-    )
-    await callback.answer("Buyurtma bekor qilindi, yangi haydovchi topilmoqda")
+
 def _build_cancel_keyboard(order_ids: list[int]) -> InlineKeyboardMarkup:
     """Cancellable buyurtmalar uchun inline keyboard."""
     buttons = [

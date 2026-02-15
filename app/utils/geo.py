@@ -86,33 +86,7 @@ def calculate_distance(
     return distance
 
 
-def calculate_distance_alternative(
-    lat1: float,
-    lon1: float,
-    lat2: float,
-    lon2: float
-) -> float:
-    """
-    Alternatif formula (bir oz tezroq, lekin kamroq aniq)
-    
-    EQUIRECTANGULAR APPROXIMATION
-    
-    Qachon ishlatish:
-    - Qisqa masofalar uchun (< 100 km)
-    - Tezlik muhim bo'lganda
-    """
-    R = 6371.0
-    
-    lat1_rad = radians(lat1)
-    lat2_rad = radians(lat2)
-    dlon_rad = radians(lon2 - lon1)
-    
-    x = dlon_rad * cos((lat1_rad + lat2_rad) / 2)
-    y = lat2_rad - lat1_rad
-    
-    distance = R * sqrt(x * x + y * y)
-    
-    return distance
+
 
 
 # ============================================
@@ -162,76 +136,6 @@ def is_in_uzbekistan(lat: float, lon: float) -> bool:
     """
     
     return (37 <= lat <= 46) and (56 <= lon <= 73)
-
-
-# ============================================
-# POSTGIS HELPERS
-# ============================================
-
-def create_point_wkt(lat: float, lon: float) -> str:
-    """
-    WKT (Well-Known Text) format yaratish
-    
-    PostGIS uchun POINT format
-    
-    Args:
-        lat: Latitude
-        lon: Longitude
-    
-    Returns:
-        "POINT(lon lat)" format
-    
-    DIQQAT: PostGIS'da birinchi LON, keyin LAT!
-    
-    ISHLATISH:
-        wkt = create_point_wkt(41.311512, 69.249512)
-        # "POINT(69.249512 41.311512)"
-        
-        # SQL'da:
-        INSERT INTO drivers (location) 
-        VALUES (ST_GeomFromText('POINT(69.249512 41.311512)', 4326))
-    """
-    
-    return f"POINT({lon} {lat})"
-
-
-def postgis_distance_query(
-    center_lat: float,
-    center_lon: float,
-    radius_km: float = 50
-) -> str:
-    """
-    PostGIS masofa query yaratish
-    
-    NIMAGA KERAK:
-    50 km radius ichidagi haydovchilarni topish
-    
-    Args:
-        center_lat: Markaz - Latitude
-        center_lon: Markaz - Longitude
-        radius_km: Radius (kilometr)
-    
-    Returns:
-        SQL query (WHERE qismi)
-    
-    ISHLATISH:
-        where_clause = postgis_distance_query(41.311512, 69.249512, 50)
-        
-        query = f'''
-            SELECT * FROM drivers
-            WHERE is_active = TRUE
-            AND {where_clause}
-        '''
-    """
-    
-    return f"""
-    ST_DWithin(
-        location::geography,
-        ST_SetSRID(ST_MakePoint({center_lon}, {center_lat}), 4326)::geography,
-        {radius_km * 1000}
-    )
-    """
-
 
 # ============================================
 # BEARING (Yo'nalish)
@@ -316,63 +220,10 @@ def format_coordinates(lat: float, lon: float) -> str:
     
     return f"{abs(lat):.4f}°{lat_dir}, {abs(lon):.4f}°{lon_dir}"
 
-
-# ============================================
-# TESTING
-# ============================================
-
-if __name__ == "__main__":
-    """
-    Test qilish:
-    python -m app.utils.geo
-    """
-    
-    print("\n🧪 Testing Geo Utils...\n")
-    
-    # Test 1: Masofa hisoblash
-    print("📝 Test 1: Masofa hisoblash (Gurlan → Vazir)")
-    lat1, lon1 = 41.8453, 60.4015  # Gurlan
-    lat2, lon2 = 41.3775, 60.3614  # Vazir
-    
-    distance = calculate_distance(lat1, lon1, lat2, lon2)
-    print(f"   Masofa: {distance:.2f} km")
-    
-    # Test 2: Validation
-    print("\n📝 Test 2: Koordinata validation")
-    is_valid = validate_coordinates(41.311512, 69.249512)
-    print(f"   Valid: {is_valid}")
-    
-    is_uz = is_in_uzbekistan(41.311512, 69.249512)
-    print(f"   O'zbekistonda: {is_uz}")
-    
-    # Test 3: Bearing
-    print("\n📝 Test 3: Yo'nalish")
-    bearing = calculate_bearing(lat1, lon1, lat2, lon2)
-    direction = bearing_to_direction(bearing)
-    print(f"   Bearing: {bearing:.1f}°")
-    print(f"   Yo'nalish: {direction}")
-    
-    # Test 4: Format
-    print("\n📝 Test 4: Format")
-    formatted = format_coordinates(41.311512, 69.249512)
-    print(f"   Formatted: {formatted}")
-    
-    # Test 5: WKT
-    print("\n📝 Test 5: PostGIS WKT")
-    wkt = create_point_wkt(41.311512, 69.249512)
-    print(f"   WKT: {wkt}")
-    
-    print("\n✅ All geo tests passed!\n")
-
-
-
 __all__ = [
     'calculate_distance',
-    'calculate_distance_alternative',
     'validate_coordinates',
     'is_in_uzbekistan',
-    'create_point_wkt',
-    'postgis_distance_query',
     'calculate_bearing',
     'bearing_to_direction',
     'format_coordinates'

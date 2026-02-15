@@ -2,13 +2,11 @@
 app/bot/handlers/passenger/booking.py
 """
 from ..base import *
-from typing import Any, cast
 from app.core.database import transaction
 from app.models.route import get_route_by_id, get_all_active_routes
 from app.models.order import Order, OrderStatus
 from app.services.order_service import create_new_order
 from app.bot.states.passenger import PassengerStates
-from app.bot.states.driver import DriverStates
 from app.bot.keyboards.passenger import (
     get_route_selection_keyboard,
     get_passenger_location_keyboard,
@@ -198,89 +196,6 @@ async def finalize_order(message, session: AsyncSession, state: FSMContext):
             parse_mode="HTML"
         )
     await state.clear()
-@router.callback_query(F.data.startswith("passenger_started:"))
-@with_passenger_session
-async def passenger_started(callback: CallbackQuery, session: AsyncSession, passenger: Passenger, state: FSMContext):
-    """
-    Yo'lovchi "Ketdik" tugmasini bosdi - safar boshlandi
-    """
-    # Agar tasodifan driver state qolgan bo'lsa, tozalab ketamiz
-    current_state = await state.get_state()
-    if current_state and current_state.startswith(DriverStates.__name__):
-        await state.clear()
-    order_id = parse_callback_data(callback.data, "passenger_started")
-    if order_id is None:
-        return
-    # Order'ni olish
-    order = await get_order_or_error(session, order_id, callback)
-    if not order:
-        return
-    if order.status != OrderStatus.ACCEPTED:
-        await callback.answer("⚠️ Bu buyurtma allaqachon boshlandi", show_alert=True)
-        return
-    # Safarni boshlash
-    from app.services.order_service import start_trip
-    if order.driver_id is None:
-        await callback.answer(Messages.Error.DRIVER_NOT_FOUND, show_alert=True)
-        return
-    result = await start_trip(order_id, order.driver_id)
-    if result['success']:
-        # ✅ DYNAMIC MESSAGES
-        from app.models.system_settings import get_setting
-        
-        # 1. Passenger message
-        msg_passenger = await get_setting(
-            session, 
-            "msg_trip_started_passenger", 
-            default="✅ <b>Safar boshlandi!</b>\n\n🚗 Xavfsiz yo'l!\n\nSafar yakunlangach haydovchi sizga xabar beradi.\n\n⏱ Safar 10 daqiqadan keyin avtomatik yakunlanadi."
-        )
-        
-        if callback.message and isinstance(callback.message, Message):
-            await callback.message.edit_text(
-                msg_passenger,
-                parse_mode="HTML"
-            )
-            
-        # 2. Driver message
-        from app.models.driver import get_driver_by_id
-        driver = await get_driver_by_id(session, order.driver_id)
-        if driver:
-            from app.bot.main import bot
-            try:
-                msg_driver_template = await get_setting(
-                    session,
-                    "msg_trip_started_driver",
-                    default="✅ <b>Yo'lovchi ketdi!</b>\n\n Xavfsiz yo'l!\n\n⏱ Safar 10 daqiqadan keyin avtomatik yakunlanadi."
-                )
-                # Format message
-                msg_driver = msg_driver_template.format(order_id=order_id)
-                
-                await bot.send_message(
-                    chat_id=driver.user_id,
-                    text=msg_driver,
-                    parse_mode="HTML"
-                )
-            except Exception as e:
-                logger.error(f"Failed to notify driver: {e}")
-        # 10 daqiqadan keyin avtomatik safar yakunlanish task
-        from app.tasks.matching import auto_complete_trip_task
-        from typing import Any, cast
-        # ✅ CONSTANTS: Use settings instead of magic number
-        from config.settings import settings
-        # If this order is part of a trip, auto-complete the whole trip
-        target_id = order.trip_id or order_id
-        cast(Any, auto_complete_trip_task).apply_async(
-            args=[target_id],
-            countdown=settings.AUTO_COMPLETE_TRIP_SECONDS
-        )
-        
-        logger.info(f"Trip started by passenger: order={order_id}")
-        await callback.answer("✅ Safar boshlandi!")
-    else:
-        error_msg = result.get('message', 'Noma\'lum')
-        await callback.answer(f"❌ Xatolik: {error_msg}", show_alert=True)
-
-
 
 
 @router.callback_query(F.data.startswith("passenger_cancel:"))
@@ -403,117 +318,6 @@ async def passenger_cancel_order(callback: CallbackQuery, session: AsyncSession,
         )
     
     await callback.answer("Buyurtma bekor qilindi")
-
-
-
-@router.callback_query(F.data.startswith("reject_trip:"))
-@with_passenger_session
-async def reject_trip(callback: CallbackQuery, session: AsyncSession, passenger: Passenger):
-    """
-    Yo'lovchi: "Yo'q, hali olishgani yo'q"
-    
-    Bu haydovchi firibgarlik qilganini anglatadi!
-    """
-    order_id = parse_callback_data(callback.data, "reject_trip")
-    if order_id is None:
-        await callback.answer("Xatolik: data mavjud emas")
-        return
-    
-    order = await get_order_or_error(session, order_id, callback)
-    if not order:
-        return
-        
-    if not order.driver_id:
-        await callback.answer(Messages.Error.DRIVER_NOT_FOUND, show_alert=True)
-        return
-    
-    # Safarni bekor qilish va warning
-    # ✅ FIXED: Renamed to txn_session to avoid shadowing decorator's session parameter
-    async with transaction() as txn_session:
-        from app.models.driver import Driver
-        from sqlalchemy import update, select
-        from sqlalchemy.sql import func
-        from app.tasks.matching import find_driver_for_order_task
-        
-        # Order'ni cancel qilish
-        await txn_session.execute(
-            update(Order)
-            .where(Order.order_id == order_id)
-            .values(
-                status=OrderStatus.CANCELLED,
-                cancellation_reason='passenger_rejected',
-                cancelled_at=func.now()
-            )
-        )
-        
-        # Driver'ga warning
-        await txn_session.execute(
-            update(Driver)
-            .where(Driver.driver_id == order.driver_id)
-            .values(
-                ban_count_today=Driver.ban_count_today + 1,
-                total_ban_count=Driver.total_ban_count + 1
-            )
-        )
-        # Warning count tekshirish
-        result = await txn_session.execute(
-            select(Driver).where(Driver.driver_id == order.driver_id)
-        )
-        driver = result.scalar_one_or_none()
-        
-        if driver and driver.ban_count_today >= 3:
-            # ✅ DEAD END FIX: Auto-cleanup when blocking driver
-            # This prevents passengers from waiting for blocked drivers
-            from app.services.driver_blocking import block_driver_and_cleanup
-            
-            block_result = await block_driver_and_cleanup(
-                driver_id=driver.driver_id,
-                reason=f"Kunlik ogohlantirishlar limiti ({driver.ban_count_today} ta) tugadi"
-            )
-            
-            if block_result['success']:
-                logger.warning(
-                    f"Driver {driver.driver_id} auto-blocked. "
-                    f"Cancelled {block_result['cancelled_orders']} active orders."
-                )
-            else:
-                # Fallback to manual block
-                driver.is_blocked = True
-                driver.block_reason = "Kunlik ogohlantirishlar limiti (3 ta) tugadi."
-                logger.warning(f"Driver {driver.driver_id} blocked (fallback mode)")
-    
-    # Haydovchiga xabar
-    from app.tasks.notifications import send_telegram_message
-    from typing import Any, cast
-    cast(Any, send_telegram_message).delay(
-        order.driver_id,
-        f"""
-⚠️ OGOHLANTIRISH
-
-Yo'lovchi sizni olmaganingizni aytdi.
-
-Safar bekor qilindi. Iltimos, faqat olmoqchi bo'lgan buyurtmalarni qabul qiling.
-
-3 ta warning = 24 soat ban
-            """
-        )
-        
-    # Yangi haydovchi topish
-    cast(Any, find_driver_for_order_task).delay(order_id)
-    
-    if callback.message and isinstance(callback.message, Message):
-        await callback.message.edit_text(
-            "✅ <b>Safar bekor qilindi</b>\n\n"
-            "Admin ko'rib chiqadi.\n"
-            "Yangi haydovchi topilmoqda...",
-            parse_mode="HTML"
-        )
-    
-    logger.warning(
-        f"Trip rejected by passenger: order={order_id}, driver={order.driver_id}"
-    )
-    
-    await callback.answer("Safar bekor qilindi. Yangi haydovchi topilmoqda...")
 
 
 __all__ = ['router']

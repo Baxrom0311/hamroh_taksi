@@ -571,95 +571,11 @@ class GeoService:
                 'success': False,
                 'message': str(e)
             }
-    
-    
-    # ========================================
-    # GEOCODING - Address ↔ Coordinates
-    # ========================================
-    
-    async def geocode_address(
-        self,
-        address: str,
-        use_cache: bool = True
-    ) -> Dict:
-        """
-        Manzilni koordinatalarga aylantirish
-        
-        Args:
-            address: Manzil matni
-            use_cache: Redis cache'dan foydalanish
-        
-        Returns:
-            {
-                'success': bool,
-                'lat': float,
-                'lon': float,
-                'formatted_address': str
-            }
-        
-        FALLBACK: Agar geocoding ishlamasa, Toshkent default
-        """
-        if not address or len(address.strip()) < 3:
-            logger.warning(f"Address too short for geocoding: {address}")
-            return self._default_geocode_response()
-        
-        address = address.strip()
-        
-        # Cache check
-        if use_cache:
-            from app.core.redis_client import redis_client
-            cache_key = f"geocode:{address.lower()}"
-            
-            try:
-                cached = await redis_client.client.get(cache_key)
-                if cached:
-                    import json
-                    result = json.loads(cached)
-                    result['from_cache'] = True
-                    logger.debug(f"Geocode cache hit: {address}")
-                    return result
-            except Exception as e:
-                logger.warning(f"Cache read error: {e}")
-        
-        # Geocoding (placeholder - real API required)
-        # TODO: Integrate Yandex/Google geocoding
-        logger.info(f"Geocoding address (using default): {address}")
-        
-        result = self._default_geocode_response()
-        result['original_address'] = address
-        
-        # Cache result
-        if use_cache:
-            try:
-                from app.core.redis_client import redis_client
-                import json
-                cache_key = f"geocode:{address.lower()}"
-                await redis_client.client.setex(
-                    cache_key,
-                    86400,  # 24 hours
-                    json.dumps(result)
-                )
-            except Exception as e:
-                logger.warning(f"Cache write error: {e}")
-        
-        return result
-    
-    def _default_geocode_response(self) -> Dict:
-        """Default Toshkent coordinates"""
-        return {
-            'success': True,
-            'lat': 41.311151,
-            'lon': 69.279737,
-            'formatted_address': "Toshkent, O'zbekiston (default)",
-            'is_default': True,
-            'message': 'Geocoding unavailable, using default coordinates'
-        }
-    
+
     # ========================================
     # STATISTICS
     # ========================================
 
-    
     async def get_coverage_stats(self, route_id: int) -> Dict:
         """
         Marshrut bo'yicha qamrov statistikasi

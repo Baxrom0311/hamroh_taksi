@@ -88,44 +88,4 @@ async def block_driver_and_cleanup(driver_id: int, reason: str) -> dict:
         logger.error(f"Failed to block driver {driver_id}: {e}")
         return {'success': False, 'message': str(e)}
 
-
-async def check_and_auto_block_driver(driver_id: int, session: AsyncSession) -> dict:
-    """
-    Check if driver should be auto-blocked (e.g., 3 warnings)
-    
-    Args:
-        driver_id: Driver to check
-        session: Database session
-    
-    Returns:
-        {'blocked': bool, 'reason': str | None}
-    """
-    try:
-        driver_result = await session.execute(
-            select(Driver).where(Driver.driver_id == driver_id)
-        )
-        driver = driver_result.scalar_one_or_none()
-        
-        if not driver:
-            return {'blocked': False}
-        
-        # Check if 3+ warnings today
-        if driver.ban_count_today >= 3:
-            reason = f"Kunlik ogohlantirishlar limiti ({driver.ban_count_today} ta)"
-            result = await block_driver_and_cleanup(driver_id, reason)
-            
-            if result['success']:
-                return {
-                    'blocked': True,
-                    'reason': reason,
-                    'cancelled_orders': result['cancelled_orders']
-                }
-        
-        return {'blocked': False}
-    
-    except Exception as e:
-        logger.error(f"Failed to check auto-block for driver {driver_id}: {e}")
-        return {'blocked': False, 'error': str(e)}
-
-
-__all__ = ['block_driver_and_cleanup', 'check_and_auto_block_driver']
+__all__ = ['block_driver_and_cleanup']

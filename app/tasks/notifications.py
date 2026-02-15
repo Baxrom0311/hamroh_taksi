@@ -271,128 +271,6 @@ Haydovchi siz tomonga yo'lga chiqdi!
             # Other unexpected errors
             logger.error(f"Failed to notify passenger {passenger_user_id}: {e}")
 
-
-
-# ============================================
-# 3. SAFAR TASDIQLASH SO'ROVI
-# ============================================
-
-@celery_app.task(name="app.tasks.notifications.request_passenger_confirmation")
-@async_to_sync
-async def request_passenger_confirmation(order_id: int, driver_id: int):
-    from app.bot.main import bot
-    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-
-    async with get_session() as session:
-        # Orderni Yo'lovchi (Passenger) ma'lumotlari bilan yuklaymiz
-        # Shunda order.passenger.user_id o'qilganda xato bermaydi
-        result = await session.execute(
-            select(Order)
-            .options(selectinload(Order.passenger)) 
-            .where(Order.order_id == order_id)
-        )
-        order = result.scalar_one_or_none()
-        
-        res_driver = await session.execute(select(Driver).where(Driver.driver_id == driver_id))
-        driver = res_driver.scalar_one_or_none()
-        
-        if not order or not driver:
-            return
-
-        # Driver ma'lumotlarini olish
-        driver_result = await session.execute(
-            select(Driver)
-            .options(selectinload(Driver.user))
-            .where(Driver.driver_id == driver_id)
-        )
-        driver = driver_result.scalar_one_or_none()
-        
-        if not driver:
-            logger.error(f"Driver {driver_id} not found")
-            return
-        
-        # Driver ma'lumotlari
-        driver_name = driver.full_name
-        driver_phone = driver.phone_number or "N/A"
-        driver_car = f"{driver.car_model} ({driver.car_color})"
-        driver_number = driver.car_number
-        
-        # Telefon raqamini tekshirish
-        phone_valid = driver_phone and driver_phone != "N/A" and driver_phone != "UNKNOWN" and driver_phone.strip()
-        
-        # Klaviatura tugmalari
-        keyboard_buttons = []
-        
-        # Telefon raqami faqat matn sifatida ko'rsatiladi (tel: URL Telegram tomonidan qo'llab-quvvatlanmaydi)
-        
-        # Telefon raqami faqat matn sifatida ko'rsatiladi (tel: URL Telegram tomonidan qo'llab-quvvatlanmaydi)
-        
-        # "Ketdik" va "Bekor qilish" tugmalari
-        keyboard_buttons.append([
-            InlineKeyboardButton(
-                text="✅ Ketdik",
-                callback_data=f"passenger_started:{order_id}"
-            )
-        ])
-        keyboard_buttons.append([
-            InlineKeyboardButton(
-                text="❌ Buyurtmani bekor qilish",
-                callback_data=f"passenger_cancel:{order_id}"
-            )
-        ])
-        
-        keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
-        
-        # Xabar matni
-        message_text = f"""
-✅ <b>Haydovchi topildi!</b>
-
-👤 <b>Haydovchi:</b> {driver_name}
-🚗 <b>Mashina:</b> {driver_car}
-🔢 <b>Raqam:</b> <code>{driver_number}</code>
-📱 <b>Telefon:</b> {driver_phone}
-
-📍 Haydovchi siz tomonga yo'lga chiqdi!
-        """
-        
-        # ✅ PRODUCTION FIX: Specific exception handling
-        from aiogram.exceptions import (
-            TelegramForbiddenError,
-            TelegramBadRequest,
-            TelegramRetryAfter
-        )
-        
-        try:
-            # order.passenger.user_id - endi xavfsiz olinadi!
-            await bot.send_message(
-                chat_id=order.passenger.user_id, 
-                text=message_text,
-                reply_markup=keyboard,
-                parse_mode="HTML"
-            )
-            
-            # ✅ CONSTANTS: Auto-confirm timer from settings
-            from config.settings import settings
-            from app.core.celery_app import celery_app
-            celery_app.send_task(
-                "app.tasks.matching.auto_confirm_trip_task",
-                args=[order_id],
-                countdown=settings.AUTO_CONFIRM_TRIP_SECONDS,
-            )
-        
-        except TelegramForbiddenError:
-            logger.warning(f"Passenger {order.passenger.user_id} blocked the bot")
-        
-        except TelegramBadRequest as e:
-            logger.warning(f"Bad request for passenger {order.passenger.user_id}: {e}")
-        
-        except TelegramRetryAfter as e:
-            logger.warning(f"Flood wait: {e.retry_after}s")
-            
-        except Exception as e:
-            logger.error(f"Confirmation request failed: {e}")
-
-
 # ============================================
 # 4. SAFAR YAKUNLANDI
 # ============================================
@@ -548,7 +426,6 @@ Details:
 __all__ = [
     'send_telegram_message',
     'notify_passenger_driver_found',
-    'request_passenger_confirmation',
     'notify_trip_completed',
     'send_bulk_messages',
     'notify_admins',

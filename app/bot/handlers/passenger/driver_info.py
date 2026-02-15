@@ -6,7 +6,6 @@ PASSENGER DRIVER INFO HANDLERS
 BU HANDLER NIMA QILADI:
 - Mashinani o'zgartirish (1 soatda 3 marta)
 - Haydovchini ban qilish
-- Haydovchi ma'lumotlarini ko'rish
 """
 
 from ..base import *
@@ -14,6 +13,7 @@ from datetime import datetime, timedelta
 from app.models.order import Order, OrderStatus, get_order_by_id
 from app.models.driver import get_driver_by_id
 from app.models.driver_ban import create_ban_record, check_driver_should_be_blocked
+from app.services.driver_blocking import block_driver_and_cleanup
 from app.models.system_settings import get_setting_int
 from app.services.order_service import find_driver_for_order
 from app.tasks.matching import find_driver_for_order_task
@@ -275,27 +275,24 @@ async def ban_driver_handler(callback: CallbackQuery, session: AsyncSession, pas
     block_check = await check_driver_should_be_blocked(session, order.driver_id)
     
     if block_check['should_block']:
-        # Haydovchini bloklash
-        from app.models.driver import Driver
-        await session.execute(
-            update(Driver)
-            .where(Driver.driver_id == order.driver_id)
-            .values(
-                is_blocked=True,
-                block_reason=block_check['reason']
-            )
+        # Haydovchini bloklash (Service orqali - active orderlarni ham bekor qiladi)
+        block_result = await block_driver_and_cleanup(
+            driver_id=order.driver_id,
+            reason=block_check['reason']
         )
         
-        # Admin'ga bildirishnoma
-        from app.tasks.notifications import notify_admins
-        from typing import Any, cast
-        cast(Any, notify_admins).delay(
-            f"🚫 <b>Haydovchi bloklandi!</b>\n\n"
-            f"Driver ID: {order.driver_id}\n"
-            f"Sabab: {block_check['reason']}\n"
-            f"Ban foizi: {block_check['ban_percentage']:.1f}%\n"
-            f"Kunlik ban: {block_check['today_ban_count']}"
-        )
+        if block_result['success']:
+            # Admin'ga bildirishnoma
+            from app.tasks.notifications import notify_admins
+            from typing import Any, cast
+            cast(Any, notify_admins).delay(
+                f"🚫 <b>Haydovchi bloklandi!</b>\n\n"
+                f"Driver ID: {order.driver_id}\n"
+                f"Sabab: {block_check['reason']}\n"
+                f"Ban foizi: {block_check['ban_percentage']:.1f}%\n"
+                f"Kunlik ban: {block_check['today_ban_count']}\n"
+                f"Bekor qilingan buyurtmalar: {block_result['cancelled_orders']}"
+            )
     
     # Xabarni yangilash
     # Xabar yuborish
@@ -314,63 +311,6 @@ async def ban_driver_handler(callback: CallbackQuery, session: AsyncSession, pas
     )
     
     await callback.answer("Ban qilindi. Admin ko'rib chiqadi")
-
-
-# ============================================
-# HAYDOVCHI MA'LUMOTLARINI KO'RISH
-# ============================================
-
-@router.callback_query(F.data.startswith("view_driver:"))
-@with_session  # ✅ Decorator (only session needed here as it views driver info, not necessarily restricted to passenger context in this way)
-async def view_driver_info(callback: CallbackQuery, session: AsyncSession):
-    """
-    Haydovchi ma'lumotlarini ko'rish - ✅ REFACTORED
-    """
-    order_id = parse_callback_data(callback.data, "view_driver")
-    if order_id is None:
-        await callback.answer("Xatolik: data mavjud emas")
-        return
-    
-    order = await get_order_by_id(session, order_id)
-    
-    if not order or not order.driver_id:
-        await callback.answer("❌ Haydovchi topilmadi", show_alert=True)
-        return
-    
-    driver = await get_driver_by_id(session, order.driver_id, eager_load_user=True)
-    
-    if not driver:
-        await callback.answer("❌ Haydovchi topilmadi", show_alert=True)
-        return
-    
-    text = f"""
-👤 <b>Haydovchi ma'lumotlari</b>
-
-<b>Ism:</b> {driver.full_name}
-🚗 <b>Mashina:</b> {driver.car_model}
-🎨 <b>Rang:</b> {driver.car_color}
-🔢 <b>Raqam:</b> <code>{driver.car_number}</code>
-📱 <b>Telefon:</b> {driver.phone_number}
-⭐ <b>Reyting:</b> {driver.rating:.1f}/5.0
-🚕 <b>Jami safarlar:</b> {driver.total_trips}
-    """
-
-    # Lokatsiya linki (agar mavjud bo'lsa)
-    if driver.last_location_lat and driver.last_location_lon:
-        from app.utils.location_helpers import get_google_maps_link
-        driver_loc_link = get_google_maps_link(
-            float(driver.last_location_lat),
-            float(driver.last_location_lon),
-            f"Haydovchi {driver.full_name}"
-        )
-        text += f"\n📍 <a href=\"{driver_loc_link}\">Haydovchi joriy lokatsiyasi</a>\n"
-    
-    keyboard = get_driver_action_keyboard(driver.user_id, order_id)
-    
-    if callback.message and isinstance(callback.message, Message):
-        await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
-    
-    await callback.answer()
 
 
 __all__ = ['router']

@@ -56,40 +56,4 @@ async def cleanup_skip_keys_for_order(order_id: int) -> int:
         logger.error(f"Failed to cleanup skip keys for order {order_id}: {e}")
         return 0
 
-
-async def cleanup_rate_limit_keys_for_user(user_id: int) -> int:
-    """
-    Remove all rate limit keys for a user (admin tool)
-    
-    Args:
-        user_id: User ID
-    
-    Returns:
-        Number of keys deleted
-    """
-    
-    patterns = [
-        f"rate:{user_id}:*",
-        f"tg_rate:{user_id}",
-        f"sms_rate:{user_id}:*"
-    ]
-    
-    deleted_count = 0
-    
-    try:
-        for pattern in patterns:
-            async for key in redis_client.client.scan_iter(match=pattern):
-                await redis_client.client.delete(key)
-                deleted_count += 1
-        
-        if deleted_count > 0:
-            logger.info(f"✅ Cleaned up {deleted_count} rate limit keys for user {user_id}")
-        
-        return deleted_count
-    
-    except Exception as e:
-        logger.error(f"Failed to cleanup rate limit keys for user {user_id}: {e}")
-        return 0
-
-
-__all__ = ['cleanup_skip_keys_for_order', 'cleanup_rate_limit_keys_for_user']
+__all__ = ['cleanup_skip_keys_for_order']

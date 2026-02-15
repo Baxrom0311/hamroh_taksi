@@ -245,9 +245,8 @@ def validate_balance_amount(
     return (True, None)
 
 
-# ============================================
-# MATN VALIDATSIYA
-# ============================================
+
+
 
 def validate_text_length(
     text: str,
@@ -348,112 +347,6 @@ def sanitize_input(text: str) -> str:
     
     return text
 
-
-def sanitize_filename(filename: str) -> str:
-    """
-    Fayl nomini xavfsiz qilish
-    
-    XAVFLI BELGILARNI OLIB TASHLASH:
-    - / \\ : * ? " < > |
-    
-    MISOL:
-        sanitize_filename("file/name?.txt")  # "filename.txt"
-    """
-    
-    # Xavfli belgilarni olib tashlash
-    dangerous = r'[\/\\:*?"<>|]'
-    filename = re.sub(dangerous, '', filename)
-    
-    # Bo'sh joylarni _ bilan almashtirish
-    filename = filename.replace(' ', '_')
-    
-    return filename
-
-
-# ============================================
-# EMAIL VALIDATSIYA (OPTIONAL)
-# ============================================
-
-def validate_email(email: str) -> Tuple[bool, Optional[str]]:
-    """
-    Email validatsiya (agar kerak bo'lsa)
-    
-    PATTERN:
-        username@domain.extension
-    
-    MISOL:
-        is_valid, formatted = validate_email("user@example.com")
-        # (True, "user@example.com")
-    """
-    
-    pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
-    
-    email = email.strip().lower()
-    
-    if re.match(pattern, email):
-        return (True, email)
-    
-    return (False, None)
-
-
-# ============================================
-# PASSWORD STRENGTH (OPTIONAL - Admin uchun)
-# ============================================
-
-def check_password_strength(password: str) -> Tuple[str, int]:
-    """
-    Parol kuchini tekshirish
-    
-    Returns:
-        (strength: "weak" | "medium" | "strong", score: 0-100)
-    
-    KRITERIALAR:
-    - Uzunlik (min 8)
-    - Katta harf
-    - Kichik harf
-    - Raqamlar
-    - Maxsus belgilar
-    
-    MISOL:
-        strength, score = check_password_strength("MyPass123!")
-        # ("strong", 90)
-    """
-    
-    score = 0
-    
-    # Uzunlik
-    if len(password) >= 8:
-        score += 20
-    if len(password) >= 12:
-        score += 10
-    
-    # Katta harf
-    if re.search(r'[A-Z]', password):
-        score += 20
-    
-    # Kichik harf
-    if re.search(r'[a-z]', password):
-        score += 20
-    
-    # Raqamlar
-    if re.search(r'\d', password):
-        score += 15
-    
-    # Maxsus belgilar
-    if re.search(r'[!@#$%^&*(),.?":{}|<>]', password):
-        score += 15
-    
-    # Strength
-    if score < 40:
-        strength = "weak"
-    elif score < 70:
-        strength = "medium"
-    else:
-        strength = "strong"
-    
-    return (strength, score)
-
-
 # ============================================
 # TESTING
 # ============================================
@@ -530,8 +423,6 @@ __all__ = [
     'validate_text_length',
     'contains_only_letters',
     'contains_only_digits',
-    'sanitize_input',
-    'sanitize_filename',
-    'validate_email',
-    'check_password_strength'
+    'contains_only_digits',
+    'sanitize_input'
 ]

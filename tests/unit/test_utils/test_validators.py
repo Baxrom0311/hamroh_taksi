@@ -18,10 +18,8 @@ from app.utils.validators import (
     validate_car_number,
     validate_age,
     validate_balance_amount,
-    sanitize_input,
-    validate_email
+    sanitize_input
 )
-
 
 class TestPhoneValidation:
     """Telefon raqam validation testlari"""
@@ -222,46 +220,6 @@ class TestInputSanitization:
         text = "   Hello    World   "
         safe = sanitize_input(text)
         assert safe == "Hello World"
-
-
-class TestEmailValidation:
-    """Email validation testlari"""
-    
-    def test_valid_email(self):
-        """To'g'ri email"""
-        is_valid, formatted = validate_email("user@example.com")
-        assert is_valid is True
-        assert formatted == "user@example.com"
-    
-    def test_valid_email_with_subdomain(self):
-        """To'g'ri email (subdomain bilan)"""
-        is_valid, formatted = validate_email("user@mail.example.com")
-        assert is_valid is True
-    
-    def test_valid_email_uppercase(self):
-        """To'g'ri email (katta harflar)"""
-        is_valid, formatted = validate_email("USER@EXAMPLE.COM")
-        assert is_valid is True
-        assert formatted == "user@example.com"  # Lowercase'ga convert
-    
-    def test_invalid_email_no_at(self):
-        """Noto'g'ri email (@ yo'q)"""
-        is_valid, formatted = validate_email("userexample.com")
-        assert is_valid is False
-        assert formatted is None
-    
-    def test_invalid_email_no_domain(self):
-        """Noto'g'ri email (domain yo'q)"""
-        is_valid, formatted = validate_email("user@")
-        assert is_valid is False
-        assert formatted is None
-    
-    def test_invalid_email_no_extension(self):
-        """Noto'g'ri email (extension yo'q)"""
-        is_valid, formatted = validate_email("user@example")
-        assert is_valid is False
-        assert formatted is None
-
 
 # ============================================
 # PARAMETRIZED TESTS

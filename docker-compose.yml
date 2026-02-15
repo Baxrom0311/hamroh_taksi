@@ -19,7 +19,7 @@ services:
         reservations:
           memory: 256M
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U hamroh_user" ]
+      test: [ "CMD-SHELL", "pg_isready -U hamroh_user -d hamroh_bot" ]
       interval: 10s
       timeout: 5s
       retries: 5
