@@ -158,7 +158,7 @@
                         formData.append('photo_url', this.form.photo_url);
                     }
 
-                    const res = await fetch('/api/broadcast/send', {
+                    const res = await fetch(rootedUrl('/api/broadcast/send'), {
                         method: 'POST',
                         body: formData
                     });

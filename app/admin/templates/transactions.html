@@ -94,7 +94,7 @@
                             <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                                 <div class="flex items-center justify-end gap-2">
                                     <template x-if="t.receipt_file_id">
-                                        <button @click="openReceiptModal('/api/files/' + t.receipt_file_id)"
+                                        <button @click="openReceiptModal(rootedUrl('/api/files/' + t.receipt_file_id))"
                                             class="text-blue-400 hover:text-blue-300" title="Chekni ko'rish">
                                             📄
                                         </button>
@@ -244,7 +244,7 @@
         if (!confirm("Haqiqatan ham tasdiqlaysizmi?")) return;
 
         try {
-            const res = await fetch(`/api/transactions/${id}/approve`, {
+            const res = await fetch(rootedUrl(`/api/transactions/${id}/approve`), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ amount: parseInt(amount) })
@@ -280,7 +280,7 @@
         if (!confirm("Haqiqatan ham rad etasizmi?")) return;
 
         try {
-            const res = await fetch(`/api/transactions/${id}/reject`, {
+            const res = await fetch(rootedUrl(`/api/transactions/${id}/reject`), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ reason: reason })
@@ -334,7 +334,7 @@
 
             async apiCall(url) {
                 try {
-                    const res = await fetch(url);
+                    const res = await fetch(rootedUrl(url));
                     return await res.json();
                 } catch (e) {
                     console.error(e);

@@ -183,7 +183,7 @@
                 formData.append('reply_text', this.replyText);
 
                 try {
-                    const res = await fetch('/api/feedback/reply', {
+                    const res = await fetch(rootedUrl('/api/feedback/reply'), {
                         method: 'POST',
                         body: formData
                     });
@@ -266,7 +266,7 @@
                     };
                     if (body) options.body = JSON.stringify(body);
 
-                    const res = await fetch(url, options);
+                    const res = await fetch(rootedUrl(url), options);
                     return await res.json();
                 } catch (e) {
                     console.error(e);

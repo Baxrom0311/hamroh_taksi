@@ -75,6 +75,7 @@
 
 <body class="bg-dark-bg text-dark-text antialiased font-sans selection:bg-brand-500 selection:text-white"
       x-data="{ sidebarOpen: false, userMenuOpen: false }">
+    {% set root_path = (request.scope.root_path or '').rstrip('/') %}
 
     <div class="flex h-screen overflow-hidden">
         
@@ -123,7 +124,7 @@
                 ] %}
 
                 {% for p, icon, label, url in nav_items %}
-                <a href="{{ url }}"
+                <a href="{{ root_path ~ url }}"
                    class="flex items-center px-4 py-3 rounded-xl transition-all duration-200 group
                           {% if page == p %}
                             bg-brand-600/20 text-blue-400 border border-brand-600/30 shadow-[0_0_15px_rgba(59,130,246,0.2)]
@@ -139,14 +140,14 @@
                     <div class="pt-4 mt-4 border-t border-dark-border px-3">
                         <p class="px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Admin Tools</p>
                         
-                        <a href="/admins"
+                        <a href="{{ root_path }}/admins"
                            class="flex items-center px-4 py-3 rounded-xl transition-all duration-200 group
                                   {% if page == 'admins' %}bg-brand-600/20 text-blue-400{% else %}text-gray-400 hover:bg-dark-hover hover:text-white{% endif %}">
                             <span class="mr-3 text-lg">👨‍💼</span>
                             <span class="font-medium">Adminlar</span>
                         </a>
                         
-                        <a href="/broadcast"
+                        <a href="{{ root_path }}/broadcast"
                            class="flex items-center px-4 py-3 rounded-xl transition-all duration-200 group
                                   {% if page == 'broadcast' %}bg-brand-600/20 text-blue-400{% else %}text-gray-400 hover:bg-dark-hover hover:text-white{% endif %}">
                             <span class="mr-3 text-lg">📢</span>
@@ -211,10 +212,18 @@
     </div>
 
     <script>
+        const ADMIN_ROOT_PATH = "{{ root_path }}";
+
+        function rootedUrl(path) {
+            const root = ADMIN_ROOT_PATH.replace(/\/$/, '');
+            const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+            return root ? `${root}${normalizedPath}` : normalizedPath;
+        }
+
         function handleLogout() {
             if(confirm('Tizimdan chiqmoqchimisiz?')) {
                 document.cookie = "access_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
-                window.location.href = '/login';
+                window.location.href = rootedUrl('/login');
             }
         }
     </script>

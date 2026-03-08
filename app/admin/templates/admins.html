@@ -126,7 +126,7 @@
 
             async fetchAdmins() {
                 try {
-                    const res = await fetch('/api/admins/');
+                    const res = await fetch(rootedUrl('/api/admins/'));
                     const data = await res.json();
                     if (data.success) {
                         this.admins = data.admins;
@@ -145,7 +145,7 @@
                 if (!this.form.username || !this.form.password) return alert("Barcha maydonlarni to'ldiring");
 
                 try {
-                    const res = await fetch('/api/admins/', {
+                    const res = await fetch(rootedUrl('/api/admins/'), {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify(this.form)
@@ -167,7 +167,7 @@
             async deleteAdmin(id) {
                 if (!confirm("Adminni o'chirmoqchimisiz?")) return;
                 try {
-                    const res = await fetch(`/api/admins/${id}`, { method: 'DELETE' });
+                    const res = await fetch(rootedUrl(`/api/admins/${id}`), { method: 'DELETE' });
                     const data = await res.json();
                     if (data.success) {
                         this.fetchAdmins();

@@ -34,6 +34,14 @@ from sqlalchemy import select
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 from app.core.metrics import API_RESPONSE_TIME
+
+
+def rooted_url(request: Request, path: str) -> str:
+    root = request.scope.get("root_path", "").rstrip("/")
+    path = "/" + path.lstrip("/")
+    return f"{root}{path}" if root else path
+
+
 # ============================================
 # FASTAPI APP
 # ============================================
@@ -238,7 +246,7 @@ async def system_settings_page(
     """
     System settings page (free/pullik, komissiya va boshqalar) - Legacy route
     """
-    return RedirectResponse(url="/settings", status_code=301)
+    return RedirectResponse(url=rooted_url(request, "/settings"), status_code=301)
 
 @app.get("/routes", response_class=HTMLResponse)
 async def routes_page(
@@ -323,7 +331,7 @@ async def login_submit(
 
     is_secure = request.url.scheme == "https"
     
-    response = RedirectResponse(url="/dashboard", status_code=302)
+    response = RedirectResponse(url=rooted_url(request, "/dashboard"), status_code=302)
     response.set_cookie(
         key="access_token",
         value=token,
@@ -341,7 +349,7 @@ async def root(request: Request):
     """
     Root redirect to dashboard
     """
-    return RedirectResponse(url="/dashboard")
+    return RedirectResponse(url=rooted_url(request, "/dashboard"))
 
 
 @app.get("/dashboard", response_class=HTMLResponse)
@@ -665,7 +673,7 @@ async def http_exception_handler(request: Request, exc: HTTPException):
         
         # HTML Page -> Redirect to login
         return RedirectResponse(
-            url="/login",
+            url=rooted_url(request, "/login"),
             status_code=302
         )
             

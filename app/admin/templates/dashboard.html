@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% set root_path = (request.scope.root_path or '').rstrip('/') %}
 
 {% block title %}Dashboard | Hamroh Admin{% endblock %}
 {% block header_title %}Tizim Statistikasi{% endblock %}
@@ -74,7 +75,7 @@
                 <div class="w-12 h-12 bg-red-500/10 text-red-500 rounded-xl flex items-center justify-center text-2xl">⏳
                 </div>
             </div>
-            <a href="/transactions" class="mt-4 block text-xs text-blue-400 hover:text-blue-300 font-medium">Ko'rib
+            <a href="{{ root_path }}/transactions" class="mt-4 block text-xs text-blue-400 hover:text-blue-300 font-medium">Ko'rib
                 chiqish →</a>
         </div>
     </div>
@@ -199,9 +200,9 @@
 
             async apiCall(url) {
                 try {
-                    const response = await fetch(url);
+                    const response = await fetch(rootedUrl(url));
                     if (response.status === 401 || response.status === 403) {
-                        window.location.href = '/login';
+                        window.location.href = '{{ root_path }}/login';
                         return null;
                     }
                     return await response.json();

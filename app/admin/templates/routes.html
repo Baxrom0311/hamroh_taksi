@@ -289,7 +289,7 @@
                     };
                     if (body) options.body = JSON.stringify(body);
 
-                    const res = await fetch(url, options);
+                    const res = await fetch(rootedUrl(url), options);
                     return await res.json();
                 } catch (e) {
                     console.error(e);

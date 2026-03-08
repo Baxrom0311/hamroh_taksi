@@ -108,7 +108,7 @@
             async fetchSettings() {
                 this.loading = true;
                 try {
-                    const res = await fetch('/api/settings/');
+                    const res = await fetch(rootedUrl('/api/settings/'));
                     const data = await res.json();
                     if (data.success) {
                         this.settings = data.settings;
@@ -150,7 +150,7 @@
                     const btn = event ? event.currentTarget : null;
                     const payload = { value: String(this.settings[key]) };
 
-                    const res = await fetch(`/api/settings/${key}`, {
+                    const res = await fetch(rootedUrl(`/api/settings/${key}`), {
                         method: 'PUT',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify(payload)
