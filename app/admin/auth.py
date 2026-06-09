@@ -114,7 +114,8 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     
     to_encode.update({
         "exp": expire,
-        "iat": datetime.utcnow()
+        "iat": datetime.utcnow(),
+        "jti": str(__import__('uuid').uuid4()),  # ✅ Unique token ID for revocation
     })
     
     encoded_jwt = jwt.encode(
@@ -128,16 +129,7 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
 
 def decode_access_token(token: str) -> dict:
     """
-    JWT token'ni decode qilish
-    
-    Args:
-        token: JWT token
-    
-    Returns:
-        Token ichidagi ma'lumotlar
-    
-    Raises:
-        HTTPException: Token noto'g'ri yoki muddati tugagan
+    JWT token'ni decode qilish + blacklist check
     """
     try:
         payload = jwt.decode(
@@ -145,6 +137,32 @@ def decode_access_token(token: str) -> dict:
             settings.JWT_SECRET_KEY,
             algorithms=[settings.JWT_ALGORITHM]
         )
+        
+        # ✅ FIX: JWT revocation — blacklist check
+        jti = payload.get("jti")
+        if jti:
+            import asyncio
+            from app.core.redis_client import redis_client
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    # Sync context (FastAPI dependency) — check via sync helper
+                    import threading
+                    _blacklisted = [False]
+                    def _check():
+                        _loop = asyncio.new_event_loop()
+                        _blacklisted[0] = _loop.run_until_complete(redis_client.exists(f"jwt_blacklist:{jti}"))
+                        _loop.close()
+                    t = threading.Thread(target=_check)
+                    t.start()
+                    t.join(timeout=1)
+                    if _blacklisted[0]:
+                        raise jwt.InvalidTokenError("Token revoked")
+            except (RuntimeError, jwt.InvalidTokenError):
+                raise
+            except Exception:
+                pass  # Redis unavailable — allow token
+        
         return payload
     
     except jwt.ExpiredSignatureError:
@@ -320,19 +338,33 @@ async def login(request: LoginRequest):
 # ============================================
 
 @router.post("/logout")
-async def logout(current_user: dict = Depends(get_current_user)):
+async def logout(request: Request, current_user: dict = Depends(get_current_user)):
     """
-    Logout (JWT invalidation)
+    Logout — ✅ FIX: Token'ni Redis blacklist'ga qo'shish
+    """
+    # Token'ni olish
+    token = None
+    auth_header = request.headers.get("authorization")
+    if auth_header and auth_header.startswith("Bearer "):
+        token = auth_header[7:]
+    if not token:
+        token = request.cookies.get("access_token")
     
-    JWT stateless, shuning uchun logout faqat client-side
-    Agar server-side logout kerak bo'lsa - Redis blacklist ishlatish kerak
-    """
+    if token:
+        try:
+            payload = jwt.decode(token, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
+            jti = payload.get("jti")
+            exp = payload.get("exp", 0)
+            if jti:
+                import time
+                from app.core.redis_client import redis_client
+                ttl = max(int(exp - time.time()), 0)
+                await redis_client.set(f"jwt_blacklist:{jti}", "1", ex=ttl or 7200)
+        except Exception:
+            pass  # Token already expired or invalid
+    
     logger.info(f"Admin logged out: {current_user['username']}")
-    
-    return {
-        'success': True,
-        'message': 'Logged out successfully'
-    }
+    return {'success': True, 'message': 'Logged out successfully'}
 
 
 # ============================================
@@ -375,12 +407,14 @@ async def change_password(
                         detail="Eski parol noto'g'ri"
                     )
             
-            # New password validation
-            if len(request.new_password) < 6:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Yangi parol kamida 6 ta belgidan iborat bo'lishi kerak"
-                )
+            # New password validation - ✅ FIX: Stronger policy
+            pwd = request.new_password
+            if len(pwd) < 8:
+                raise HTTPException(status_code=400, detail="Parol kamida 8 ta belgidan iborat bo'lishi kerak")
+            if not any(c.isupper() for c in pwd):
+                raise HTTPException(status_code=400, detail="Parolda kamida 1 ta katta harf bo'lishi kerak")
+            if not any(c.isdigit() for c in pwd):
+                raise HTTPException(status_code=400, detail="Parolda kamida 1 ta raqam bo'lishi kerak")
             
             # Hash new password
             new_password_hash = get_password_hash(request.new_password)

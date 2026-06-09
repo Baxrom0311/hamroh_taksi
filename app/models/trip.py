@@ -24,7 +24,7 @@ import enum
 
 from sqlalchemy import (
     Integer, BigInteger, ForeignKey, Enum as SQLEnum, DateTime, Numeric,
-    Index, func, select, update
+    Index, CheckConstraint, func, select, update
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship, selectinload
 
@@ -178,6 +178,10 @@ class Trip(Base):
         Index('idx_trips_driver_status', 'driver_id', 'status'),
         Index('idx_trips_route_status', 'route_id', 'status'),
         Index('idx_trips_created', 'created_at'),
+        # ✅ FIX: available_seats manfiy bo'lmasligi va total_seats'dan oshmasligi
+        CheckConstraint('available_seats >= 0', name='check_trip_seats_non_negative'),
+        CheckConstraint('available_seats <= total_seats', name='check_trip_seats_max'),
+        CheckConstraint('total_seats >= 1 AND total_seats <= 6', name='check_trip_total_seats'),
     )
     
     # PROPERTIES

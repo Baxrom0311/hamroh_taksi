@@ -193,30 +193,27 @@ async def transaction():
     """
     Explicit transaction (COMMIT/ROLLBACK qo'lda)
     
-    QACHON KERAK:
-    - Bir nechta query birgalikda bajarilishi kerak
-    - Hammasi muvaffaqiyatli yoki hech biri
+    ✅ FIX: get_session() auto-commit va session.begin() double commit muammosi tuzatildi.
+    session.begin() o'zi commit/rollback boshqaradi, shuning uchun get_session() 
+    auto-commit'ni bypass qilamiz.
     
     ISHLATISH:
         async with transaction() as session:
-            # Query 1
             await session.execute(...)
-            
-            # Query 2
-            await session.execute(...)
-            
-            # Agar xato bo'lsa - ikkalasi ham ROLLBACK
-            # Agar xato bo'lmasa - COMMIT
-    
-    MISOL:
-        - Pul yechish + Transaction log yozish
-        - Order yaratish + Driver update
-    """
-    
-    async with get_session() as session:
-        async with session.begin():  # Transaction boshlash
-            yield session
             # Auto COMMIT yoki ROLLBACK
+    """
+    session = db_manager.session_factory()
+    try:
+        async with session.begin():
+            yield session
+            # session.begin() exits → auto COMMIT
+    except Exception as e:
+        # session.begin() exits with exception → auto ROLLBACK
+        if e.__class__.__name__ != "SkipHandler":
+            logger.error(f"❌ Transaction error: {e}")
+        raise
+    finally:
+        await session.close()
 
 
 # ============================================

@@ -57,7 +57,7 @@ async def location_received(message: Message, session: AsyncSession, driver: Dri
         is_live = hasattr(location, 'live_period') and location.live_period is not None
         
         # Lokatsiyani saqlash
-        point_wkt = f"POINT({lon} {lat})"
+        from sqlalchemy import text as sa_text
         try:
             await session.execute(
                 update(Driver)
@@ -65,7 +65,7 @@ async def location_received(message: Message, session: AsyncSession, driver: Dri
                 .values(
                     last_location_lat=lat,
                     last_location_lon=lon,
-                    location=geo_func.ST_GeomFromText(point_wkt, 4326)
+                    location=geo_func.ST_SetSRID(geo_func.ST_MakePoint(lon, lat), 4326)
                 )
             )
             logger.debug("Location saved with PostGIS")
@@ -81,7 +81,7 @@ async def location_received(message: Message, session: AsyncSession, driver: Dri
                 )
             )
         
-        await session.commit()
+        # commit decorator auto-commit orqali amalga oshadi
         logger.success(f"✅ Driver {driver.driver_id} location saved: lat={lat}, lon={lon}")
         
         # Marshrut tanlashga o'tish
@@ -136,7 +136,7 @@ async def update_location_while_waiting(message: Message, session: AsyncSession,
     lat = location.latitude if location else None
     lon = location.longitude if location else None
     
-    point_wkt = f"POINT({lon} {lat})"
+    point_wkt = None  # Unused, using geo_func directly
     try:
         await session.execute(
             update(Driver)
@@ -144,7 +144,7 @@ async def update_location_while_waiting(message: Message, session: AsyncSession,
             .values(
                 last_location_lat=lat,
                 last_location_lon=lon,
-                location=geo_func.ST_GeomFromText(point_wkt, 4326)
+                location=geo_func.ST_SetSRID(geo_func.ST_MakePoint(lon, lat), 4326)
             )
         )
     except Exception as e:
@@ -157,7 +157,7 @@ async def update_location_while_waiting(message: Message, session: AsyncSession,
                 last_location_lon=lon
             )
         )
-    await session.commit()
+    # commit decorator auto-commit orqali amalga oshadi
     logger.debug(f"Driver {driver.driver_id} location updated: lat={lat}, lon={lon}")
 
 
@@ -185,7 +185,7 @@ async def handle_live_location_update(message: Message, session: AsyncSession, d
         lat = location.latitude
         lon = location.longitude
         
-        point_wkt = f"POINT({lon} {lat})"
+        point_wkt = None  # Unused, using geo_func directly
         try:
             await session.execute(
                 update(Driver)
@@ -193,7 +193,7 @@ async def handle_live_location_update(message: Message, session: AsyncSession, d
                 .values(
                     last_location_lat=lat,
                     last_location_lon=lon,
-                    location=geo_func.ST_GeomFromText(point_wkt, 4326)
+                    location=geo_func.ST_SetSRID(geo_func.ST_MakePoint(lon, lat), 4326)
                 )
             )
         except Exception as e:
@@ -206,7 +206,7 @@ async def handle_live_location_update(message: Message, session: AsyncSession, d
                     last_location_lon=lon
                 )
             )
-        await session.commit()
+        # commit decorator auto-commit orqali amalga oshadi
         logger.debug(f"Driver {driver.driver_id} live location updated: lat={lat}, lon={lon}")
 
 

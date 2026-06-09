@@ -65,7 +65,36 @@ async def get_video_id(message: Message, session: AsyncSession, state: FSMContex
 
 
 # ============================================
-# 1. GLOBAL CANCEL COMMAND
+# 1. GLOBAL BACK BUTTON
+# ============================================
+
+@router.message(F.text == "↩️ Orqaga", StateFilter("*"))
+@with_session
+async def cmd_back(message: Message, session: AsyncSession, state: FSMContext):
+    """
+    Universal "Orqaga" tugma — current state'ga qarab menyu qaytaradi
+    """
+    from app.models.user import get_user_by_id, UserRole
+    from app.bot.keyboards.driver import get_driver_main_menu
+    from app.bot.keyboards.passenger import get_passenger_main_menu
+    
+    await state.clear()
+    
+    user_id = message.from_user.id if message.from_user else None
+    if user_id:
+        user = await get_user_by_id(session, user_id)
+        if user and user.role == UserRole.DRIVER:
+            await message.answer("Asosiy menyu:", reply_markup=get_driver_main_menu())
+            return
+        elif user and user.role == UserRole.PASSENGER:
+            await message.answer("Asosiy menyu:", reply_markup=get_passenger_main_menu())
+            return
+    
+    await message.answer("Asosiy menyu uchun /start bosing.", reply_markup=ReplyKeyboardRemove())
+
+
+# ============================================
+# 2. GLOBAL CANCEL COMMAND
 # ============================================
 
 @router.message(Command(commands=["cancel"]), StateFilter("*"))

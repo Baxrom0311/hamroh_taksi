@@ -280,6 +280,20 @@ async def driver_started_trip(message: Message, session: AsyncSession, driver: D
         await message.answer("⚠️ Bu buyurtma allaqachon boshlandi")
         return
     
+    # ✅ EARLY DEPARTURE WARNING: Bo'sh joylar bor bo'lsa ogohlantirish
+    await session.refresh(driver)
+    if driver.available_seats > 0:
+        from app.bot.keyboards.driver import get_early_departure_confirm_keyboard
+        await message.answer(
+            f"⚠️ <b>Diqqat!</b> Sizda hali <b>{driver.available_seats} ta bo'sh joy</b> bor.\n\n"
+            f"Hozir jo'nasangiz, qolgan joylar bo'sh qoladi.\n"
+            f"Kutib, ko'proq yo'lovchi olishingiz mumkin.\n\n"
+            f"Davom etasizmi?",
+            reply_markup=get_early_departure_confirm_keyboard(driver.available_seats),
+            parse_mode="HTML"
+        )
+        return
+    
     # Safarni boshlash
     result = await start_trip(order_id, driver.driver_id)
     
@@ -470,13 +484,13 @@ async def manual_complete_trip(message: Message, session: AsyncSession, driver: 
             continue
         rating_kb = InlineKeyboardMarkup(inline_keyboard=[
             [
-                InlineKeyboardButton(text="⭐️ 1", callback_data=f"rate_driver:{oid}:1"),
-                InlineKeyboardButton(text="⭐️ 2", callback_data=f"rate_driver:{oid}:2"),
+                InlineKeyboardButton(text="⭐️ 1", callback_data=f"rate_driver:{oid}:1", style="danger"),
+                InlineKeyboardButton(text="⭐️ 2", callback_data=f"rate_driver:{oid}:2", style="danger"),
                 InlineKeyboardButton(text="⭐️ 3", callback_data=f"rate_driver:{oid}:3"),
             ],
             [
-                InlineKeyboardButton(text="⭐️ 4", callback_data=f"rate_driver:{oid}:4"),
-                InlineKeyboardButton(text="⭐️ 5", callback_data=f"rate_driver:{oid}:5"),
+                InlineKeyboardButton(text="⭐️ 4", callback_data=f"rate_driver:{oid}:4", style="primary"),
+                InlineKeyboardButton(text="⭐️ 5", callback_data=f"rate_driver:{oid}:5", style="success"),
             ]
         ])
         try:
@@ -608,9 +622,33 @@ async def contact_passenger_handler(message: Message, session: AsyncSession, dri
         
         logger.info(f"Sending contact info to driver {driver.driver_id}: {len(passengers_info)} passengers")
 
+        # ✅ NEW: Telefon raqamlarni nusxalash va qo'ng'iroq tugmalari
+        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CopyTextButton
+        
+        phone_buttons = []
+        for idx, order in enumerate(active_orders, 1):
+            if order.passenger and order.passenger.user:
+                phone = order.passenger.user.phone_number
+                if phone and phone != "N/A":
+                    phone_buttons.append([
+                        InlineKeyboardButton(
+                            text=f"📋 {idx}-mijoz raqamini nusxalash",
+                            copy_text=CopyTextButton(text=phone),
+                            style="primary"
+                        ),
+                        InlineKeyboardButton(
+                            text=f"📞 Qo'ng'iroq",
+                            url=f"tel:{phone}",
+                            style="success"
+                        )
+                    ])
+        
+        reply_markup = InlineKeyboardMarkup(inline_keyboard=phone_buttons) if phone_buttons else None
+
         await message.answer(
             contact_text,
             parse_mode="HTML",
+            reply_markup=reply_markup
         )
         
         logger.success(f"✅ Contact info sent to driver {driver.driver_id}")
@@ -845,6 +883,19 @@ async def confirm_cancellation(message: Message, session: AsyncSession, driver: 
         await state.clear()
         return
     
+    # ✅ Komissiyani qaytarish (agar yechilgan bo'lsa)
+    if order.commission_amount and order.commission_amount > 0:
+        from app.services.payment_service import payment_service
+        from decimal import Decimal
+        await payment_service.refund_commission(
+            session,
+            driver_id=driver.driver_id,
+            order_id=order_id,
+            amount=Decimal(str(order.commission_amount)),
+            reason="cancelled_by_driver"
+        )
+        logger.info(f"Commission refunded for order {order_id}: {order.commission_amount}")
+
     # Order'ni PENDING qilish (qayta match qilish uchun)
     await session.execute(
         update(Order)
@@ -854,10 +905,11 @@ async def confirm_cancellation(message: Message, session: AsyncSession, driver: 
             cancellation_reason=None,
             cancelled_at=None,
             driver_id=None,
-            accepted_at=None
+            accepted_at=None,
+            commission_amount=None
         )
     )
-    
+
     # Remove redis skip keys
     await cleanup_skip_keys_for_order(order_id)
     
@@ -897,6 +949,24 @@ async def confirm_cancellation(message: Message, session: AsyncSession, driver: 
     await state.clear()
 
 
+@router.message(DriverStates.confirming_cancellation)
+async def confirming_cancellation_fallback(message: Message, state: FSMContext):
+    """
+    confirming_cancellation state da noto'g'ri input — bekor qilish yoki qayta so'rash.
+    """
+    if message.text and message.text.lower() in ("bekor", "yo'q", "yoq", "❌"):
+        await state.clear()
+        await message.answer(
+            "↩️ Bekor qilish to'xtatildi.",
+            reply_markup=get_driver_main_menu()
+        )
+        return
+
+    await message.answer(
+        "⚠️ Buyurtmani bekor qilish uchun <b>Tasdiqlash</b> yozing.\n"
+        "Yoki <b>Bekor</b> yozing chiqish uchun.",
+        parse_mode="HTML"
+    )
 
 
 @router.callback_query(F.data.startswith("reject_order:"))
@@ -1113,6 +1183,193 @@ async def confirm_trip_cancellation(message: Message, session: AsyncSession, dri
     await state.clear()
     
     logger.warning(f"Trip #{trip_id} cancelled by driver {driver.driver_id}")
+
+
+@router.message(DriverStates.confirming_trip_cancellation)
+async def confirming_trip_cancellation_fallback(message: Message, state: FSMContext):
+    """
+    confirming_trip_cancellation state da noto'g'ri input — bekor qilish yoki qayta so'rash.
+    """
+    if message.text and message.text.lower() in ("bekor", "yo'q", "yoq", "❌"):
+        await state.clear()
+        await message.answer(
+            "↩️ Safar bekor qilish to'xtatildi.",
+            reply_markup=get_trip_active_keyboard()
+        )
+        return
+
+    await message.answer(
+        "⚠️ Safarni bekor qilish uchun <b>Tasdiqlash</b> yozing.\n"
+        "Yoki <b>Bekor</b> yozing chiqish uchun.",
+        parse_mode="HTML"
+    )
+
+
+# ============================================
+# EARLY DEPARTURE (SHOSHILINCH JO'NASH)
+# ============================================
+
+@router.callback_query(F.data == "early_departure")
+@with_driver_session
+async def early_departure_request(callback: CallbackQuery, session: AsyncSession, driver: Driver, state: FSMContext):
+    """
+    Haydovchi navbatda turib shoshilinch jo'nashni so'radi (hech kim olmagan)
+    
+    Bu holat: Driver navbatda, lekin hali hech kim buyurtma bermagan.
+    Haydovchi kutishni xohlamaydi va bo'sh jo'nab ketmoqchi.
+    """
+    if not driver.is_active:
+        await callback.answer("Siz navbatda emassiz", show_alert=True)
+        return
+    
+    # Navbatdan chiqarish
+    from app.services.queue_service import driver_queue
+    from app.tasks.matching import remove_driver_from_queue_task
+    from typing import Any, cast
+    
+    await session.execute(
+        update(Driver)
+        .where(Driver.driver_id == driver.driver_id)
+        .values(is_active=False, available_seats=0)
+    )
+    
+    cast(Any, remove_driver_from_queue_task).delay(driver.driver_id)
+    
+    await state.clear()
+    
+    if isinstance(callback.message, Message):
+        await callback.message.edit_text(
+            "✅ <b>Navbatdan chiqdingiz</b>\n\n"
+            "Xavfsiz yo'l! 🚗",
+            parse_mode="HTML"
+        )
+        await callback.message.answer(
+            "Asosiy menyu:",
+            reply_markup=get_driver_main_menu()
+        )
+    
+    await callback.answer()
+
+
+@router.message(F.text == "⚡ Tezkor jo'nash")
+@with_driver_session
+async def early_departure_with_passengers(message: Message, session: AsyncSession, driver: Driver, state: FSMContext):
+    """
+    Haydovchi buyurtma qabul qilgan, lekin hali bo'sh joylar bor.
+    Qolgan joylarni kutmasdan jo'namoqchi.
+    
+    FLOW:
+    1. Qolgan bo'sh joylar sonini ko'rsatish
+    2. Ogohlantirish berish
+    3. Tasdiqlash so'rash (inline)
+    """
+    from app.bot.keyboards.driver import get_early_departure_confirm_keyboard
+    
+    remaining = driver.available_seats
+    
+    if remaining <= 0:
+        # Joylar to'lgan — oddiy "Yo'lga chiqdik" ishlatsin
+        await message.answer(
+            "✅ Joylar to'lgan! '🚗 Yo'lga chiqdik' tugmasini bosing.",
+            parse_mode="HTML"
+        )
+        return
+    
+    await message.answer(
+        f"⚡ <b>Tezkor jo'nash</b>\n\n"
+        f"Sizda hali <b>{remaining} ta bo'sh joy</b> bor.\n\n"
+        f"Agar hozir jo'nasangiz:\n"
+        f"• Qolgan joylar uchun yo'lovchi kutilmaydi\n"
+        f"• Safar darhol boshlanadi\n\n"
+        f"Davom etasizmi?",
+        reply_markup=get_early_departure_confirm_keyboard(remaining),
+        parse_mode="HTML"
+    )
+
+
+@router.callback_query(F.data == "confirm_early_departure")
+@with_driver_session
+async def confirm_early_departure(callback: CallbackQuery, session: AsyncSession, driver: Driver, state: FSMContext):
+    """
+    Haydovchi tezkor jo'nashni tasdiqladi.
+    
+    NIMA BO'LADI:
+    1. Bo'sh joylar 0 ga tushadi (yangi buyurtma olmaydi)
+    2. Navbatdan chiqariladi
+    3. Safar boshlanadi (agar order bor bo'lsa)
+    """
+    from app.services.queue_service import driver_queue
+    from app.tasks.matching import remove_driver_from_queue_task, notify_queue_update_task
+    from app.services.order_service import start_trip
+    from typing import Any, cast
+    
+    # 1. Navbatdan chiqarish + bo'sh joylarni yopish
+    route_id = driver.current_route_id
+    await session.execute(
+        update(Driver)
+        .where(Driver.driver_id == driver.driver_id)
+        .values(available_seats=0, is_active=False)
+    )
+    
+    if route_id:
+        cast(Any, remove_driver_from_queue_task).delay(driver.driver_id, route_id)
+        cast(Any, notify_queue_update_task).delay(route_id)
+    
+    # 2. Aktiv buyurtmalar bilan safarni boshlash
+    data = await state.get_data()
+    order_id = data.get('current_order_id')
+    
+    if order_id:
+        result = await start_trip(order_id, driver.driver_id)
+        
+        if result['success']:
+            # Auto-complete timer
+            from app.core.celery_app import celery_app
+            from config.settings import settings
+            celery_app.send_task(
+                "app.tasks.matching.auto_complete_trip_task",
+                args=[order_id],
+                countdown=settings.AUTO_COMPLETE_TRIP_SECONDS,
+            )
+            
+            await state.set_state(DriverStates.trip_in_progress)
+            
+            if isinstance(callback.message, Message):
+                await callback.message.edit_text(
+                    "⚡ <b>Tezkor jo'nash tasdiqlandi!</b>\n\n"
+                    "✅ Safar boshlandi.\n"
+                    "⏱ 10 daqiqadan so'ng avtomatik yakunlanadi.",
+                    parse_mode="HTML"
+                )
+                await callback.message.answer(
+                    "Safar menyusi:",
+                    reply_markup=get_trip_active_keyboard(order_id)
+                )
+        else:
+            if isinstance(callback.message, Message):
+                await callback.message.edit_text(f"❌ {result['message']}")
+    else:
+        # Order yo'q — shunchaki navbatdan chiqdi
+        await state.clear()
+        if isinstance(callback.message, Message):
+            await callback.message.edit_text(
+                "✅ <b>Navbatdan chiqdingiz</b>\n\nXavfsiz yo'l! 🚗",
+                parse_mode="HTML"
+            )
+            await callback.message.answer("Asosiy menyu:", reply_markup=get_driver_main_menu())
+    
+    await callback.answer()
+
+
+@router.callback_query(F.data == "cancel_early_departure")
+async def cancel_early_departure(callback: CallbackQuery):
+    """Haydovchi fikridan qaytdi — kutishda qoladi"""
+    if isinstance(callback.message, Message):
+        await callback.message.edit_text(
+            "↩️ Kutishda qolyapsiz. Yangi buyurtmalar keladi!",
+            parse_mode="HTML"
+        )
+    await callback.answer()
 
 
 __all__ = ['router']

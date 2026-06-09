@@ -90,11 +90,12 @@ app = FastAPI(
 # ============================================
 
 # CORS
+_cors_origins = ["*"] if settings.is_development else settings.admin_allowed_ips_list or ["https://admin.hamrohtaksi.uz"]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"] if settings.is_development else ["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
+    allow_origins=_cors_origins,
+    allow_credentials=not settings.is_development,  # credentials only with specific origins
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["*"],
 )
 
@@ -111,18 +112,20 @@ async def ip_whitelist_middleware(request: Request, call_next):
     if settings.is_development:
         return await call_next(request)
     
-    # Health check skip
-    if request.url.path in ["/health", "/api/auth/login"]:
+    # Health check skip (faqat health)
+    if request.url.path in ["/health"]:
         return await call_next(request)
     
     # Whitelist
     allowed_ips = settings.admin_allowed_ips_list
     
-    if not allowed_ips:
-        # Whitelist bo'sh - barchaga ruxsat
+    if not allowed_ips or "*" in allowed_ips:
+        # Whitelist bo'sh yoki * — barchaga ruxsat
         return await call_next(request)
     
-    client_ip = request.headers.get("x-forwarded-for", request.client.host if request.client else "unknown")
+    # ✅ FIX: X-Forwarded-For spoofing oldini olish
+    # Faqat request.client.host ishlatamiz (reverse proxy orqasida bo'lsa nginx/traefik trusted header qo'shadi)
+    client_ip = request.client.host if request.client else "unknown"
 
     
     if client_ip not in allowed_ips:
@@ -131,6 +134,35 @@ async def ip_whitelist_middleware(request: Request, call_next):
             status_code=403,
             content={"detail": f"Access denied from IP: {client_ip}"}
         )
+    
+    return await call_next(request)
+
+
+# ✅ Login rate limiting middleware
+_login_attempts: dict = {}  # {ip: [timestamps]}
+
+@app.middleware("http")
+async def login_rate_limit_middleware(request: Request, call_next):
+    """Login brute-force protection: max 5 attempts per minute per IP"""
+    if request.url.path == "/api/auth/login" and request.method == "POST":
+        import time
+        client_ip = request.client.host if request.client else "unknown"
+        now = time.time()
+        
+        # Eski urinishlarni tozalash (1 daqiqadan eski)
+        if client_ip in _login_attempts:
+            _login_attempts[client_ip] = [t for t in _login_attempts[client_ip] if now - t < 60]
+        else:
+            _login_attempts[client_ip] = []
+        
+        if len(_login_attempts[client_ip]) >= 5:
+            logger.warning(f"Login rate limit exceeded for IP: {client_ip}")
+            return JSONResponse(
+                status_code=429,
+                content={"detail": "Too many login attempts. Try again in 1 minute."}
+            )
+        
+        _login_attempts[client_ip].append(now)
     
     return await call_next(request)
 

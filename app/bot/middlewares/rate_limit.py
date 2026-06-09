@@ -29,6 +29,11 @@ class RateLimitMiddleware(BaseMiddleware):
     3. Ko'p marta limit oshsa - temp ban
     """
     
+    # In-memory fallback — Redis ishlamay qolganda ishlatiladi
+    # ✅ FIX: Bounded with max size to prevent memory leak
+    _memory_counts: dict = {}
+    _MAX_MEMORY_ENTRIES = 5000
+
     def __init__(
         self,
         rate_limit: int = 20,  # 10 requests
@@ -191,8 +196,27 @@ class RateLimitMiddleware(BaseMiddleware):
                 await redis_client.incr(request_key)
         
         except Exception as exc:
-            logger.error(f"RateLimitMiddleware fallback (redis issue): {exc}")
-            # Fail open: allow handler to proceed on Redis errors
+            logger.warning(f"RateLimitMiddleware Redis fallback: {exc}")
+            # In-memory fallback rate limiting
+            now = time.time()
+            mem_key = str(user_id)
+            
+            # ✅ FIX: Cleanup when too many entries (prevent memory leak)
+            if len(self._memory_counts) > self._MAX_MEMORY_ENTRIES:
+                cutoff = now - self.time_window
+                self._memory_counts = {
+                    k: [t for t in v if t > cutoff]
+                    for k, v in self._memory_counts.items()
+                    if any(t > cutoff for t in v)
+                }
+            
+            timestamps = self._memory_counts.get(mem_key, [])
+            timestamps = [t for t in timestamps if now - t < self.time_window]
+            if len(timestamps) >= self.rate_limit:
+                logger.warning(f"In-memory rate limit hit for user {user_id}")
+                return  # Block
+            timestamps.append(now)
+            self._memory_counts[mem_key] = timestamps
         
         # Call the handler regardless if no early return happened
         return await handler(event, data)

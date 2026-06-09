@@ -122,7 +122,6 @@ class DriverQueueManager:
                     .where(Driver.driver_id == driver_id)
                     .values(is_priority=enable)
                 )
-                await session.commit()
                 
                 # 2. Agar navbatda bo'lsa - Score yangilash
                 if driver.current_route_id:
@@ -134,12 +133,12 @@ class DriverQueueManager:
                     if score is not None:
                         new_score = score
                         if enable:
-                            # Priority yoqildi: -OFFSET
-                            if score > 0: # Agar oldin priority bo'lmagan bo'lsa
+                            # Priority yoqildi: -OFFSET (faqat hali qo'shilmagan bo'lsa)
+                            if score > -self.PRIORITY_OFFSET:
                                 new_score = score - self.PRIORITY_OFFSET
                         else:
-                            # Priority o'chirildi: +OFFSET
-                            if score < 0: # Agar oldin priority bo'lgan bo'lsa
+                            # Priority o'chirildi: +OFFSET (faqat oldin qo'shilgan bo'lsa)
+                            if score < 0:
                                 new_score = score + self.PRIORITY_OFFSET
                         
                         await self.redis.client.zadd(
@@ -230,7 +229,11 @@ class DriverQueueManager:
             
             # Expire (24 soat)
             await self.redis.expire(queue_key, 86400)
-            
+
+            # Join time saqlash (kutish vaqtini hisoblash uchun)
+            join_time_key = f"driver_join_time:{driver_id}:{route_id}"
+            await self.redis.set(join_time_key, datetime.now().isoformat(), ex=86400)
+
             # Position olish
             position = await self.get_queue_position(driver_id, route_id)
             
@@ -530,8 +533,9 @@ class DriverQueueManager:
                     return None
 
                 # If top two scores are very close, bias to the earlier inserted driver
-                if len(queue) > 1 and (queue[0]["score"] - queue[1]["score"]) < 0.05:
-                    return int(queue[1]["driver_id"])
+                # queue[0] — eng past score (birinchi kelgan), shuning uchun uni qaytaramiz
+                if len(queue) > 1 and abs(queue[0]["score"] - queue[1]["score"]) < 0.05:
+                    return int(queue[0]["driver_id"])
 
                 return int(queue[0]["driver_id"])
 
@@ -558,11 +562,22 @@ class DriverQueueManager:
                 
                 # Check this batch
                 async with get_session() as session:
+                    # ✅ FIX: Batch load all drivers at once (N+1 → 1 query)
+                    driver_ids_batch = [int(d_str) for d_str, _ in drivers_batch]
+                    from sqlalchemy import select as sa_select
+                    drivers_result = await session.execute(
+                        sa_select(Driver).where(Driver.driver_id.in_(driver_ids_batch))
+                    )
+                    drivers_map = {d.driver_id: d for d in drivers_result.scalars().all()}
+                    
+                    # ✅ FIX: Cache pricing outside loop (1 query instead of N)
+                    pricing = await get_pricing_settings(session)
+                    commission = pricing['commission_amount']
+                    
                     for driver_id_str, score in drivers_batch:
                         driver_id = int(driver_id_str)
                         
-                        # Driver ma'lumotlarini olish
-                        driver = await get_driver_by_id(session, driver_id)
+                        driver = drivers_map.get(driver_id)
                         
                         if not driver:
                             continue
@@ -587,9 +602,7 @@ class DriverQueueManager:
                             logger.debug(f"Driver {driver_id}: blocked")
                             continue
                         
-                        # 3. Balans yetarli (dynamic)
-                        pricing = await get_pricing_settings(session)
-                        commission = pricing['commission_amount']
+                        # 3. Balans yetarli
                         if driver.balance < commission:
                             logger.debug(f"Driver {driver_id}: insufficient balance")
                             continue

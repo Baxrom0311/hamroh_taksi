@@ -324,9 +324,10 @@ class Order(Base):
         Index('idx_orders_route_status', 'route_id', 'status'),
         
         # Check constraints
-        # Pochta uchun passenger_count=0 bo'lishi mumkin, yo'lovchi uchun 1-4 orasida
+        # passenger_count: 0 (faqat pochta), 1-6 (yo'lovchi, pochta bilan yoki pochta'siz)
+        # Kamida bitta yo'lovchi YOKI pochta bo'lishi shart
         CheckConstraint(
-            '(has_luggage = true AND passenger_count = 0) OR (has_luggage = false AND passenger_count >= 1 AND passenger_count <= 4)',
+            'passenger_count >= 0 AND passenger_count <= 6 AND (passenger_count > 0 OR has_luggage = true)',
             name='check_passenger_count'
         ),
         CheckConstraint('luggage_count >= 0', name='check_luggage_count'),
@@ -547,19 +548,22 @@ async def cancel_order(
     """
     Buyurtmani bekor qilish
     
-    STATUS: any → cancelled
+    STATUS: pending/accepted → cancelled
+    ✅ FIX: Faqat PENDING yoki ACCEPTED holatdagi orderlarni bekor qilish mumkin
     """
     from sqlalchemy import update
     
-    await session.execute(
+    result = await session.execute(
         update(Order)
         .where(Order.order_id == order_id)
+        .where(Order.status.in_([OrderStatus.PENDING, OrderStatus.ACCEPTED]))
         .values(
             status=OrderStatus.CANCELLED,
             cancellation_reason=reason,
             cancelled_at=func.now()
         )
     )
+    return result.rowcount  # 0 = already completed/cancelled
 
 
 async def get_pending_orders_for_route(

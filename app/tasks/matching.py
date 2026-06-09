@@ -39,15 +39,30 @@ async def find_driver_for_order_task(self, order_id: int):
     - Har bir retry'da yangi haydovchilar qidiriladi
     - Max retry'dan keyin passenger'ga xabar yuboriladi va order cancel qilinadi
     """
-        
+    # Circular task prevention: find_driver → notify fail → find_driver loop ni cheklash
+    from app.core.redis_client import redis_client
+    cycle_key = f"find_driver_cycle:{order_id}"
+    cycle_count = await redis_client.incr(cycle_key)
+    if cycle_count == 1:
+        await redis_client.expire(cycle_key, 600)  # 10 daqiqa TTL
+
+    MAX_CYCLES = 10  # find_driver qayta chaqirilishi limiti
+    if cycle_count > MAX_CYCLES:
+        logger.error(
+            f"Order {order_id}: find_driver cycle limit reached ({cycle_count}). "
+            f"Cancelling order to prevent infinite loop."
+        )
+        cast(Any, notify_passenger_no_driver_task).delay(order_id)
+        return {'success': False, 'reason': 'cycle_limit_reached'}
+
     async with get_session() as session:
         # Order'ni olish
         order = await get_order_by_id(session, order_id)
-        
+
         if not order:
             logger.error(f"Order {order_id} not found")
             return {'success': False, 'error': 'Order not found'}
-        
+
         # Agar allaqachon qabul qilingan bo'lsa
         if order.status != OrderStatus.PENDING:
             logger.info(f"Order {order_id} already accepted (status: {order.status})")
@@ -83,16 +98,30 @@ async def find_driver_for_order_task(self, order_id: int):
                 
             # ✅ TOPILDI - Try to atomic lock
             locked = await driver_queue.lock_driver_for_offer(candidate_id, order_id)
-            
+
             if locked:
-                driver_id = candidate_id
-                
-                await session.execute(
-                    update(Order)
-                    .where(Order.order_id == order_id)
-                    .values(driver_id=driver_id)
-                )
-                break
+                try:
+                    # ✅ FIX: Atomic status guard — faqat PENDING order'ga driver tayinlash
+                    result = await session.execute(
+                        update(Order)
+                        .where(Order.order_id == order_id)
+                        .where(Order.status == OrderStatus.PENDING)
+                        .values(driver_id=candidate_id)
+                    )
+                    if result.rowcount == 0:
+                        # Order allaqachon qabul qilingan (race condition)
+                        await driver_queue.unlock_driver_offer(candidate_id)
+                        logger.warning(f"Order {order_id} no longer PENDING, releasing driver {candidate_id}")
+                        return {'success': False, 'reason': 'order_status_changed'}
+                    # ✅ FIX: session.commit() — o'zgarishni saqlash!
+                    await session.commit()
+                    driver_id = candidate_id
+                    break
+                except Exception as e:
+                    await session.rollback()
+                    await driver_queue.unlock_driver_offer(candidate_id)
+                    logger.error(f"DB update failed after locking driver {candidate_id}: {e}")
+                    raise
             else:
                 logger.warning(f"Driver {candidate_id} was grabbed by another process. Retrying match...")
                 # Continue loop to find next driver
@@ -202,7 +231,9 @@ async def notify_driver_new_order_task(self, driver_id: int, order_id: int):
             "type_text": order.type_text,
             "passenger_name": passenger_name,
             "passenger_phone": passenger_phone,
-            "passenger_gender": passenger_gender
+            "passenger_gender": passenger_gender,
+            "pickup_lat": float(order.pickup_lat) if order.pickup_lat else None,
+            "pickup_lon": float(order.pickup_lon) if order.pickup_lon else None,
         }
         order_route_id = order.route_id
         
@@ -217,8 +248,8 @@ async def notify_driver_new_order_task(self, driver_id: int, order_id: int):
 
     # 2. Telegramga xabar yuborish (Sessiyadan TASHQARIDA)
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="✅ Qabul qilish", callback_data=f"accept_order:{order_id}")],
-        [InlineKeyboardButton(text="❌ Rad etish", callback_data=f"reject_order:{order_id}")]
+        [InlineKeyboardButton(text="✅ Qabul qilish", callback_data=f"accept_order:{order_id}", style="success")],
+        [InlineKeyboardButton(text="❌ Rad etish", callback_data=f"reject_order:{order_id}", style="danger")]
     ])
     
     # Buyurtma turi
@@ -228,12 +259,12 @@ async def notify_driver_new_order_task(self, driver_id: int, order_id: int):
     # Lokatsiya linklari - conditional
     location_links_html = ""
     
-    if order.pickup_lat and order.pickup_lon:
+    if order_data['pickup_lat'] and order_data['pickup_lon']:
         # ✅ GPS bor - linklar ko'rsatish
         from app.utils.location_helpers import get_google_maps_link, get_telegram_location_link
         
-        pickup_lat = float(order.pickup_lat)
-        pickup_lon = float(order.pickup_lon)
+        pickup_lat = order_data['pickup_lat']
+        pickup_lon = order_data['pickup_lon']
         
         google_maps_link = get_google_maps_link(pickup_lat, pickup_lon, order_data['pickup'])
         telegram_location_link = get_telegram_location_link(pickup_lat, pickup_lon)
@@ -306,19 +337,43 @@ async def notify_driver_new_order_task(self, driver_id: int, order_id: int):
         error_msg = str(e).lower()
         if 'blocked' in error_msg or 'chat not found' in error_msg:
             logger.error(f"Cannot notify driver {driver_id}: Bot blocked or user not found")
+            # Lockni bo'shatib, orderni qayta matching ga yuborish
+            await driver_queue.unlock_driver_offer(driver_id)
+            async with get_session() as recovery_session:
+                await recovery_session.execute(
+                    update(Order)
+                    .where(Order.order_id == order_id)
+                    .where(Order.driver_id == driver_id)
+                    .values(driver_id=None)
+                )
+            cast(Any, find_driver_for_order_task).delay(order_id)
             return {'success': False, 'reason': 'forbidden'}
-            
+
         logger.warning(f"Retry sending notification to {driver_id}: {e}")
-        raise self.retry(exc=e, countdown=5)
+        try:
+            raise self.retry(exc=e, countdown=5)
+        except self.MaxRetriesExceededError:
+            # Max retry tugadi — lockni bo'shatib, qayta matching
+            logger.error(f"Max retries exhausted for notifying driver {driver_id} about order {order_id}")
+            await driver_queue.unlock_driver_offer(driver_id)
+            async with get_session() as recovery_session:
+                await recovery_session.execute(
+                    update(Order)
+                    .where(Order.order_id == order_id)
+                    .where(Order.driver_id == driver_id)
+                    .values(driver_id=None)
+                )
+            cast(Any, find_driver_for_order_task).delay(order_id)
+            return {'success': False, 'reason': 'max_retries_exhausted'}
 
 
 # ============================================
 # 3. AVTOMATIK RAD ETISH (2 daqiqa javob yo'q)
 # ============================================
 
-@celery_app.task(name="app.tasks.matching.auto_reject_order_task")
+@celery_app.task(name="app.tasks.matching.auto_reject_order_task", bind=True, max_retries=3)
 @async_to_sync
-async def auto_reject_order_task(driver_id: int, order_id: int):
+async def auto_reject_order_task(self, driver_id: int, order_id: int):
     """
     Haydovchi 2 daqiqa ichida javob bermasa.
     
@@ -328,8 +383,21 @@ async def auto_reject_order_task(driver_id: int, order_id: int):
     """
     async with get_session() as session:
         order = await get_order_by_id(session, order_id)
-        
-        if order and order.status == OrderStatus.PENDING:
+
+        if not order:
+            logger.warning(f"auto_reject_order_task: Order {order_id} not found (may be deleted)")
+            return
+
+        if order.status != OrderStatus.PENDING:
+            logger.info(
+                f"auto_reject_order_task: Order {order_id} already processed "
+                f"(status={order.status.value}), skipping auto-reject"
+            )
+            # Driver lockini tozalash
+            await driver_queue.unlock_driver_offer(driver_id)
+            return
+
+        if order.status == OrderStatus.PENDING:
             # 1. Inactivity count'ni oshirish
             inactivity_count = await driver_queue.track_driver_inactivity(
                 driver_id, order.route_id
@@ -372,6 +440,9 @@ async def auto_reject_order_task(driver_id: int, order_id: int):
             
             # 3. Bu buyurtma uchun skip qilish
             await driver_queue.skip_driver_for_order(driver_id, order_id)
+            
+            # ✅ FIX: Driver offer lock'ni bo'shatish (boshqa orderlarga match bo'lishi uchun)
+            await driver_queue.unlock_driver_offer(driver_id)
             
             # 4. Keyingi haydovchini qidirish
             cast(Any, find_driver_for_order_task).delay(order_id)
@@ -535,7 +606,12 @@ async def auto_complete_trip_task(self, target_id: int):
 
             result = await complete_trip(order.order_id, driver_id)
             if not result.get('success'):
-                logger.error(f"Failed to auto-complete order {order.order_id}: {result.get('message')}")
+                msg = result.get('message', '')
+                # Agar order allaqachon manual yakunlangan bo'lsa — xato emas, skip
+                if 'noto\'g\'ri' in msg.lower() or 'status' in msg.lower() or 'IN_PROGRESS' in msg:
+                    logger.info(f"Auto-complete skipped for order {order.order_id}: already completed manually")
+                else:
+                    logger.error(f"Failed to auto-complete order {order.order_id}: {msg}")
                 continue
 
             # Haydovchiga xabar
@@ -682,12 +758,13 @@ Noqulaylik uchun uzr so'raymiz!
             else:
                 logger.warning(f"Passenger or user not found for order {order_id}")
             
-            # Order'ni cancel qilish
+            # Order'ni cancel qilish — ✅ FIX: status guard (TOCTOU prevention)
             from sqlalchemy import update
             
-            await session.execute(
+            result = await session.execute(
                 update(Order)
                 .where(Order.order_id == order_id)
+                .where(Order.status == OrderStatus.PENDING)  # ✅ Atomic status check
                 .values(
                     status=OrderStatus.CANCELLED,
                     cancellation_reason='no_driver_available',
@@ -695,8 +772,11 @@ Noqulaylik uchun uzr so'raymiz!
                 )
             )
             
-            await session.commit()
-            logger.info(f"Order {order_id} cancelled due to no driver available")
+            if result.rowcount > 0:
+                await session.commit()
+                logger.info(f"Order {order_id} cancelled due to no driver available")
+            else:
+                logger.info(f"Order {order_id} was already accepted/processed, skipping cancel")
         
         except Exception as e:
             logger.error(f"Failed to notify passenger or cancel order: {e}")

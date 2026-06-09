@@ -62,25 +62,13 @@ class PaymentService:
     ) -> Dict:
         """
         Balansdan komissiya yechish (100% atomic)
-        
-        Args:
-            driver_id: Driver ID
-            order_id: Order ID
-            amount: Komissiya miqdori
-        
-        Returns:
-            {
-                'success': bool,
-                'old_balance': Decimal,
-                'new_balance': Decimal,
-                'log_id': int
-            }
-        
-        GARANTIYA:
-        - Agar biror narsa xato bo'lsa - ROLLBACK
-        - Database transaction + FOR UPDATE
-        - Transaction log avtomatik yoziladi
         """
+        # ✅ FIX: Amount validation
+        if amount <= 0:
+            return {'success': False, 'error': 'Amount must be positive'}
+        if amount > Decimal('10000000'):  # 10M so'm max
+            return {'success': False, 'error': 'Amount exceeds maximum'}
+        
         try:
             # 1. Driver'ni olish (FOR UPDATE - row lock)
             result = await session.execute(
@@ -169,20 +157,13 @@ class PaymentService:
     ) -> Dict:
         """
         Balansga pul qo'shish
-        
-        Args:
-            session: DB session
-            driver_id: Driver ID
-            amount: Miqdor
-            transaction_id: Transaction ID (optional)
-            description: Tavsif
-        
-        Returns:
-            {
-                'success': bool,
-                'new_balance': Decimal
-            }
         """
+        # ✅ FIX: Amount validation
+        if amount <= 0:
+            return {'success': False, 'error': 'Amount must be positive'}
+        if amount > Decimal('10000000'):  # 10M so'm max
+            return {'success': False, 'error': 'Amount exceeds maximum'}
+        
         try:
             # Driver'ni olish
             result = await session.execute(

@@ -58,6 +58,7 @@ end
 # Har safar yubormaslik uchun birinchi marta load qilamiz
 _script_sha: Optional[str] = None
 _memory_locks: Dict[str, asyncio.Lock] = {}
+_MAX_MEMORY_LOCKS = 1000  # ✅ FIX: Prevent unbounded growth
 
 
 def _redis_ready() -> bool:
@@ -70,14 +71,23 @@ async def _acquire_memory_lock(
     retry_delay: float,
     max_retries: int
 ) -> Tuple[bool, asyncio.Lock]:
-    """In-memory lock acquisition with retry (test/CI fallback)."""
+    """In-memory lock acquisition with retry (test/CI fallback).
+    ✅ FIX: TOCTOU fixed with try_acquire, memory bounded.
+    """
+    # Cleanup old locks if too many accumulated
+    if len(_memory_locks) > _MAX_MEMORY_LOCKS:
+        unlocked_keys = [k for k, v in _memory_locks.items() if not v.locked()]
+        for k in unlocked_keys[:len(unlocked_keys)//2]:
+            del _memory_locks[k]
+    
     lock = _memory_locks.setdefault(lock_key, asyncio.Lock())
     for attempt in range(max_retries):
-        if not lock.locked():
-            await lock.acquire()
+        try:
+            # ✅ FIX: Use wait_for with timeout instead of TOCTOU check
+            await asyncio.wait_for(lock.acquire(), timeout=retry_delay)
             return True, lock
-        if attempt < max_retries - 1:
-            await asyncio.sleep(retry_delay)
+        except asyncio.TimeoutError:
+            continue
     return False, lock
 
 

@@ -395,11 +395,44 @@ async def driver_settings(message: Message, session: AsyncSession, driver: Drive
     await message.answer(
         "⚙️ <b>Sozlamalar bo'limi</b>\n\n"
         "Hozircha ishlab chiqilmoqda...\n"
-        "<i>Tez orada bu yerda shaxsiy ma'lumotlarni o'zgartirish imkoniyati bo'ladi.</i>", # TODO: Implement driver settings
+        "<i>Tez orada bu yerda shaxsiy ma'lumotlarni o'zgartirish imkoniyati bo'ladi.</i>",
         parse_mode="HTML"
     )
 
 
+
+
+@router.callback_query(F.data == "driver_stats")
+@with_driver_session
+async def show_statistics_callback(callback: CallbackQuery, session: AsyncSession, driver: Driver):
+    """driver_stats callback — statistikani ko'rsatish (inline tugma orqali)"""
+    from datetime import datetime
+    from sqlalchemy import select, func
+    from app.models.order import Order, OrderStatus
+
+    today_start = datetime.now().replace(hour=0, minute=0, second=0)
+
+    result = await session.execute(
+        select(func.count(Order.order_id))
+        .where(Order.driver_id == driver.driver_id)
+        .where(Order.status == OrderStatus.COMPLETED)
+        .where(Order.completed_at >= today_start)
+    )
+    today_trips = result.scalar() or 0
+
+    await callback.answer()
+    if callback.message and isinstance(callback.message, Message):
+        await callback.message.answer(
+            f"📊 <b>Sizning statistikangiz</b>\n\n"
+            f"👤 Ism: <b>{driver.full_name}</b>\n"
+            f"🚗 Mashina: <b>{driver.car_model}</b>\n\n"
+            f"💰 Balans: <b>{driver.balance:,} so'm</b>\n"
+            f"⭐ Reyting: <b>{driver.rating}/5.0</b>\n\n"
+            f"🚕 Jami safarlar: <b>{driver.total_trips}</b>\n"
+            f"📅 Bugungi safarlar: <b>{today_trips}</b>\n\n"
+            f"📆 Oxirgi safar: {driver.last_trip_at.strftime('%d.%m.%Y %H:%M') if driver.last_trip_at else 'Hali yoq'}",
+            parse_mode="HTML"
+        )
 
 
 # Diqqat: .message emas, .callback_query ishlatamiz

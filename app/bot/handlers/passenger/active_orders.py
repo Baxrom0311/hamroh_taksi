@@ -102,7 +102,7 @@ async def view_active_orders(message: Message, session: AsyncSession, passenger:
 def _build_cancel_keyboard(order_ids: list[int]) -> InlineKeyboardMarkup:
     """Cancellable buyurtmalar uchun inline keyboard."""
     buttons = [
-        [InlineKeyboardButton(text=f"❌ #{oid} ni bekor qilish", callback_data=f"passenger_cancel:{oid}")]
+        [InlineKeyboardButton(text=f"❌ #{oid} ni bekor qilish", callback_data=f"passenger_cancel:{oid}", style="danger")]
         for oid in order_ids
     ]
     return InlineKeyboardMarkup(inline_keyboard=buttons)

@@ -479,7 +479,7 @@ async def update_driver_location(
     """
     Driver lokatsiyasini yangilash
     
-    PostGIS POINT yaratiladi
+    ✅ FIX: Parameterized query — SQL injection oldini olish
     """
     from sqlalchemy import update, text
     
@@ -489,7 +489,7 @@ async def update_driver_location(
         .values(
             last_location_lat=latitude,
             last_location_lon=longitude,
-            location=text(f"ST_SetSRID(ST_MakePoint({longitude}, {latitude}), 4326)")
+            location=text("ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)").bindparams(lon=longitude, lat=latitude)
         )
     )
 

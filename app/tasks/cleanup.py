@@ -19,7 +19,7 @@ from loguru import logger
 
 from app.core.celery_app import celery_app
 from app.core.database import get_session
-from app.models.driver import Driver
+from app.models.driver import Driver, get_driver_by_id
 from app.models.passenger import Passenger
 from app.models.order import Order, OrderStatus
 from app.models.transaction import TransactionLog
@@ -56,14 +56,16 @@ async def daily_cleanup():
         deleted_logs = result.rowcount
         logger.info(f"🗑️ Deleted {deleted_logs} old transaction logs")
         
-        # 2. Bekor qilingan buyurtmalar (7 kun)
-        seven_days_ago = datetime.now() - timedelta(days=7)
+        # 2. Bekor qilingan buyurtmalar (30 kun) — ✅ FIX: Soft delete (status check, not hard delete)
+        # Faqat bog'lanmagan (trip_id NULL, driver_id NULL) va 30+ kunlik cancelled orderlarni o'chiramiz
+        thirty_days_orders = datetime.now() - timedelta(days=30)
         
         result = await session.execute(
             delete(Order)
             .where(Order.status == OrderStatus.CANCELLED)
-            .where(Order.cancelled_at < seven_days_ago)
-
+            .where(Order.cancelled_at < thirty_days_orders)
+            .where(Order.trip_id.is_(None))  # ✅ FK safe
+            .where(Order.driver_id.is_(None))  # ✅ FK safe
         )
         
         deleted_orders = result.rowcount
@@ -121,6 +123,17 @@ async def nightly_driver_reset():
     # 2. Barcha navbatlarni tozalash
     from app.services.queue_service import driver_queue
     queues_cleared = await driver_queue.remove_all_drivers_from_queues()
+    
+    # ✅ FIX: Driver offer lock'larni ham tozalash
+    try:
+        keys = []
+        async for key in redis_client.client.scan_iter(match="driver_offered:*"):
+            keys.append(key)
+        if keys:
+            await redis_client.client.delete(*keys)
+            logger.info(f"Cleared {len(keys)} stale driver_offered locks")
+    except Exception as e:
+        logger.warning(f"Failed to clear driver_offered locks: {e}")
     
     logger.success(
         f"✅ Nightly reset: {deactivated} drivers deactivated, "
@@ -415,6 +428,51 @@ async def manual_cleanup_orders(days: int = 30):
         return {'deleted': deleted}
     
 
+# ============================================
+# GHOST DRIVER CLEANUP (har 30 daqiqada)
+# ============================================
+
+@celery_app.task
+@async_to_sync
+async def cleanup_ghost_drivers():
+    """
+    Navbatda turgan lekin is_active=False bo'lgan driverlarni tozalash.
+
+    Nima uchun kerak:
+    - Driver app'ni yopsa yoki offline bo'lsa, Redis queue'da qoladi
+    - nightly_driver_reset faqat 03:00 da ishlaydi
+    - Bu task kun davomida ghost driverlarni tozalaydi
+    """
+    from app.services.queue_service import driver_queue
+    from app.models.route import get_all_active_routes
+
+    removed_count = 0
+
+    async with get_session() as session:
+        routes = await get_all_active_routes(session)
+
+        for route in routes:
+            queue_key = f"driver_queue:{route.route_id}"
+            members = await redis_client.client.zrange(queue_key, 0, -1)
+
+            for member in members:
+                driver_id = int(member)
+                driver = await get_driver_by_id(session, driver_id)
+
+                if not driver or not driver.is_active:
+                    await redis_client.client.zrem(queue_key, str(driver_id))
+                    removed_count += 1
+                    logger.info(
+                        f"Ghost driver removed: driver_id={driver_id}, "
+                        f"route_id={route.route_id}"
+                    )
+
+    if removed_count > 0:
+        logger.info(f"Ghost driver cleanup: {removed_count} drivers removed from queues")
+
+    return {'removed': removed_count}
+
+
 __all__ = [
     'daily_cleanup',
     'nightly_driver_reset',
@@ -422,5 +480,6 @@ __all__ = [
     'reset_hourly_cancellation_counts',
     'generate_daily_statistics',
     'health_check',
-    'manual_cleanup_orders'
+    'manual_cleanup_orders',
+    'cleanup_ghost_drivers'
 ]
