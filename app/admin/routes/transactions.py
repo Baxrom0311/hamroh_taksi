@@ -12,7 +12,7 @@ ENDPOINTS:
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import Optional, List
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from loguru import logger
 
 from app.admin.auth import get_current_user
@@ -53,6 +53,16 @@ class TransactionResponse(BaseModel):
 class ApproveRequest(BaseModel):
     """Tasdiqlash so'rovi"""
     amount: Optional[float] = None  # Admin kiritgan summa (chekdagi summa)
+
+    @field_validator('amount')
+    @classmethod
+    def validate_amount(cls, v):
+        if v is not None:
+            if v <= 0:
+                raise ValueError("Summa musbat bo'lishi kerak")
+            if v > 100_000_000:
+                raise ValueError("Summa juda katta (max 100,000,000 so'm)")
+        return v
 
 
 class RejectRequest(BaseModel):

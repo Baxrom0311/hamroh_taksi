@@ -190,7 +190,16 @@ async def driver_car_number(message: Message, session: AsyncSession, state: FSMC
                 role=UserRole.DRIVER,
             )
         else:
-            # Mavjud user'ni yangilaymiz
+            # ✅ Mavjud foydalanuvchi boshqa rolda bo'lsa — bloklash
+            if existing_user_by_id.role == UserRole.PASSENGER:
+                await message.answer(
+                    "❌ Siz allaqachon yo'lovchi sifatida ro'yxatdan o'tgansiz.\n"
+                    "Haydovchi bo'lish uchun adminga murojaat qiling."
+                )
+                await session.rollback()
+                await state.clear()
+                return
+            # Mavjud DRIVER user'ni yangilaymiz
             from sqlalchemy import update
             from app.models.user import User
             await session.execute(
@@ -225,12 +234,16 @@ async def driver_car_number(message: Message, session: AsyncSession, state: FSMC
             f"🔢 {driver.car_number}",
             reply_markup=get_driver_main_menu()
         )
-    except IntegrityError:
+    except IntegrityError as e:
         await session.rollback()
-        await message.answer(
-            "❌ Bu telefon raqami bilan allaqachon ro'yxatdan o'tilgan.\n"
-            "Iltimos, boshqa raqam kiriting yoki oldingi akkauntni ishlating."
-        )
+        error_detail = str(e.orig).lower() if e.orig else str(e).lower()
+        if 'car_number' in error_detail:
+            msg = "❌ Bu mashina raqami bilan haydovchi allaqachon ro'yxatdan o'tgan."
+        elif 'phone_number' in error_detail:
+            msg = "❌ Bu telefon raqami bilan allaqachon ro'yxatdan o'tilgan."
+        else:
+            msg = "❌ Ro'yxatdan o'tishda xatolik. Iltimos, ma'lumotlarni tekshirib qayta urinib ko'ring."
+        await message.answer(msg)
     except Exception as e:
         await session.rollback()
         logger.error(f"Registration error: {e}")
@@ -307,7 +320,16 @@ async def passenger_age(message: Message, session: AsyncSession, state: FSMConte
             role=UserRole.PASSENGER,
         )
     else:
-        # Mavjud user'ni yangilaymiz
+        # ✅ Mavjud foydalanuvchi boshqa rolda bo'lsa — bloklash
+        if existing_user_by_id.role == UserRole.DRIVER:
+            await message.answer(
+                "❌ Siz allaqachon haydovchi sifatida ro'yxatdan o'tgansiz.\n"
+                "Yo'lovchi bo'lish uchun adminga murojaat qiling."
+            )
+            await session.rollback()
+            await state.clear()
+            return
+        # Mavjud PASSENGER user'ni yangilaymiz
         from sqlalchemy import update
         from app.models.user import User
         await session.execute(

@@ -59,25 +59,41 @@ class Settings(BaseSettings):
     DB_NAME: str = "hamroh_bot"
     DB_USER: str = "hamroh_user"
     DB_PASSWORD: str  # Majburiy, xavfsizlik uchun
-    
+
+    # Tashqi DB URL (Northflank/Cloud uchun) — agar set qilinsa, DB_* o'zgaruvchilarni override qiladi
+    DATABASE_URL: Optional[str] = None
+
     @property
     def database_url(self) -> str:
         """
         PostgreSQL connection string yasash
-        
-        NATIJA: postgresql+asyncpg://user:password@host:port/dbname
-        asyncpg = async PostgreSQL driver (tez ishlaydi)
+
+        Agar DATABASE_URL env var set qilingan bo'lsa — uni ishlatadi (cloud deploy uchun).
+        Aks holda DB_HOST, DB_PORT, ... dan yasaydi.
         """
+        if self.DATABASE_URL:
+            url = self.DATABASE_URL
+            # asyncpg driver ni qo'shish (agar yo'q bo'lsa)
+            if url.startswith("postgresql://"):
+                url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+            return url
         return (
             f"postgresql+asyncpg://{self.DB_USER}:{self.DB_PASSWORD}"
             f"@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"
         )
-    
+
     @property
     def database_url_sync(self) -> str:
         """
         Alembic uchun sync URL (migration'larda kerak)
         """
+        if self.DATABASE_URL:
+            url = self.DATABASE_URL
+            # async driver ni olib tashlash
+            url = url.replace("postgresql+asyncpg://", "postgresql://")
+            if not url.startswith("postgresql://"):
+                url = "postgresql://" + url.split("://", 1)[-1]
+            return url
         return (
             f"postgresql://{self.DB_USER}:{self.DB_PASSWORD}"
             f"@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"
@@ -91,14 +107,20 @@ class Settings(BaseSettings):
     REDIS_PORT: int = 6379
     REDIS_PASSWORD: Optional[str] = None  # Ixtiyoriy
     REDIS_DB: int = 0  # Database raqami (0-15)
-    
+
+    # Tashqi Redis URL (Northflank/Cloud uchun) — agar set qilinsa, REDIS_* o'zgaruvchilarni override qiladi
+    REDIS_URL: Optional[str] = None
+
     @property
     def redis_url(self) -> str:
         """
         Redis connection string
-        
-        NATIJA: redis://[:password]@host:port/db
+
+        Agar REDIS_URL env var set qilingan bo'lsa — uni ishlatadi (cloud deploy uchun).
+        TLS ulanish uchun rediss:// (ikki s) ishlatiladi.
         """
+        if self.REDIS_URL:
+            return self.REDIS_URL
         if self.REDIS_PASSWORD:
             return f"redis://:{self.REDIS_PASSWORD}@{self.REDIS_HOST}:{self.REDIS_PORT}/{self.REDIS_DB}"
         return f"redis://{self.REDIS_HOST}:{self.REDIS_PORT}/{self.REDIS_DB}"
@@ -113,12 +135,27 @@ class Settings(BaseSettings):
     @property
     def celery_broker(self) -> str:
         """Celery broker URL (default: Redis DB 0)"""
-        return self.CELERY_BROKER_URL or f"redis://{self.REDIS_HOST}:{self.REDIS_PORT}/0"
-    
+        if self.CELERY_BROKER_URL:
+            return self.CELERY_BROKER_URL
+        # REDIS_URL set bo'lsa, undan DB 0 ni ishlatamiz
+        if self.REDIS_URL:
+            base = self.REDIS_URL.rsplit("/", 1)[0]
+            return f"{base}/0"
+        if self.REDIS_PASSWORD:
+            return f"redis://:{self.REDIS_PASSWORD}@{self.REDIS_HOST}:{self.REDIS_PORT}/0"
+        return f"redis://{self.REDIS_HOST}:{self.REDIS_PORT}/0"
+
     @property
     def celery_backend(self) -> str:
         """Celery result backend (default: Redis DB 1)"""
-        return self.CELERY_RESULT_BACKEND or f"redis://{self.REDIS_HOST}:{self.REDIS_PORT}/1"
+        if self.CELERY_RESULT_BACKEND:
+            return self.CELERY_RESULT_BACKEND
+        if self.REDIS_URL:
+            base = self.REDIS_URL.rsplit("/", 1)[0]
+            return f"{base}/1"
+        if self.REDIS_PASSWORD:
+            return f"redis://:{self.REDIS_PASSWORD}@{self.REDIS_HOST}:{self.REDIS_PORT}/1"
+        return f"redis://{self.REDIS_HOST}:{self.REDIS_PORT}/1"
     
     # ============================================
     # JWT SOZLAMALARI (Admin panel uchun)

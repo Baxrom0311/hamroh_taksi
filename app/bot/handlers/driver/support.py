@@ -115,6 +115,21 @@ async def receipt_amount_entered(message: Message, state: FSMContext):
         await message.answer("❌ Faqat raqam kiriting")
 
 
+@router.message(DriverStates.support_receipt_photo, F.text)
+async def support_receipt_photo_text_fallback(message: Message, state: FSMContext):
+    """support_receipt_photo state da text yuborilsa — rasm so'rash"""
+    if message.text and message.text.lower() in ("bekor", "❌ bekor qilish", "❌"):
+        await state.clear()
+        from app.bot.keyboards.driver import get_driver_main_menu
+        await message.answer("❌ Bekor qilindi", reply_markup=get_driver_main_menu())
+        return
+    await message.answer(
+        "📸 Iltimos, <b>chek rasmini</b> yuboring (text emas).\n"
+        "Yoki bekor qilish uchun /cancel buyrug'ini yuboring.",
+        parse_mode="HTML"
+    )
+
+
 @router.message(DriverStates.support_receipt_photo, F.photo)
 @with_driver_session  # ✅ Decorator
 async def receipt_photo_uploaded(message: Message, session: AsyncSession, driver: Driver, state: FSMContext):

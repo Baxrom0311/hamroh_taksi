@@ -20,8 +20,8 @@ class RegistrationStates(StatesGroup):
     driver_car_model = State()
     driver_car_color = State()
     driver_car_number = State()
-    driver_license = State()  # Ixtiyoriy
-    
+    # driver_license — olib tashlandi (hech qayerda set_state qilinmagan)
+
     # Yo'lovchi ma'lumotlari
     passenger_full_name = State()
     passenger_gender = State()

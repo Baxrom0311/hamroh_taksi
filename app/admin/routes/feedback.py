@@ -45,6 +45,7 @@ async def reply_feedback(
         
         if user_id:
             # User'ga xabar yuborish
+            message_sent = False
             try:
                 await bot.send_message(
                     chat_id=user_id,
@@ -54,13 +55,18 @@ async def reply_feedback(
                     ),
                     parse_mode="HTML"
                 )
+                message_sent = True
             except Exception as e:
-                # Log error but don't fail request
                 from loguru import logger
                 logger.error(f"Failed to send feedback reply to user {user_id}: {e}")
-                pass
-                
-            return {"success": True}
+
+            if not message_sent:
+                return {
+                    "success": True,
+                    "message_sent": False,
+                    "warning": "Javob saqlandi, lekin foydalanuvchiga xabar yuborilmadi"
+                }
+            return {"success": True, "message_sent": True}
         else:
             raise HTTPException(status_code=404, detail="Feedback topilmadi")
 

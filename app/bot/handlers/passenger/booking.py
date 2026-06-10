@@ -290,6 +290,8 @@ async def passenger_cancel_order(callback: CallbackQuery, session: AsyncSession,
     # Haydovchiga xabar
     if order.driver_id:
         from app.models.driver import get_driver_by_id
+        # ✅ Session ni yangilash — transaction ichida o'zgarishlar commit bo'lgan
+        await session.expire_all()
         driver = await get_driver_by_id(session, order.driver_id)
         if driver:
             from app.bot.main import bot

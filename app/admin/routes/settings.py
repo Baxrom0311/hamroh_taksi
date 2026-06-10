@@ -164,26 +164,25 @@ async def update_system_setting(
         from app.models.system_settings import update_setting
         from app.core.database import transaction
         
-        async with get_session() as session:
-            # Database'da yangilash
-            async with transaction() as session:
-                await update_setting(session, setting_key, request.value)
-                
-                # Redis cache'ni tozalash
-                cache_key = f"system_settings:{setting_key}"
-                await redis_client.delete(cache_key)
-                
-                logger.info(
-                    f"Setting updated: {setting_key} = {request.value} "
-                    f"by {current_user['username']}"
-                )
-                
-                return {
-                    'success': True,
-                    'message': 'Sozlama yangilandi',
-                    'key': setting_key,
-                    'value': request.value
-                }
+        # ✅ Faqat transaction ishlatamiz (get_session kerak emas)
+        async with transaction() as session:
+            await update_setting(session, setting_key, request.value)
+
+            # Redis cache'ni tozalash
+            cache_key = f"system_settings:{setting_key}"
+            await redis_client.delete(cache_key)
+
+            logger.info(
+                f"Setting updated: {setting_key} = {request.value} "
+                f"by {current_user['username']}"
+            )
+
+            return {
+                'success': True,
+                'message': 'Sozlama yangilandi',
+                'key': setting_key,
+                'value': request.value
+            }
     
     except Exception as e:
         logger.error(f"Failed to update setting: {e}")
@@ -399,23 +398,47 @@ async def delete_route(
     """
     try:
         async with get_session() as session:
+            from app.models.order import Order, OrderStatus
+            from sqlalchemy import func as sqlfunc
+
+            # Aktiv buyurtmalar borligini tekshirish (CASCADE xavfini oldini olish)
+            active_count_result = await session.execute(
+                select(sqlfunc.count(Order.order_id))
+                .where(Order.route_id == route_id)
+                .where(Order.status.in_([
+                    OrderStatus.PENDING,
+                    OrderStatus.ACCEPTED,
+                    OrderStatus.IN_PROGRESS
+                ]))
+            )
+            active_count = active_count_result.scalar() or 0
+
+            if active_count > 0:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Bu marshrutda {active_count} ta faol buyurtma bor. "
+                           f"Avval buyurtmalarni yakunlang yoki bekor qiling."
+                )
+
             # Hard Delete (Databazadan butunlay o'chirish)
             await session.execute(
                 delete(Route)
                 .where(Route.route_id == route_id)
             )
-            
+
             await session.commit()
-            
+
             logger.info(
                 f"Route {route_id} PERMANENTLY deleted by {current_user['username']}"
             )
-            
+
             return {
                 'success': True,
                 'message': 'Marshrut butunlay o\'chirildi'
             }
-    
+
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to delete route: {e}")
         raise HTTPException(status_code=500, detail=str(e))

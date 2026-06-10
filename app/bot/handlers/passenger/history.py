@@ -137,11 +137,24 @@ async def close_history(callback: CallbackQuery, state: FSMContext):
     Safar tarixini yopish
     """
     await state.clear()
-    
+
     if callback.message and isinstance(callback.message, Message):
         await callback.message.delete()
-    
+
     await callback.answer("Safar tarixi yopildi")
+
+
+@router.message(PassengerStates.viewing_history)
+async def exit_viewing_history(message: Message, state: FSMContext):
+    """
+    viewing_history state da har qanday xabar yuborilsa — state ni tozalab, menyuga qaytarish.
+    Bu dead-end state ni oldini oladi.
+    """
+    await state.clear()
+    await message.answer(
+        "📜 Safar tarixi yopildi.",
+        reply_markup=get_passenger_main_menu()
+    )
 
 
 # Helper functions

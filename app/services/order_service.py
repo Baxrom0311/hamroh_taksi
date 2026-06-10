@@ -407,11 +407,13 @@ async def accept_order_by_driver(
                 
                 if not active_trip:
                     # Yangi trip yaratish (birinchi order)
+                    # ✅ total_seats = hozirgi available_seats (driver navbatga qo'shilgandagi qiymati)
+                    # available_seats order qabul qilishdan OLDIN kamaytirilmagan
                     active_trip = await create_trip(
                         session,
                         driver_id=driver_id,
                         route_id=order.route_id,
-                        total_seats=driver.available_seats 
+                        total_seats=driver.available_seats
                     )
                     logger.info(f"✅ New trip created: trip_id={active_trip.trip_id}")
                 
@@ -764,11 +766,12 @@ async def complete_trip(order_id: int, driver_id: int) -> dict:
             )
 
             if not has_other_active_orders:
-                # Boshqa buyurtma yo'q - is_on_trip=False va Trip statusini yopish
+                # Boshqa buyurtma yo'q - is_on_trip=False qilish
+                # ✅ is_active ni o'zgartirmaymiz — haydovchi o'zi boshqaradi
                 await session.execute(
                     update(Driver)
                     .where(Driver.driver_id == driver_id)
-                    .values(is_on_trip=False, is_active=False)
+                    .values(is_on_trip=False)
                 )
                 
                 # Trip holatini ham COMPLETED qilish
@@ -851,7 +854,7 @@ async def _start_trip_sync(session: AsyncSession, trip_id: int, driver_id: int) 
     await session.execute(
         update(Driver)
         .where(Driver.driver_id == driver_id)
-        .values(is_on_trip=True, is_active=False)
+        .values(is_on_trip=True)
     )
 
     # Auto-complete (10 daqiqa) 

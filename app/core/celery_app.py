@@ -243,6 +243,15 @@ celery_app.conf.beat_schedule = {
         'schedule': crontab(hour="3", minute="0"),  # 03:00
         'options': {'queue': 'low_priority'}
     },
+
+    # ============================================
+    # Ghost driver cleanup (har 30 daqiqada)
+    # ============================================
+    'ghost-driver-cleanup': {
+        'task': 'app.tasks.cleanup.cleanup_ghost_drivers',
+        'schedule': 1800.0,  # 30 daqiqa
+        'options': {'queue': 'low_priority'}
+    },
 }
 
 

@@ -126,6 +126,20 @@ async def topup_amount_entered(message: Message, state: FSMContext):
         await state.set_state(DriverStates.balance_receipt)
     except ValueError:
         await message.answer("❌ Faqat raqam kiriting")
+@router.message(DriverStates.balance_receipt, F.text)
+async def balance_receipt_text_fallback(message: Message, state: FSMContext):
+    """balance_receipt state da text yuborilsa — rasm so'rash"""
+    if message.text == "❌ Bekor qilish":
+        await state.clear()
+        await message.answer("❌ Balans to'ldirish bekor qilindi", reply_markup=get_driver_main_menu())
+        return
+    await message.answer(
+        "📸 Iltimos, <b>chek rasmini</b> yuboring (text emas).\n"
+        "Yoki bekor qilish uchun /cancel buyrug'ini yuboring.",
+        parse_mode="HTML"
+    )
+
+
 @router.message(DriverStates.balance_receipt, F.photo)
 @with_driver_session  # ✅ Decorator
 async def receipt_uploaded(message: Message, session: AsyncSession, driver: Driver, state: FSMContext):

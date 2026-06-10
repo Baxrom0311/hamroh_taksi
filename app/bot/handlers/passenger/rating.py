@@ -50,14 +50,17 @@ async def rate_driver_handler(callback: CallbackQuery, session: AsyncSession):
         await callback.answer("Haydovchi topilmadi", show_alert=True)
         return
 
-    # Reytingni yangilash
-    # Formula: (Eski * (N) + Yangi) / (N + 1)
+    # Reytingni yangilash (Exponential Moving Average)
+    # EMA bu yerda aniq — total_rated ga bog'liq emas
+    # alpha = 0.3 — yangi baho 30% ta'sir qiladi
     current_rating = float(driver.rating)
-    # Total trips ni reytinglar soni sifatida taxmin qilamiz (MVP)
-    total_rated = max(1, driver.total_trips)
-
-    new_rating = ((current_rating * total_rated) + stars) / (total_rated + 1)
-    new_rating = min(5.0, new_rating)
+    alpha = 0.3
+    if current_rating == 0 or driver.total_trips == 0:
+        # Birinchi baho
+        new_rating = float(stars)
+    else:
+        new_rating = (alpha * stars) + ((1 - alpha) * current_rating)
+    new_rating = max(1.0, min(5.0, new_rating))
 
     # DB update
     await session.execute(

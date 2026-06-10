@@ -22,11 +22,11 @@ class PassengerStates(StatesGroup):
     send_location = State()        # Lokatsiya yuborish
     location_description = State() # Lokatsiya izohi
     add_details = State()          # Qo'shimcha ma'lumotlar (pochta, yo'lovchilar)
-    confirm_order = State()        # Buyurtmani tasdiqlash
-    
+    # confirm_order — olib tashlandi (hech qayerda set_state qilinmagan)
+
     # Haydovchi kutish
     waiting_driver = State()       # Haydovchi topilmoqda
-    driver_found = State()         # Haydovchi topildi
+    # driver_found — olib tashlandi (hech qayerda set_state qilinmagan)
     
     # Safar
     trip_in_progress = State()     # Safar davom etmoqda

@@ -50,5 +50,4 @@ class DriverStates(StatesGroup):
     support_receipt_photo = State()  # Chek rasm yuklash
     support_complaint = State()       # Shikoyat yozish
     
-    # Sozlamalar
-    settings_edit = State()
+    # settings_edit — olib tashlandi (hech qayerda set_state qilinmagan)

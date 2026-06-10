@@ -93,5 +93,17 @@ async def back_from_settings(message: Message, session: AsyncSession, passenger:
     await message.answer("⬅️ Asosiy menyu", reply_markup=get_passenger_main_menu())
 
 
+@router.message(StateFilter(PassengerStates.main_menu), F.text)
+async def main_menu_catch_all(message: Message, state: FSMContext):
+    """
+    main_menu state da boshqa tugmalar bosilsa — state ni tozalab menyuga qaytarish.
+    Bu state qotib qolishni oldini oladi.
+    """
+    await state.clear()
+    await message.answer(
+        "⬅️ Asosiy menyu",
+        reply_markup=get_passenger_main_menu()
+    )
+
 
 __all__ = ['router']
